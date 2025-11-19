@@ -1,11 +1,19 @@
 from rest_framework import status, generics
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAuthenticated, IsAdminUser
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
-from .serializers import UserRegistrationSerializer, UserSerializer, LoginSerializer
+from .models import UserRole
+from .serializers import (
+    UserRegistrationSerializer, 
+    UserSerializer, 
+    UserDetailSerializer,
+    LoginSerializer,
+    AssignRoleSerializer,
+    UserRoleSerializer
+)
 
 
 class RegisterView(generics.CreateAPIView):
@@ -21,8 +29,11 @@ class RegisterView(generics.CreateAPIView):
         # Generate JWT tokens
         refresh = RefreshToken.for_user(user)
         
+        # Get user with role info
+        user_data = UserSerializer(user).data
+        
         return Response({
-            'user': UserSerializer(user).data,
+            'user': user_data,
             'refresh': str(refresh),
             'access': str(refresh.access_token),
             'message': 'User registered successfully'
@@ -44,8 +55,10 @@ class LoginView(APIView):
         
         if user is not None:
             refresh = RefreshToken.for_user(user)
+            user_data = UserSerializer(user).data
+            
             return Response({
-                'user': UserSerializer(user).data,
+                'user': user_data,
                 'refresh': str(refresh),
                 'access': str(refresh.access_token),
                 'message': 'Login successful'
@@ -58,7 +71,92 @@ class LoginView(APIView):
 
 class UserProfileView(generics.RetrieveAPIView):
     permission_classes = (IsAuthenticated,)
-    serializer_class = UserSerializer
+    serializer_class = UserDetailSerializer
     
     def get_object(self):
         return self.request.user
+
+
+class AssignRoleView(APIView):
+    """Admin endpoint to assign roles to users"""
+    permission_classes = (IsAuthenticated,)
+    
+    def post(self, request):
+        # Check if user is admin
+        if not hasattr(request.user, 'role') or request.user.role.role != 'admin':
+            return Response({
+                'error': 'Only admins can assign roles'
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        serializer = AssignRoleSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        user_id = serializer.validated_data['user_id']
+        role = serializer.validated_data['role']
+        
+        # Prevent assigning admin role to other users
+        if role == 'admin':
+            return Response({
+                'error': 'Admin role cannot be assigned. Only the system admin has this role.'
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        try:
+            user = User.objects.get(id=user_id)
+            
+            # Prevent changing the system admin's role
+            if user.role.role == 'admin':
+                return Response({
+                    'error': 'Cannot change the role of the system admin'
+                }, status=status.HTTP_403_FORBIDDEN)
+            
+            user_role = user.role
+            user_role.role = role
+            user_role.assigned_by = request.user
+            user_role.save()
+            
+            return Response({
+                'message': 'Role assigned successfully',
+                'user': UserDetailSerializer(user).data
+            }, status=status.HTTP_200_OK)
+        except User.DoesNotExist:
+            return Response({
+                'error': 'User not found'
+            }, status=status.HTTP_404_NOT_FOUND)
+
+
+class AllUsersView(generics.ListAPIView):
+    """Admin endpoint to view all users"""
+    permission_classes = (IsAuthenticated,)
+    serializer_class = UserDetailSerializer
+    
+    def get_queryset(self):
+        # Check if user is admin
+        if not hasattr(self.request.user, 'role') or self.request.user.role.role != 'admin':
+            return User.objects.none()
+        return User.objects.all().order_by('-date_joined')
+
+
+class RoleListView(APIView):
+    """Get available roles (excluding admin and unassigned)"""
+    permission_classes = (IsAuthenticated,)
+    
+    def get(self, request):
+        roles = [
+            {'value': role[0], 'label': role[1]} 
+            for role in UserRole.ROLE_CHOICES
+            if role[0] not in ['unassigned', 'admin']  # Exclude admin role from assignment
+        ]
+        return Response({'roles': roles}, status=status.HTTP_200_OK)
+
+
+class MyRoleView(APIView):
+    """Get current user's role"""
+    permission_classes = (IsAuthenticated,)
+    
+    def get(self, request):
+        if hasattr(request.user, 'role'):
+            serializer = UserRoleSerializer(request.user.role)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        return Response({
+            'error': 'Role not found'
+        }, status=status.HTTP_404_NOT_FOUND)

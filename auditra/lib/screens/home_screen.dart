@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 import 'login_screen.dart';
+import 'admin_dashboard.dart';
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  final String userRole;
+  
+  const HomeScreen({super.key, required this.userRole});
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -18,16 +21,30 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _loadUserData();
+    
+    // Route to admin dashboard if user is admin
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (widget.userRole == 'admin') {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => const AdminDashboard()),
+        );
+      }
+    });
   }
 
   Future<void> _loadUserData() async {
     final username = await ApiService.getUsername();
     final profileResult = await ApiService.getProfile();
+    final roleResult = await ApiService.getMyRole();
 
     setState(() {
       _username = username;
       if (profileResult['success']) {
         _profile = profileResult['data'];
+      }
+      if (roleResult['success']) {
+        _profile?['role'] = roleResult['data']['role'];
+        _profile?['role_display'] = roleResult['data']['role_display'];
       }
       _isLoading = false;
     });
@@ -127,6 +144,15 @@ class _HomeScreenState extends State<HomeScreen> {
                                   fontSize: 14,
                                   color: Colors.grey[600],
                                 ),
+                              ),
+                            ],
+                            if (_profile?['role_display'] != null) ...[
+                              const SizedBox(height: 12),
+                              Chip(
+                                label: Text(_profile!['role_display']),
+                                backgroundColor: _profile!['role'] == 'unassigned'
+                                    ? Colors.grey[200]
+                                    : Colors.blue[100],
                               ),
                             ],
                           ],

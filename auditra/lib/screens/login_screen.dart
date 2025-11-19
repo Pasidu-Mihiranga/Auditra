@@ -39,8 +39,14 @@ class _LoginScreenState extends State<LoginScreen> {
     if (!mounted) return;
 
     if (result['success']) {
+      // Get user role to route to appropriate dashboard
+      await ApiService.getMyRole();
+      final role = await ApiService.getUserRole();
+      
+      if (!mounted) return;
+      
       Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const HomeScreen()),
+        MaterialPageRoute(builder: (_) => HomeScreen(userRole: role ?? 'unassigned')),
       );
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
