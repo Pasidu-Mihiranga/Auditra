@@ -38,6 +38,7 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
   List<Project> _projects = [];
   bool _isLoadingProjects = false;
   late TabController _tabController;
+  late TabController _periodTabController;
   
   // Timer for countdown
   DateTime? _countdownEnd;
@@ -52,6 +53,21 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
     // Only show tabs if field_officer role
     final hasProjects = widget.role == 'field_officer';
     _tabController = TabController(length: hasProjects ? 2 : 1, vsync: this);
+    
+    // Initialize period tab controller and sync with selected period
+    final periods = ['daily', 'weekly', 'monthly', 'yearly'];
+    final initialPeriodIndex = periods.indexOf(_selectedPeriod);
+    _periodTabController = TabController(
+      length: 4,
+      vsync: this,
+      initialIndex: initialPeriodIndex >= 0 ? initialPeriodIndex : 0,
+    );
+    _periodTabController.addListener(() {
+      if (!_periodTabController.indexIsChanging) {
+        setState(() => _selectedPeriod = periods[_periodTabController.index]);
+        _loadSummary();
+      }
+    });
     _tabController.addListener(() {
       if (!_tabController.indexIsChanging) {
         setState(() {});
@@ -69,6 +85,7 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
   @override
   void dispose() {
     _tabController.dispose();
+    _periodTabController.dispose();
     super.dispose();
   }
 
@@ -1115,104 +1132,65 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'Attendance Summary',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
+            Text(
+              'Attendance Summary',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 12),
+            // Period Selection Tabs
+            Container(
+              decoration: BoxDecoration(
+                color: Colors.grey[200]?.withOpacity(0.5),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: TabBar(
+                controller: _periodTabController,
+                indicator: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [Colors.blue[400]!, Colors.blue[600]!],
                   ),
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.blue.withOpacity(0.3),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
                 ),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [
-                        Colors.blue[400]!,
-                        Colors.blue[600]!,
-                      ],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    borderRadius: BorderRadius.circular(12),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.blue.withOpacity(0.3),
-                        blurRadius: 8,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                  child: DropdownButton<String>(
-                    value: _selectedPeriod,
-                    dropdownColor: Colors.blue[700],
-                    underline: const SizedBox.shrink(),
-                    icon: Icon(
-                      Icons.arrow_drop_down,
-                      color: Colors.white,
-                      size: 24,
-                    ),
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                    ),
-                    items: const [
-                      DropdownMenuItem(
-                        value: 'daily',
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.today, color: Colors.white, size: 18),
-                            SizedBox(width: 8),
-                            Text('Daily'),
-                          ],
-                        ),
-                      ),
-                      DropdownMenuItem(
-                        value: 'weekly',
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.date_range, color: Colors.white, size: 18),
-                            SizedBox(width: 8),
-                            Text('Weekly'),
-                          ],
-                        ),
-                      ),
-                      DropdownMenuItem(
-                        value: 'monthly',
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.calendar_month, color: Colors.white, size: 18),
-                            SizedBox(width: 8),
-                            Text('Monthly'),
-                          ],
-                        ),
-                      ),
-                      DropdownMenuItem(
-                        value: 'yearly',
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.calendar_today, color: Colors.white, size: 18),
-                            SizedBox(width: 8),
-                            Text('Yearly'),
-                          ],
-                        ),
-                      ),
-                    ],
-                    onChanged: (value) {
-                      if (value != null) {
-                        setState(() => _selectedPeriod = value);
-                        _loadSummary();
-                      }
-                    },
-                  ),
+                labelColor: Colors.white,
+                unselectedLabelColor: Colors.grey[700],
+                labelStyle: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 13,
                 ),
-              ],
+                unselectedLabelStyle: const TextStyle(
+                  fontWeight: FontWeight.w500,
+                  fontSize: 13,
+                ),
+                indicatorSize: TabBarIndicatorSize.tab,
+                dividerColor: Colors.transparent,
+                tabs: const [
+                  Tab(
+                    icon: Icon(Icons.today, size: 18),
+                    text: 'Daily',
+                  ),
+                  Tab(
+                    icon: Icon(Icons.date_range, size: 18),
+                    text: 'Weekly',
+                  ),
+                  Tab(
+                    icon: Icon(Icons.calendar_month, size: 18),
+                    text: 'Monthly',
+                  ),
+                  Tab(
+                    icon: Icon(Icons.calendar_today, size: 18),
+                    text: 'Yearly',
+                  ),
+                ],
+              ),
             ),
             const SizedBox(height: 16),
             
@@ -1419,7 +1397,25 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
       );
     }
 
-    final data = _summary!.dailyData;
+    // Process data based on selected period
+    final processedData = _processChartData(_summary!.dailyData, _selectedPeriod);
+    if (processedData.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.bar_chart, size: 48, color: Colors.grey[400]),
+            const SizedBox(height: 8),
+            Text(
+              'No data to display',
+              style: TextStyle(color: Colors.grey[600], fontSize: 16),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final data = processedData;
     final maxHours = data.map((d) => d.workingHours).reduce((a, b) => a > b ? a : b);
     
     return SingleChildScrollView(
@@ -1440,9 +1436,19 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
                 tooltipBgColor: Colors.blue[900]!.withOpacity(0.9),
                 tooltipPadding: const EdgeInsets.all(12),
                 getTooltipItem: (group, groupIndex, rod, rodIndex) {
-                  final dayData = data[groupIndex];
+                  final chartData = data[groupIndex];
+                  String tooltipText;
+                  if (_selectedPeriod == 'daily') {
+                    tooltipText = '${chartData.workingHours.toStringAsFixed(1)}h\n${_getStatusDisplay(chartData.status)}';
+                  } else if (_selectedPeriod == 'weekly') {
+                    tooltipText = 'Avg: ${chartData.workingHours.toStringAsFixed(1)}h\nWeek ${_formatWeekLabel(chartData.date)}';
+                  } else if (_selectedPeriod == 'monthly') {
+                    tooltipText = 'Avg: ${chartData.workingHours.toStringAsFixed(1)}h\n${DateFormat('MMM yyyy').format(chartData.date)}';
+                  } else {
+                    tooltipText = 'Avg: ${chartData.workingHours.toStringAsFixed(1)}h\n${DateFormat('yyyy').format(chartData.date)}';
+                  }
                   return BarTooltipItem(
-                    '${dayData.workingHours.toStringAsFixed(1)}h\n${_getStatusDisplay(dayData.status)}',
+                    tooltipText,
                     const TextStyle(
                       color: Colors.white,
                       fontWeight: FontWeight.bold,
@@ -1460,11 +1466,21 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
                   reservedSize: 40,
                   getTitlesWidget: (value, meta) {
                     if (value.toInt() < data.length && value.toInt() >= 0) {
-                      final date = data[value.toInt()].date;
+                      final chartData = data[value.toInt()];
+                      String label;
+                      if (_selectedPeriod == 'daily') {
+                        label = DateFormat('dd/MM').format(chartData.date);
+                      } else if (_selectedPeriod == 'weekly') {
+                        label = _formatWeekLabel(chartData.date);
+                      } else if (_selectedPeriod == 'monthly') {
+                        label = DateFormat('MMM').format(chartData.date);
+                      } else {
+                        label = DateFormat('yyyy').format(chartData.date);
+                      }
                       return Padding(
                         padding: const EdgeInsets.only(top: 8.0),
                         child: Text(
-                          DateFormat('dd/MM').format(date),
+                          label,
                           style: TextStyle(
                             fontSize: 11,
                             fontWeight: FontWeight.w600,
@@ -1526,14 +1542,17 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
             ),
             barGroups: data.asMap().entries.map((entry) {
               final index = entry.key;
-              final dayData = entry.value;
-              final color = _getStatusColor(dayData.status);
+              final chartData = entry.value;
+              // For aggregated views, use blue color; for daily, use status color
+              final color = _selectedPeriod == 'daily' 
+                  ? _getStatusColor(chartData.status)
+                  : Colors.blue;
               
               return BarChartGroupData(
                 x: index,
                 barRods: [
                   BarChartRodData(
-                    toY: dayData.workingHours,
+                    toY: chartData.workingHours,
                     color: color,
                     width: 24,
                     borderRadius: const BorderRadius.vertical(top: Radius.circular(8)),
@@ -1563,6 +1582,83 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
       default:
         return 'Unknown';
     }
+  }
+
+  // Process chart data based on selected period
+  List<DailyAttendanceData> _processChartData(List<DailyAttendanceData> dailyData, String period) {
+    if (period == 'daily') {
+      // Return daily data as is
+      return dailyData;
+    } else if (period == 'weekly') {
+      // Group by week and calculate average
+      final Map<String, List<DailyAttendanceData>> weeklyGroups = {};
+      for (var data in dailyData) {
+        final weekKey = _getWeekKey(data.date);
+        weeklyGroups.putIfAbsent(weekKey, () => []).add(data);
+      }
+      
+      return weeklyGroups.entries.map((entry) {
+        final avgHours = entry.value.map((d) => d.workingHours).reduce((a, b) => a + b) / entry.value.length;
+        return DailyAttendanceData(
+          date: entry.value.first.date, // Use first date of the week
+          status: 'present', // Default for aggregated data
+          workingHours: avgHours,
+          overtimeHours: entry.value.map((d) => d.overtimeHours).reduce((a, b) => a + b) / entry.value.length,
+        );
+      }).toList()..sort((a, b) => a.date.compareTo(b.date));
+    } else if (period == 'monthly') {
+      // Group by month and calculate average
+      final Map<String, List<DailyAttendanceData>> monthlyGroups = {};
+      for (var data in dailyData) {
+        final monthKey = '${data.date.year}-${data.date.month}';
+        monthlyGroups.putIfAbsent(monthKey, () => []).add(data);
+      }
+      
+      return monthlyGroups.entries.map((entry) {
+        final avgHours = entry.value.map((d) => d.workingHours).reduce((a, b) => a + b) / entry.value.length;
+        return DailyAttendanceData(
+          date: DateTime(entry.value.first.date.year, entry.value.first.date.month, 1),
+          status: 'present',
+          workingHours: avgHours,
+          overtimeHours: entry.value.map((d) => d.overtimeHours).reduce((a, b) => a + b) / entry.value.length,
+        );
+      }).toList()..sort((a, b) => a.date.compareTo(b.date));
+    } else {
+      // Group by year and calculate average
+      final Map<int, List<DailyAttendanceData>> yearlyGroups = {};
+      for (var data in dailyData) {
+        final year = data.date.year;
+        yearlyGroups.putIfAbsent(year, () => []).add(data);
+      }
+      
+      return yearlyGroups.entries.map((entry) {
+        final avgHours = entry.value.map((d) => d.workingHours).reduce((a, b) => a + b) / entry.value.length;
+        return DailyAttendanceData(
+          date: DateTime(entry.key, 1, 1),
+          status: 'present',
+          workingHours: avgHours,
+          overtimeHours: entry.value.map((d) => d.overtimeHours).reduce((a, b) => a + b) / entry.value.length,
+        );
+      }).toList()..sort((a, b) => a.date.compareTo(b.date));
+    }
+  }
+
+  String _getWeekKey(DateTime date) {
+    // Get the Monday of the week
+    final monday = date.subtract(Duration(days: date.weekday - 1));
+    return '${monday.year}-W${_getWeekNumber(monday)}';
+  }
+
+  int _getWeekNumber(DateTime date) {
+    final firstDayOfYear = DateTime(date.year, 1, 1);
+    final daysSinceFirstDay = date.difference(firstDayOfYear).inDays;
+    return ((daysSinceFirstDay + firstDayOfYear.weekday) / 7).ceil();
+  }
+
+  String _formatWeekLabel(DateTime date) {
+    final monday = date.subtract(Duration(days: date.weekday - 1));
+    final sunday = monday.add(const Duration(days: 6));
+    return '${DateFormat('dd/MM').format(monday)} - ${DateFormat('dd/MM').format(sunday)}';
   }
 
   Color _getStatusColor(String status) {
