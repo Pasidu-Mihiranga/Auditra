@@ -576,6 +576,11 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
     return '$hours:$minutes:$seconds';
   }
 
+  bool _isAfter12PM() {
+    final now = DateTime.now();
+    return now.hour >= 12;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -931,43 +936,84 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
             else if (_todayAttendance == null)
               Column(
                 children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        flex: 2,
-                        child: _buildAnimatedCountdown(),
+                  // Check if it's after 12 PM
+                  if (_isAfter12PM())
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.red[50],
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.red[300]!),
                       ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        flex: 3,
-                        child: _buildAttendanceButton(),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.blue[50],
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.blue[200]!),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.access_time, color: Colors.blue[700], size: 20),
-                        const SizedBox(width: 8),
-                        Text(
-                          'Working Hours: 8:00 AM - 5:00 PM',
-                          style: TextStyle(
-                            color: Colors.blue[900],
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
+                      child: Row(
+                        children: [
+                          Icon(Icons.error_outline, color: Colors.red[700], size: 24),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Marked as Absent',
+                                  style: TextStyle(
+                                    color: Colors.red[900],
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  'Attendance cannot be marked after 12 PM',
+                                  style: TextStyle(
+                                    color: Colors.red[700],
+                                    fontSize: 13,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
+                        ],
+                      ),
+                    )
+                  else ...[
+                    Row(
+                      children: [
+                        Expanded(
+                          flex: 2,
+                          child: _buildAnimatedCountdown(),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          flex: 3,
+                          child: _buildAttendanceButton(),
                         ),
                       ],
                     ),
-                  ),
+                    const SizedBox(height: 16),
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.blue[50],
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.blue[200]!),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.access_time, color: Colors.blue[700], size: 20),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Working Hours: 8:00 AM - 5:00 PM',
+                            style: TextStyle(
+                              color: Colors.blue[900],
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ],
               )
             else if (_todayAttendance != null && !_todayAttendance!.isCheckedOut)
@@ -992,20 +1038,51 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
                         Text(DateFormat('hh:mm a').format(_todayAttendance!.checkIn!)),
                       ],
                     ),
-                  const SizedBox(height: 16),
-                  Row(
-                    children: [
-                      Expanded(
-                        flex: 2,
-                        child: _buildAnimatedCountdown(),
+                  
+                  // Hide all buttons for absentees
+                  if (_todayAttendance!.status != 'absent') ...[
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Expanded(
+                          flex: 2,
+                          child: _buildAnimatedCountdown(),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          flex: 3,
+                          child: _buildLeaveEarlyButton(),
+                        ),
+                      ],
+                    ),
+                  ] else ...[
+                    // Show message for absentees
+                    const SizedBox(height: 16),
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.red[50],
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.red[300]!),
                       ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        flex: 3,
-                        child: _buildLeaveEarlyButton(),
+                      child: Row(
+                        children: [
+                          Icon(Icons.info_outline, color: Colors.red[700], size: 24),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              'You are marked as absent. Attendance actions are not available.',
+                              style: TextStyle(
+                                color: Colors.red[900],
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ],
               )
             else

@@ -392,6 +392,11 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
     return hour >= 17 || hour < 8;
   }
 
+  bool _isAfter12PM() {
+    final now = DateTime.now();
+    return now.hour >= 12;
+  }
+
   Future<void> _logout() async {
     final confirm = await showDialog<bool>(
       context: context,
@@ -921,47 +926,88 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
             else if (_todayAttendance == null)
               Column(
                 children: [
-                  // Countdown Timer and Attendance Button Row
-                  Row(
-                    children: [
-                      // Animated Countdown Timer
-                      Expanded(
-                        flex: 2,
-                        child: _buildAnimatedCountdown(),
+                  // Check if it's after 12 PM
+                  if (_isAfter12PM())
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.red[50],
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.red[300]!),
                       ),
-                      const SizedBox(width: 12),
-                      // Attendance Button
-                      Expanded(
-                        flex: 3,
-                        child: _buildAttendanceButton(),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  // Working Hours Info Card
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.blue[50],
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.blue[200]!),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.access_time, color: Colors.blue[700], size: 20),
-                        const SizedBox(width: 8),
-                        Text(
-                          'Working Hours: 8:00 AM - 5:00 PM',
-                          style: TextStyle(
-                            color: Colors.blue[900],
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
+                      child: Row(
+                        children: [
+                          Icon(Icons.error_outline, color: Colors.red[700], size: 24),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Marked as Absent',
+                                  style: TextStyle(
+                                    color: Colors.red[900],
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  'Attendance cannot be marked after 12 PM',
+                                  style: TextStyle(
+                                    color: Colors.red[700],
+                                    fontSize: 13,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
+                        ],
+                      ),
+                    )
+                  else ...[
+                    // Countdown Timer and Attendance Button Row
+                    Row(
+                      children: [
+                        // Animated Countdown Timer
+                        Expanded(
+                          flex: 2,
+                          child: _buildAnimatedCountdown(),
+                        ),
+                        const SizedBox(width: 12),
+                        // Attendance Button
+                        Expanded(
+                          flex: 3,
+                          child: _buildAttendanceButton(),
                         ),
                       ],
                     ),
-                  ),
+                    const SizedBox(height: 16),
+                    // Working Hours Info Card
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.blue[50],
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.blue[200]!),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.access_time, color: Colors.blue[700], size: 20),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Working Hours: 8:00 AM - 5:00 PM',
+                            style: TextStyle(
+                              color: Colors.blue[900],
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ],
               )
             else if (_todayAttendance != null && !_todayAttendance!.isCheckedOut)
@@ -973,7 +1019,10 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
                     children: [
                       Text('Status:', style: TextStyle(fontWeight: FontWeight.w500)),
                       Chip(
-                        label: Text(_todayAttendance!.statusDisplay),
+                        label: Text(
+                          _todayAttendance!.statusDisplay,
+                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                        ),
                         backgroundColor: _getStatusColor(_todayAttendance!.status),
                       ),
                     ],
@@ -990,60 +1039,90 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
                       ],
                     ),
                   
-                  const SizedBox(height: 16),
-                  // Countdown Timer and Leave Early Button Row
-                  Row(
-                    children: [
-                      // Animated Countdown Timer
-                      Expanded(
-                        flex: 2,
-                        child: _buildAnimatedCountdown(),
-                      ),
-                      const SizedBox(width: 12),
-                      // Leave Early Button
-                      Expanded(
-                        flex: 3,
-                        child: _buildLeaveEarlyButton(),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  
-                  // Check Out Button (if after 5 PM or close to it)
-                  if (DateTime.now().hour >= 17 || _remainingTime.inMinutes < 5)
-                    ElevatedButton.icon(
-                      onPressed: _checkOut,
-                      icon: const Icon(Icons.logout),
-                      label: const Text('Check Out'),
-                      style: ElevatedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        backgroundColor: Colors.blue,
-                        foregroundColor: Colors.white,
-                      ),
+                  // Hide all buttons for absentees
+                  if (_todayAttendance!.status != 'absent') ...[
+                    const SizedBox(height: 16),
+                    // Countdown Timer and Leave Early Button Row
+                    Row(
+                      children: [
+                        // Animated Countdown Timer
+                        Expanded(
+                          flex: 2,
+                          child: _buildAnimatedCountdown(),
+                        ),
+                        const SizedBox(width: 12),
+                        // Leave Early Button
+                        Expanded(
+                          flex: 3,
+                          child: _buildLeaveEarlyButton(),
+                        ),
+                      ],
                     ),
-                  
-                  // Overtime Section (available from 5 PM to 8 AM, even if not checked out)
-                  if (_isOvertimeAllowed()) ...[
-                    const Divider(),
-                    const SizedBox(height: 8),
-                    if (_todayAttendance!.overtimeStart == null)
-                      _buildStartOvertimeButton()
-                    else if (_todayAttendance!.isOvertimeActive) ...[
-                      // Overtime Countdown Timer
-                      _buildOvertimeCountdown(),
-                      const SizedBox(height: 16),
-                      // End Overtime Button
-                      _buildEndOvertimeButton(),
-                    ]
-                    else if (_todayAttendance!.hasOvertime) ...[
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    const SizedBox(height: 16),
+                    
+                    // Check Out Button (if after 5 PM or close to it)
+                    if (DateTime.now().hour >= 17 || _remainingTime.inMinutes < 5)
+                      ElevatedButton.icon(
+                        onPressed: _checkOut,
+                        icon: const Icon(Icons.logout),
+                        label: const Text('Check Out'),
+                        style: ElevatedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          backgroundColor: Colors.blue,
+                          foregroundColor: Colors.white,
+                        ),
+                      ),
+                    
+                    // Overtime Section (available from 5 PM to 8 AM, even if not checked out)
+                    if (_isOvertimeAllowed()) ...[
+                      const Divider(),
+                      const SizedBox(height: 8),
+                      if (_todayAttendance!.overtimeStart == null)
+                        _buildStartOvertimeButton()
+                      else if (_todayAttendance!.isOvertimeActive) ...[
+                        // Overtime Countdown Timer
+                        _buildOvertimeCountdown(),
+                        const SizedBox(height: 16),
+                        // End Overtime Button
+                        _buildEndOvertimeButton(),
+                      ]
+                      else if (_todayAttendance!.hasOvertime) ...[
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text('Overtime Hours:', style: TextStyle(fontWeight: FontWeight.w500)),
+                            Text('${_todayAttendance!.overtimeHours.toStringAsFixed(1)} hrs'),
+                          ],
+                        ),
+                      ],
+                    ],
+                  ] else ...[
+                    // Show message for absentees
+                    const SizedBox(height: 16),
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.red[50],
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.red[300]!),
+                      ),
+                      child: Row(
                         children: [
-                          const Text('Overtime Hours:', style: TextStyle(fontWeight: FontWeight.w500)),
-                          Text('${_todayAttendance!.overtimeHours.toStringAsFixed(1)} hrs'),
+                          Icon(Icons.info_outline, color: Colors.red[700], size: 24),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              'You are marked as absent. Attendance actions are not available.',
+                              style: TextStyle(
+                                color: Colors.red[900],
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
                         ],
                       ),
-                    ],
+                    ),
                   ],
                 ],
               )
@@ -1056,7 +1135,10 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
                     children: [
                       Text('Status:', style: TextStyle(fontWeight: FontWeight.w500)),
                       Chip(
-                        label: Text(_todayAttendance!.statusDisplay),
+                        label: Text(
+                          _todayAttendance!.statusDisplay,
+                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                        ),
                         backgroundColor: _getStatusColor(_todayAttendance!.status),
                       ),
                     ],
@@ -1093,7 +1175,10 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
                   ],
                   
                   // Overtime Section (available from 5 PM to 8 AM, even if not checked out)
-                  if (_todayAttendance!.isCheckedIn && _isOvertimeAllowed()) ...[
+                  // Absentees cannot do overtime
+                  if (_todayAttendance!.isCheckedIn && 
+                      _todayAttendance!.status != 'absent' && 
+                      _isOvertimeAllowed()) ...[
                     const Divider(),
                     const SizedBox(height: 8),
                     if (_todayAttendance!.overtimeStart == null)

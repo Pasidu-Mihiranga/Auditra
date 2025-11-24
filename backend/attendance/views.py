@@ -19,13 +19,21 @@ class MarkAttendanceView(APIView):
     permission_classes = [IsAuthenticated]
     
     def post(self, request):
-        today = timezone.now().date()
+        now = timezone.now()
+        today = now.date()
         user = request.user
         
         # Check if it's a working day
         if not Attendance.is_working_day(today):
             return Response({
                 'error': 'Today is not a working day (Sunday or Holiday)'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Check if it's after 12 PM (noon) - attendance cannot be marked after 12 PM
+        local_now = timezone.localtime(now)
+        if local_now.hour >= 12:
+            return Response({
+                'error': 'Attendance cannot be marked after 12 PM. You are marked as absent.'
             }, status=status.HTTP_400_BAD_REQUEST)
         
         # Check if attendance already marked
@@ -43,10 +51,10 @@ class MarkAttendanceView(APIView):
                 return Response({
                     'error': 'Attendance already marked for today'
                 }, status=status.HTTP_400_BAD_REQUEST)
-            else:
-                attendance.check_in = timezone.now()
-                attendance.status = 'present'
-                attendance.save()
+            # If attendance exists but not checked in, and it's before 12 PM, allow marking
+            attendance.check_in = timezone.now()
+            attendance.status = 'present'
+            attendance.save()
         
         serializer = AttendanceSerializer(attendance)
         return Response({
@@ -140,6 +148,12 @@ class StartOvertimeView(APIView):
                 'error': 'Please mark attendance first'
             }, status=status.HTTP_400_BAD_REQUEST)
         
+        # Check if user is absent - absentees cannot do overtime
+        if attendance.status == 'absent':
+            return Response({
+                'error': 'Cannot start overtime. You are marked as absent for today.'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
         # Check if already checked out
         if not attendance.check_out:
             return Response({
@@ -214,7 +228,8 @@ class TodayAttendanceView(APIView):
     permission_classes = [IsAuthenticated]
     
     def get(self, request):
-        today = timezone.now().date()
+        now = timezone.now()
+        today = now.date()
         user = request.user
         
         try:
@@ -227,6 +242,23 @@ class TodayAttendanceView(APIView):
         except Attendance.DoesNotExist:
             # Check if it's a working day
             is_working_day = Attendance.is_working_day(today)
+            
+            # If it's after 12 PM and no attendance marked, auto-mark as absent
+            if is_working_day:
+                local_now = timezone.localtime(now)
+                if local_now.hour >= 12:
+                    # Auto-mark as absent
+                    attendance = Attendance.objects.create(
+                        user=user,
+                        date=today,
+                        status='absent'
+                    )
+                    serializer = AttendanceSerializer(attendance)
+                    return Response({
+                        'success': True,
+                        'data': serializer.data
+                    }, status=status.HTTP_200_OK)
+            
             return Response({
                 'success': False,
                 'data': None,

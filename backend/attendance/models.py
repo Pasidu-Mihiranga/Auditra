@@ -65,17 +65,25 @@ class Attendance(models.Model):
     def calculate_working_hours(self):
         """Calculate working hours from check_in to check_out"""
         if self.check_in and self.check_out:
+            # Ensure check_out is after check_in
+            if self.check_out < self.check_in:
+                return 0.0
             duration = self.check_out - self.check_in
             hours = duration.total_seconds() / 3600
-            # Cap at 9 hours (8 AM to 5 PM)
-            return min(hours, 9.0)
+            # Ensure hours are not negative and cap at 9 hours (8 AM to 5 PM)
+            return max(0.0, min(hours, 9.0))
         return 0.0
     
     def calculate_overtime_hours(self):
         """Calculate overtime hours"""
         if self.overtime_start and self.overtime_end:
+            # Ensure overtime_end is after overtime_start
+            if self.overtime_end < self.overtime_start:
+                return 0.0
             duration = self.overtime_end - self.overtime_start
-            return duration.total_seconds() / 3600
+            hours = duration.total_seconds() / 3600
+            # Ensure hours are not negative
+            return max(0.0, hours)
         return 0.0
     
     def is_full_day(self):
@@ -83,18 +91,63 @@ class Attendance(models.Model):
         return self.working_hours >= 4.5
     
     def save(self, *args, **kwargs):
-        # Calculate working hours
-        if self.check_in and self.check_out:
-            self.working_hours = self.calculate_working_hours()
-            # Determine status based on working hours
-            if self.working_hours >= 4.5:
-                self.status = 'present'
-            elif self.working_hours > 0:
-                self.status = 'half_day'
-        
-        # Calculate overtime hours
-        if self.overtime_start and self.overtime_end:
-            self.overtime_hours = self.calculate_overtime_hours()
+        # If status is absent, clear check_in and check_out times
+        if self.status == 'absent':
+            self.check_in = None
+            self.check_out = None
+            self.working_hours = 0.0
+            self.overtime_start = None
+            self.overtime_end = None
+            self.overtime_hours = 0.0
+        else:
+            # Calculate working hours
+            if self.check_in and self.check_out:
+                # Check if check_out is before check_in (invalid time range)
+                if self.check_out < self.check_in:
+                    # Invalid time range - set to absent
+                    self.working_hours = 0.0
+                    self.status = 'absent'
+                    self.check_in = None
+                    self.check_out = None
+                else:
+                    self.working_hours = self.calculate_working_hours()
+                    # Ensure working hours are never negative
+                    self.working_hours = max(0.0, float(self.working_hours))
+                    # Determine status based on working hours
+                    if self.working_hours >= 4.5:
+                        self.status = 'present'
+                    elif self.working_hours > 0:
+                        self.status = 'half_day'
+                    else:
+                        # If working hours is 0, mark as absent and clear times
+                        self.status = 'absent'
+                        self.check_in = None
+                        self.check_out = None
+            elif self.check_in and not self.check_out:
+                # Only checked in, not checked out yet
+                self.working_hours = 0.0
+                # Don't change status if already set (might be present from check-in)
+                if not self.status or self.status == 'absent':
+                    self.status = 'present'
+            else:
+                # If no check_in or check_out, set working hours to 0
+                self.working_hours = 0.0
+                # Only set to absent if status wasn't explicitly set (e.g., auto-marked absent)
+                if not self.status:
+                    self.status = 'absent'
+            
+            # Calculate overtime hours
+            if self.overtime_start and self.overtime_end:
+                # Check if overtime_end is before overtime_start (invalid time range)
+                if self.overtime_end < self.overtime_start:
+                    self.overtime_hours = 0.0
+                else:
+                    self.overtime_hours = self.calculate_overtime_hours()
+                    # Ensure overtime hours are never negative
+                    self.overtime_hours = max(0.0, float(self.overtime_hours))
+            else:
+                # If no overtime_start or overtime_end, set overtime hours to 0
+                self.overtime_hours = 0.0
         
         super().save(*args, **kwargs)
     

@@ -3,7 +3,6 @@ import '../services/api_service.dart';
 import 'login_screen.dart';
 import 'admin_dashboard.dart';
 import 'generic_dashboard.dart';
-import 'coordinator_dashboard.dart';
 
 class HomeScreen extends StatefulWidget {
   final String userRole;
@@ -53,12 +52,8 @@ class _HomeScreenState extends State<HomeScreen> {
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(builder: (_) => const AdminDashboard()),
         );
-      } else if (widget.userRole == 'coordinator') {
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const CoordinatorDashboard()),
-        );
       } else {
-        // Route to generic dashboard for all other roles (including field_officer)
+        // Route to generic dashboard for all non-admin roles (coordinator, field_officer, etc.)
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(
             builder: (_) => GenericDashboard(
