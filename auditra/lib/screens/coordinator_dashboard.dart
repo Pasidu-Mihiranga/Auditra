@@ -1,33 +1,37 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:fl_chart/fl_chart.dart';
+import 'package:file_picker/file_picker.dart';
 import 'dart:math' as math;
 import '../services/api_service.dart';
 import '../models/attendance_model.dart';
 import '../models/project_model.dart';
 import 'login_screen.dart';
 
-class FieldOfficerDashboard extends StatefulWidget {
-  const FieldOfficerDashboard({super.key});
+class CoordinatorDashboard extends StatefulWidget {
+  const CoordinatorDashboard({super.key});
 
   @override
-  State<FieldOfficerDashboard> createState() => _FieldOfficerDashboardState();
+  State<CoordinatorDashboard> createState() => _CoordinatorDashboardState();
 }
 
-class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with TickerProviderStateMixin {
+class _CoordinatorDashboardState extends State<CoordinatorDashboard> with TickerProviderStateMixin {
+  // User info
+  String? _username;
+  String? _roleDisplay;
+  
+  // Attendance state
   Attendance? _todayAttendance;
-  bool _isLoading = true;
   bool _isWorkingDay = true;
   String _selectedPeriod = 'daily';
   AttendanceSummary? _summary;
   bool _isLoadingSummary = false;
   bool _isMarkingAttendance = false;
-  String? _username;
-  String? _roleDisplay;
   
   // Project state
   List<Project> _projects = [];
   bool _isLoadingProjects = false;
+  bool _isCreatingProject = false;
   late TabController _tabController;
   
   // Timer for countdown
@@ -70,12 +74,9 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
   }
 
   void _startTimer() {
-    // Set countdown to 5 PM today
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     _countdownEnd = DateTime(today.year, today.month, today.day, 17, 0);
-    
-    // Update timer immediately
     _updateTimer();
   }
 
@@ -100,12 +101,10 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
   }
 
   Future<void> _loadTodayAttendance() async {
-    setState(() => _isLoading = true);
     final result = await ApiService.getTodayAttendance();
     
     if (mounted) {
       setState(() {
-        _isLoading = false;
         if (result['success']) {
           final data = result['data'];
           _isWorkingDay = data['is_working_day'] ?? true;
@@ -156,7 +155,6 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
       
       if (mounted) {
         if (result['success']) {
-          // Update attendance from response
           final responseData = result['data'];
           if (responseData != null && responseData['data'] != null) {
             setState(() {
@@ -164,14 +162,13 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
             });
             _startTimer();
           } else {
-            // Fallback to reload
             await _loadTodayAttendance();
             _startTimer();
           }
           
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: const Row(
+            const SnackBar(
+              content: Row(
                 children: [
                   Icon(Icons.check_circle, color: Colors.white),
                   SizedBox(width: 8),
@@ -180,41 +177,13 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
               ),
               backgroundColor: Colors.green,
               behavior: SnackBarBehavior.floating,
-              duration: const Duration(seconds: 2),
             ),
           );
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Row(
-                children: [
-                  const Icon(Icons.error, color: Colors.white),
-                  const SizedBox(width: 8),
-                  Expanded(child: Text(result['message'] ?? 'Failed to mark attendance')),
-                ],
-              ),
-              backgroundColor: Colors.red,
-              behavior: SnackBarBehavior.floating,
-              duration: const Duration(seconds: 3),
-            ),
+            SnackBar(content: Text(result['message'] ?? 'Failed to mark attendance')),
           );
         }
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Row(
-              children: [
-                const Icon(Icons.error, color: Colors.white),
-                const SizedBox(width: 8),
-                Expanded(child: Text('Error: ${e.toString()}')),
-              ],
-            ),
-            backgroundColor: Colors.red,
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
       }
     } finally {
       if (mounted) {
@@ -223,106 +192,329 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
     }
   }
 
-  Future<void> _leaveEarly() async {
-    final confirm = await showDialog<bool>(
+  Future<void> _createProject() async {
+    final titleController = TextEditingController();
+    final descriptionController = TextEditingController();
+    DateTime? startDate;
+    DateTime? endDate;
+
+    final result = await showDialog<Map<String, dynamic>>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Leave Early'),
-        content: const Text('Are you sure you want to leave early?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Create New Project'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: titleController,
+                  decoration: const InputDecoration(
+                    labelText: 'Project Title *',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: descriptionController,
+                  decoration: const InputDecoration(
+                    labelText: 'Description',
+                    border: OutlineInputBorder(),
+                  ),
+                  maxLines: 3,
+                ),
+                const SizedBox(height: 16),
+                ListTile(
+                  title: Text(startDate == null ? 'Start Date' : DateFormat('yyyy-MM-dd').format(startDate!)),
+                  trailing: const Icon(Icons.calendar_today),
+                  onTap: () async {
+                    final date = await showDatePicker(
+                      context: context,
+                      initialDate: DateTime.now(),
+                      firstDate: DateTime.now(),
+                      lastDate: DateTime.now().add(const Duration(days: 365)),
+                    );
+                    if (date != null) {
+                      setDialogState(() => startDate = date);
+                    }
+                  },
+                ),
+                ListTile(
+                  title: Text(endDate == null ? 'End Date' : DateFormat('yyyy-MM-dd').format(endDate!)),
+                  trailing: const Icon(Icons.calendar_today),
+                  onTap: () async {
+                    final date = await showDatePicker(
+                      context: context,
+                      initialDate: startDate ?? DateTime.now(),
+                      firstDate: startDate ?? DateTime.now(),
+                      lastDate: DateTime.now().add(const Duration(days: 365)),
+                    );
+                    if (date != null) {
+                      setDialogState(() => endDate = date);
+                    }
+                  },
+                ),
+              ],
+            ),
           ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Leave'),
-          ),
-        ],
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: titleController.text.isEmpty
+                  ? null
+                  : () => Navigator.of(context).pop({
+                        'title': titleController.text,
+                        'description': descriptionController.text.isEmpty
+                            ? null
+                            : descriptionController.text,
+                        'startDate': startDate,
+                        'endDate': endDate,
+                      }),
+              child: const Text('Create'),
+            ),
+          ],
+        ),
       ),
     );
 
-    if (confirm == true) {
-      final result = await ApiService.leaveEarly();
-      
-      if (mounted) {
-        if (result['success']) {
-          final data = result['data'];
-          final isFullDay = data['is_full_day'] ?? false;
-          final hours = data['working_hours'] ?? 0.0;
-          
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                isFullDay 
-                  ? 'Full day recorded (${hours.toStringAsFixed(1)} hours)'
-                  : 'Half day recorded (${hours.toStringAsFixed(1)} hours)'
+    if (result != null) {
+      setState(() => _isCreatingProject = true);
+      try {
+        final createResult = await ApiService.createProject(
+          title: result['title'],
+          description: result['description'],
+          startDate: result['startDate'],
+          endDate: result['endDate'],
+        );
+
+        if (mounted) {
+          if (createResult['success']) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Row(
+                  children: [
+                    Icon(Icons.check_circle, color: Colors.white),
+                    SizedBox(width: 8),
+                    Expanded(child: Text('Project created successfully!')),
+                  ],
+                ),
+                backgroundColor: Colors.green,
+                behavior: SnackBarBehavior.floating,
               ),
-            ),
+            );
+            await _loadProjects();
+          } else {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(createResult['message'] ?? 'Failed to create project'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+        }
+      } finally {
+        if (mounted) {
+          setState(() => _isCreatingProject = false);
+        }
+      }
+    }
+  }
+
+  Future<void> _assignFieldOfficer(Project project) async {
+    final officersResult = await ApiService.getAvailableFieldOfficers();
+    
+    if (!officersResult['success']) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(officersResult['message'] ?? 'Failed to load field officers')),
+      );
+      return;
+    }
+
+    final officers = (officersResult['data']['field_officers'] as List<dynamic>)
+        .map((o) => FieldOfficer.fromJson(o))
+        .toList();
+
+    if (officers.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No field officers available')),
+      );
+      return;
+    }
+
+    final selectedOfficer = await showDialog<FieldOfficer>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Assign Field Officer'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: ListView.builder(
+            shrinkWrap: true,
+            itemCount: officers.length,
+            itemBuilder: (context, index) {
+              final officer = officers[index];
+              return ListTile(
+                title: Text(officer.fullName),
+                subtitle: Text('@${officer.username} • ${officer.assignedProjectsCount} projects'),
+                trailing: officer.id == project.assignedFieldOfficerId
+                    ? const Icon(Icons.check, color: Colors.green)
+                    : null,
+                onTap: () => Navigator.of(context).pop(officer),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+
+    if (selectedOfficer != null) {
+      final assignResult = await ApiService.assignFieldOfficer(
+        projectId: project.id,
+        fieldOfficerId: selectedOfficer.id,
+      );
+
+      if (mounted) {
+        if (assignResult['success']) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Field officer assigned successfully!')),
           );
-          _loadTodayAttendance();
+          await _loadProjects();
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(result['message'] ?? 'Failed to mark early leave')),
+            SnackBar(content: Text(assignResult['message'] ?? 'Failed to assign field officer')),
           );
         }
       }
     }
   }
 
-  Future<void> _checkOut() async {
-    final result = await ApiService.checkOut();
-    
-    if (mounted) {
-      if (result['success']) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Checked out successfully!')),
+  Future<void> _uploadDocument(Project project) async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.any,
+        allowMultiple: false,
+      );
+
+      if (result != null && result.files.single.path != null) {
+        final filePath = result.files.single.path!;
+        final fileName = result.files.single.name;
+
+        final uploadResult = await ApiService.uploadProjectDocument(
+          projectId: project.id,
+          filePath: filePath,
+          fileName: fileName,
         );
-        _loadTodayAttendance();
-      } else {
+
+        if (mounted) {
+          if (uploadResult['success']) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Document uploaded successfully!')),
+            );
+            await _loadProjects();
+          } else {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text(uploadResult['message'] ?? 'Failed to upload document')),
+            );
+          }
+        }
+      }
+    } catch (e) {
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(result['message'] ?? 'Failed to check out')),
+          SnackBar(content: Text('Error: $e')),
         );
       }
     }
   }
 
-  Future<void> _startOvertime() async {
-    final result = await ApiService.startOvertime();
-    
-    if (mounted) {
-      if (result['success']) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Overtime started!')),
-        );
-        _loadTodayAttendance();
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(result['message'] ?? 'Failed to start overtime')),
-        );
-      }
-    }
-  }
-
-  Future<void> _endOvertime() async {
-    final result = await ApiService.endOvertime();
-    
-    if (mounted) {
-      if (result['success']) {
-        final data = result['data'];
-        final hours = data['overtime_hours'] ?? 0.0;
-        
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Overtime ended! Total: ${hours.toStringAsFixed(1)} hours')),
-        );
-        _loadTodayAttendance();
-        _loadSummary();
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(result['message'] ?? 'Failed to end overtime')),
-        );
-      }
-    }
+  Future<void> _viewProjectDetails(Project project) async {
+    await showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(project.title),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (project.description != null) ...[
+                Text(
+                  'Description:',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 4),
+                Text(project.description!),
+                const SizedBox(height: 16),
+              ],
+              Text(
+                'Status: ${project.statusDisplay}',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              if (project.assignedFieldOfficerName != null)
+                Text(
+                  'Assigned to: ${project.assignedFieldOfficerName}',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                )
+              else
+                const Text(
+                  'Not assigned',
+                  style: TextStyle(color: Colors.orange),
+                ),
+              const SizedBox(height: 16),
+              if (project.documents.isNotEmpty) ...[
+                const Text(
+                  'Documents:',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                ...project.documents.map((doc) => ListTile(
+                      title: Text(doc.name),
+                      subtitle: Text(doc.fileSizeFormatted),
+                      trailing: IconButton(
+                        icon: const Icon(Icons.delete),
+                        onPressed: () async {
+                          final deleteResult = await ApiService.deleteProjectDocument(doc.id);
+                          if (deleteResult['success']) {
+                            Navigator.of(context).pop();
+                            await _loadProjects();
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Document deleted')),
+                            );
+                          }
+                        },
+                      ),
+                    )),
+              ],
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Close'),
+          ),
+          if (project.assignedFieldOfficerId == null)
+            ElevatedButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                _assignFieldOfficer(project);
+              },
+              child: const Text('Assign Field Officer'),
+            ),
+          ElevatedButton.icon(
+            onPressed: () {
+              Navigator.of(context).pop();
+              _uploadDocument(project);
+            },
+            icon: const Icon(Icons.upload_file),
+            label: const Text('Upload Document'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _logout() async {
@@ -369,7 +561,7 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
           mainAxisSize: MainAxisSize.min,
           children: [
             const Text(
-              'Field Officer Dashboard',
+              'Coordinator Dashboard',
               style: TextStyle(
                 fontWeight: FontWeight.bold,
                 letterSpacing: 0.5,
@@ -493,39 +685,36 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
           ],
         ),
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : TabBarView(
-              controller: _tabController,
-              children: [
-                RefreshIndicator(
-                  onRefresh: () async {
-                    await _loadTodayAttendance();
-                    await _loadSummary();
-                  },
-                  child: SingleChildScrollView(
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    padding: const EdgeInsets.all(16.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        // Today's Attendance Card
-                        _buildTodayAttendanceCard(),
-                        const SizedBox(height: 16),
-                        
-                        // Attendance Summary
-                        _buildSummarySection(),
-                        const SizedBox(height: 16),
-                        
-                        // Charts Section
-                        if (_summary != null) _buildChartsSection(),
-                      ],
-                    ),
-                  ),
-                ),
-                _buildProjectsTab(),
-              ],
-            ),
+      body: TabBarView(
+        controller: _tabController,
+        children: [
+          _buildAttendanceTab(),
+          _buildProjectsTab(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAttendanceTab() {
+    return RefreshIndicator(
+      onRefresh: () async {
+        await _loadTodayAttendance();
+        await _loadSummary();
+      },
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _buildTodayAttendanceCard(),
+            const SizedBox(height: 16),
+            _buildSummarySection(),
+            const SizedBox(height: 16),
+            if (_summary != null) _buildChartsSection(),
+          ],
+        ),
+      ),
     );
   }
 
@@ -534,33 +723,45 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
       onRefresh: _loadProjects,
       child: _isLoadingProjects
           ? const Center(child: CircularProgressIndicator())
-          : _projects.isEmpty
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.folder_open, size: 64, color: Colors.grey[400]),
-                      const SizedBox(height: 16),
-                      Text(
-                        'No projects assigned',
-                        style: TextStyle(fontSize: 18, color: Colors.grey[600]),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Projects assigned to you will appear here',
-                        style: TextStyle(color: Colors.grey[500]),
-                      ),
-                    ],
-                  ),
-                )
-              : ListView.builder(
-                  padding: const EdgeInsets.all(16),
-                  itemCount: _projects.length,
-                  itemBuilder: (context, index) {
-                    final project = _projects[index];
-                    return _buildProjectCard(project);
-                  },
+          : Column(
+              children: [
+                // Create Project Button
+                Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: _buildCreateProjectButton(),
                 ),
+                // Projects List
+                Expanded(
+                  child: _projects.isEmpty
+                      ? Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.folder_open, size: 64, color: Colors.grey[400]),
+                              const SizedBox(height: 16),
+                              Text(
+                                'No projects yet',
+                                style: TextStyle(fontSize: 18, color: Colors.grey[600]),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                'Create your first project to get started',
+                                style: TextStyle(color: Colors.grey[500]),
+                              ),
+                            ],
+                          ),
+                        )
+                      : ListView.builder(
+                          padding: const EdgeInsets.all(16),
+                          itemCount: _projects.length,
+                          itemBuilder: (context, index) {
+                            final project = _projects[index];
+                            return _buildProjectCard(project);
+                          },
+                        ),
+                ),
+              ],
+            ),
     );
   }
 
@@ -590,7 +791,7 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
                   ),
                   Chip(
                     label: Text(project.statusDisplay),
-                    backgroundColor: _getProjectStatusColor(project.status),
+                    backgroundColor: _getStatusColor(project.status),
                   ),
                 ],
               ),
@@ -609,8 +810,15 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
                   Icon(Icons.person, size: 16, color: Colors.grey[600]),
                   const SizedBox(width: 4),
                   Text(
-                    'Coordinator: ${project.coordinatorName ?? project.coordinatorUsername}',
-                    style: TextStyle(color: Colors.grey[700]),
+                    project.assignedFieldOfficerName ?? 'Unassigned',
+                    style: TextStyle(
+                      color: project.assignedFieldOfficerName == null
+                          ? Colors.orange
+                          : Colors.grey[700],
+                      fontWeight: project.assignedFieldOfficerName == null
+                          ? FontWeight.w600
+                          : FontWeight.normal,
+                    ),
                   ),
                   const Spacer(),
                   Icon(Icons.attach_file, size: 16, color: Colors.grey[600]),
@@ -652,7 +860,7 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
     );
   }
 
-  Color _getProjectStatusColor(String status) {
+  Color _getStatusColor(String status) {
     switch (status) {
       case 'pending':
         return Colors.orange[100]!;
@@ -667,70 +875,7 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
     }
   }
 
-  Future<void> _viewProjectDetails(Project project) async {
-    await showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(project.title),
-        content: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (project.description != null) ...[
-                Text(
-                  'Description:',
-                  style: TextStyle(fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 4),
-                Text(project.description!),
-                const SizedBox(height: 16),
-              ],
-              Text(
-                'Status: ${project.statusDisplay}',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Coordinator: ${project.coordinatorName ?? project.coordinatorUsername}',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 16),
-              if (project.documents.isNotEmpty) ...[
-                const Text(
-                  'Documents:',
-                  style: TextStyle(fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 8),
-                ...project.documents.map((doc) => ListTile(
-                      title: Text(doc.name),
-                      subtitle: Text(doc.fileSizeFormatted),
-                      trailing: doc.fileUrl != null
-                          ? IconButton(
-                              icon: const Icon(Icons.download),
-                              onPressed: () {
-                                // TODO: Implement file download
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(content: Text('Download: ${doc.fileUrl}')),
-                                );
-                              },
-                            )
-                          : null,
-                    )),
-              ],
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Close'),
-          ),
-        ],
-      ),
-    );
-  }
-
+  // Copy attendance UI methods from generic dashboard
   Widget _buildTodayAttendanceCard() {
     return Card(
       elevation: 4,
@@ -763,16 +908,13 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
             else if (_todayAttendance == null)
               Column(
                 children: [
-                  // Countdown Timer and Attendance Button Row
                   Row(
                     children: [
-                      // Animated Countdown Timer
                       Expanded(
                         flex: 2,
                         child: _buildAnimatedCountdown(),
                       ),
                       const SizedBox(width: 12),
-                      // Attendance Button
                       Expanded(
                         flex: 3,
                         child: _buildAttendanceButton(),
@@ -780,7 +922,6 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
                     ],
                   ),
                   const SizedBox(height: 16),
-                  // Working Hours Info Card
                   Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
@@ -809,16 +950,33 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
             else if (_todayAttendance != null && !_todayAttendance!.isCheckedOut)
               Column(
                 children: [
-                  // Countdown Timer and Leave Early Button Row
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text('Status:', style: TextStyle(fontWeight: FontWeight.w500)),
+                      Chip(
+                        label: Text(_todayAttendance!.statusDisplay),
+                        backgroundColor: _getAttendanceStatusColor(_todayAttendance!.status),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  if (_todayAttendance!.checkIn != null)
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text('Check-in:', style: TextStyle(fontWeight: FontWeight.w500)),
+                        Text(DateFormat('hh:mm a').format(_todayAttendance!.checkIn!)),
+                      ],
+                    ),
+                  const SizedBox(height: 16),
                   Row(
                     children: [
-                      // Animated Countdown Timer
                       Expanded(
                         flex: 2,
                         child: _buildAnimatedCountdown(),
                       ),
                       const SizedBox(width: 12),
-                      // Leave Early Button
                       Expanded(
                         flex: 3,
                         child: _buildLeaveEarlyButton(),
@@ -830,20 +988,17 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
             else
               Column(
                 children: [
-                  // Status
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text('Status:', style: TextStyle(fontWeight: FontWeight.w500)),
                       Chip(
                         label: Text(_todayAttendance!.statusDisplay),
-                        backgroundColor: _getStatusColor(_todayAttendance!.status),
+                        backgroundColor: _getAttendanceStatusColor(_todayAttendance!.status),
                       ),
                     ],
                   ),
                   const SizedBox(height: 12),
-                  
-                  // Check-in time
                   if (_todayAttendance!.checkIn != null)
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -852,67 +1007,6 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
                         Text(DateFormat('hh:mm a').format(_todayAttendance!.checkIn!)),
                       ],
                     ),
-                  
-                  // Countdown timer
-                  if (_todayAttendance!.isCheckedIn && !_todayAttendance!.isCheckedOut) ...[
-                const SizedBox(height: 16),
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.blue[50],
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Column(
-                    children: [
-                      const Text(
-                        'Time Remaining',
-                        style: TextStyle(fontSize: 12, color: Colors.grey),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        _formatDuration(_remainingTime),
-                        style: const TextStyle(
-                          fontSize: 32,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.blue,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Until 5:00 PM',
-                        style: TextStyle(fontSize: 14, color: Colors.grey[600]),
-                      ),
-                    ],
-                  ),
-                ),
-                    const SizedBox(height: 16),
-                    
-                    // Leave Early Button
-                    OutlinedButton.icon(
-                      onPressed: _leaveEarly,
-                      icon: const Icon(Icons.exit_to_app),
-                      label: const Text('Leave Early'),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    
-                    // Check Out Button (if after 5 PM or close to it)
-                    if (DateTime.now().hour >= 17 || _remainingTime.inMinutes < 5)
-                      ElevatedButton.icon(
-                        onPressed: _checkOut,
-                        icon: const Icon(Icons.logout),
-                        label: const Text('Check Out'),
-                        style: ElevatedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          backgroundColor: Colors.blue,
-                          foregroundColor: Colors.white,
-                        ),
-                      ),
-                  ],
-                  
-                  // Check-out time
                   if (_todayAttendance!.checkOut != null) ...[
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -929,52 +1023,6 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
                         Text('${_todayAttendance!.workingHours.toStringAsFixed(1)} hrs'),
                       ],
                     ),
-                  ],
-                  
-                  // Overtime Section
-                  if (_todayAttendance!.isCheckedOut) ...[
-                    const Divider(),
-                    const SizedBox(height: 8),
-                    if (_todayAttendance!.overtimeStart == null && DateTime.now().hour >= 17)
-                      ElevatedButton.icon(
-                        onPressed: _startOvertime,
-                        icon: const Icon(Icons.access_time),
-                        label: const Text('Start Overtime'),
-                        style: ElevatedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          backgroundColor: Colors.orange,
-                          foregroundColor: Colors.white,
-                        ),
-                      )
-                    else if (_todayAttendance!.isOvertimeActive) ...[
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Text('Overtime Started:', style: TextStyle(fontWeight: FontWeight.w500)),
-                          Text(DateFormat('hh:mm a').format(_todayAttendance!.overtimeStart!)),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      ElevatedButton.icon(
-                        onPressed: _endOvertime,
-                        icon: const Icon(Icons.stop),
-                        label: const Text('End Overtime'),
-                        style: ElevatedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          backgroundColor: Colors.red,
-                          foregroundColor: Colors.white,
-                        ),
-                      ),
-                    ]
-                    else if (_todayAttendance!.hasOvertime) ...[
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Text('Overtime Hours:', style: TextStyle(fontWeight: FontWeight.w500)),
-                          Text('${_todayAttendance!.overtimeHours.toStringAsFixed(1)} hrs'),
-                        ],
-                      ),
-                    ],
                   ],
                 ],
               ),
@@ -1061,26 +1109,6 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
                           'Attendance %',
                           '${_summary!.attendancePercentage.toStringAsFixed(1)}%',
                           Colors.blue,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _buildSummaryCard(
-                          'Working Hours',
-                          '${_summary!.totalWorkingHours.toStringAsFixed(1)}h',
-                          Colors.purple,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: _buildSummaryCard(
-                          'Overtime',
-                          '${_summary!.totalOvertimeHours.toStringAsFixed(1)}h',
-                          Colors.teal,
                         ),
                       ),
                     ],
@@ -1221,7 +1249,7 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
         barGroups: data.asMap().entries.map((entry) {
           final index = entry.key;
           final dayData = entry.value;
-          final color = _getStatusColor(dayData.status);
+          final color = _getAttendanceStatusColor(dayData.status);
           
           return BarChartGroupData(
             x: index,
@@ -1239,7 +1267,7 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
     );
   }
 
-  Color _getStatusColor(String status) {
+  Color _getAttendanceStatusColor(String status) {
     switch (status) {
       case 'present':
         return Colors.green;
@@ -1250,6 +1278,161 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
       default:
         return Colors.grey;
     }
+  }
+
+  Widget _buildCreateProjectButton() {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isSmallScreen = screenWidth < 400;
+    
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0.0, end: 1.0),
+      duration: const Duration(milliseconds: 600),
+      curve: Curves.easeOutBack,
+      builder: (context, value, child) {
+        return Transform.scale(
+          scale: 0.9 + (0.1 * value),
+          child: Container(
+            width: double.infinity,
+            height: isSmallScreen ? 65 : 75,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: _isCreatingProject
+                    ? [Colors.blue[300]!, Colors.blue[500]!]
+                    : [Colors.blue[400]!, Colors.blue[600]!],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(20),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.blue.withOpacity(_isCreatingProject ? 0.3 : 0.4),
+                  blurRadius: 20,
+                  offset: const Offset(0, 10),
+                  spreadRadius: 2,
+                ),
+                BoxShadow(
+                  color: Colors.blue.withOpacity(0.2),
+                  blurRadius: 10,
+                  offset: const Offset(0, 5),
+                ),
+              ],
+            ),
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: _isCreatingProject ? null : _createProject,
+                borderRadius: BorderRadius.circular(20),
+                splashColor: Colors.white.withOpacity(0.3),
+                highlightColor: Colors.white.withOpacity(0.1),
+                child: Stack(
+                  children: [
+                    // Pulsing background effect (only when not loading)
+                    if (!_isCreatingProject)
+                      _PulsingButtonBackground(color: Colors.blue),
+                    // Button content
+                    Padding(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: isSmallScreen ? 16.0 : 24.0,
+                        vertical: isSmallScreen ? 12.0 : 16.0,
+                      ),
+                      child: _isCreatingProject
+                          ? Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const SizedBox(
+                                  width: 24,
+                                  height: 24,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2.5,
+                                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                  ),
+                                ),
+                                const SizedBox(width: 16),
+                                Flexible(
+                                  child: Text(
+                                    'Creating Project...',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: isSmallScreen ? 16 : 18,
+                                      fontWeight: FontWeight.bold,
+                                      letterSpacing: 0.5,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            )
+                          : Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withOpacity(0.25),
+                                    shape: BoxShape.circle,
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.black.withOpacity(0.2),
+                                        blurRadius: 8,
+                                        offset: const Offset(0, 4),
+                                      ),
+                                    ],
+                                  ),
+                                  child: Icon(
+                                    Icons.add_circle_outline,
+                                    color: Colors.white,
+                                    size: isSmallScreen ? 24 : 28,
+                                  ),
+                                ),
+                                SizedBox(width: isSmallScreen ? 12 : 16),
+                                Flexible(
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        'Create New Project',
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontSize: isSmallScreen ? 16 : 18,
+                                          fontWeight: FontWeight.bold,
+                                          letterSpacing: 0.5,
+                                        ),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      if (!isSmallScreen)
+                                        Text(
+                                          'Start a new project',
+                                          style: TextStyle(
+                                            color: Colors.white.withOpacity(0.9),
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                                if (!isSmallScreen) ...[
+                                  const Spacer(),
+                                  Icon(
+                                    Icons.arrow_forward_ios,
+                                    color: Colors.white.withOpacity(0.9),
+                                    size: 18,
+                                  ),
+                                ],
+                              ],
+                            ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
   }
 
   Widget _buildAnimatedCountdown() {
@@ -1292,25 +1475,21 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
             ),
             child: Stack(
               children: [
-                // Pulsing background animation
                 if (!isAfter5PM)
                   _PulsingContainer(
                     color: isNearEnd ? Colors.orange : Colors.blue,
                   ),
-                // Content
                 Padding(
                   padding: const EdgeInsets.all(12.0),
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      // Icon with rotation animation
                       _RotatingIcon(
                         icon: Icons.timer,
                         color: Colors.white,
                         size: 24,
                       ),
                       const SizedBox(height: 8),
-                      // Time display with scale animation
                       TweenAnimationBuilder<double>(
                         tween: Tween(begin: 0.0, end: 1.0),
                         duration: const Duration(milliseconds: 300),
@@ -1357,10 +1536,7 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
       height: 100,
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [
-            Colors.green[400]!,
-            Colors.green[600]!,
-          ],
+          colors: [Colors.green[400]!, Colors.green[600]!],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -1449,10 +1625,7 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
       height: 100,
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [
-            Colors.orange[400]!,
-            Colors.orange[600]!,
-          ],
+          colors: [Colors.orange[400]!, Colors.orange[600]!],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -1468,7 +1641,34 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          onTap: _leaveEarly,
+          onTap: () async {
+            final confirm = await showDialog<bool>(
+              context: context,
+              builder: (context) => AlertDialog(
+                title: const Text('Leave Early'),
+                content: const Text('Are you sure you want to leave early?'),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(false),
+                    child: const Text('Cancel'),
+                  ),
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(true),
+                    child: const Text('Leave'),
+                  ),
+                ],
+              ),
+            );
+
+            if (confirm == true) {
+              final result = await ApiService.leaveEarly();
+              if (mounted) {
+                if (result['success']) {
+                  await _loadTodayAttendance();
+                }
+              }
+            }
+          },
           borderRadius: BorderRadius.circular(16),
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -1550,6 +1750,55 @@ class _PulsingContainerState extends State<_PulsingContainer>
         return Container(
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(16),
+            gradient: RadialGradient(
+              colors: [
+                widget.color.withOpacity(0.3 * (0.5 + 0.5 * _controller.value)),
+                Colors.transparent,
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _PulsingButtonBackground extends StatefulWidget {
+  final Color color;
+
+  const _PulsingButtonBackground({required this.color});
+
+  @override
+  State<_PulsingButtonBackground> createState() => _PulsingButtonBackgroundState();
+}
+
+class _PulsingButtonBackgroundState extends State<_PulsingButtonBackground>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: const Duration(seconds: 2),
+      vsync: this,
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        return Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
             gradient: RadialGradient(
               colors: [
                 widget.color.withOpacity(0.3 * (0.5 + 0.5 * _controller.value)),

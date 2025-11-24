@@ -4,6 +4,7 @@ import 'login_screen.dart';
 import 'admin_dashboard.dart';
 import 'field_officer_dashboard.dart';
 import 'generic_dashboard.dart';
+import 'coordinator_dashboard.dart';
 
 class HomeScreen extends StatefulWidget {
   final String userRole;
@@ -52,6 +53,10 @@ class _HomeScreenState extends State<HomeScreen> {
       if (widget.userRole == 'admin') {
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(builder: (_) => const AdminDashboard()),
+        );
+      } else if (widget.userRole == 'coordinator') {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => const CoordinatorDashboard()),
         );
       } else if (widget.userRole == 'field_officer') {
         Navigator.of(context).pushReplacement(
