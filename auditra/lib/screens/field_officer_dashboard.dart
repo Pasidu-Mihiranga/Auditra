@@ -95,6 +95,12 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
         setState(() {
           _remainingTime = Duration.zero;
         });
+        // Auto-checkout when countdown ends at 5 PM
+        if (_todayAttendance != null && 
+            _todayAttendance!.isCheckedIn && 
+            !_todayAttendance!.isCheckedOut) {
+          _checkOut();
+        }
       }
     }
   }
@@ -936,16 +942,7 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
                     const Divider(),
                     const SizedBox(height: 8),
                     if (_todayAttendance!.overtimeStart == null && DateTime.now().hour >= 17)
-                      ElevatedButton.icon(
-                        onPressed: _startOvertime,
-                        icon: const Icon(Icons.access_time),
-                        label: const Text('Start Overtime'),
-                        style: ElevatedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          backgroundColor: Colors.orange,
-                          foregroundColor: Colors.white,
-                        ),
-                      )
+                      _buildStartOvertimeButton()
                     else if (_todayAttendance!.isOvertimeActive) ...[
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -1511,6 +1508,109 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
       ),
     );
   }
+
+  Widget _buildStartOvertimeButton() {
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0.0, end: 1.0),
+      duration: const Duration(milliseconds: 600),
+      curve: Curves.easeOutBack,
+      builder: (context, value, child) {
+        return Transform.scale(
+          scale: 0.95 + (0.05 * value),
+          child: Container(
+            width: double.infinity,
+            height: 70,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  Colors.orange[400]!,
+                  Colors.orange[600]!,
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.orange.withOpacity(0.4),
+                  blurRadius: 20,
+                  offset: const Offset(0, 10),
+                  spreadRadius: 2,
+                ),
+                BoxShadow(
+                  color: Colors.orange.withOpacity(0.2),
+                  blurRadius: 10,
+                  offset: const Offset(0, 5),
+                ),
+              ],
+            ),
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: _startOvertime,
+                borderRadius: BorderRadius.circular(16),
+                splashColor: Colors.white.withOpacity(0.3),
+                highlightColor: Colors.white.withOpacity(0.1),
+                child: Stack(
+                  children: [
+                    // Pulsing background effect
+                    _PulsingButtonBackground(color: Colors.orange),
+                    // Button content
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 12.0),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.25),
+                              shape: BoxShape.circle,
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.2),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 4),
+                                ),
+                              ],
+                            ),
+                            child: const Icon(
+                              Icons.access_time,
+                              color: Colors.white,
+                              size: 24,
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          const Flexible(
+                            child: Text(
+                              'Start Overtime',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: 0.5,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Icon(
+                            Icons.arrow_forward_ios,
+                            color: Colors.white.withOpacity(0.9),
+                            size: 18,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
 }
 
 // Animated Widgets
@@ -1521,6 +1621,55 @@ class _PulsingContainer extends StatefulWidget {
 
   @override
   State<_PulsingContainer> createState() => _PulsingContainerState();
+}
+
+class _PulsingButtonBackground extends StatefulWidget {
+  final Color color;
+
+  const _PulsingButtonBackground({required this.color});
+
+  @override
+  State<_PulsingButtonBackground> createState() => _PulsingButtonBackgroundState();
+}
+
+class _PulsingButtonBackgroundState extends State<_PulsingButtonBackground>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: const Duration(seconds: 2),
+      vsync: this,
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        return Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            gradient: RadialGradient(
+              colors: [
+                widget.color.withOpacity(0.3 * (0.5 + 0.5 * _controller.value)),
+                Colors.transparent,
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
 }
 
 class _PulsingContainerState extends State<_PulsingContainer>

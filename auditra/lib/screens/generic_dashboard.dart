@@ -4,6 +4,7 @@ import 'package:fl_chart/fl_chart.dart';
 import 'dart:math' as math;
 import '../services/api_service.dart';
 import '../models/attendance_model.dart';
+import '../models/project_model.dart';
 import 'login_screen.dart';
 
 class GenericDashboard extends StatefulWidget {
@@ -20,7 +21,7 @@ class GenericDashboard extends StatefulWidget {
   State<GenericDashboard> createState() => _GenericDashboardState();
 }
 
-class _GenericDashboardState extends State<GenericDashboard> {
+class _GenericDashboardState extends State<GenericDashboard> with TickerProviderStateMixin {
   String? _username;
   Map<String, dynamic>? _profile;
   bool _isLoading = true;
@@ -33,17 +34,42 @@ class _GenericDashboardState extends State<GenericDashboard> {
   bool _isLoadingSummary = false;
   bool _isMarkingAttendance = false;
   
+  // Project state (only for field_officer)
+  List<Project> _projects = [];
+  bool _isLoadingProjects = false;
+  late TabController _tabController;
+  
   // Timer for countdown
   DateTime? _countdownEnd;
   Duration _remainingTime = Duration.zero;
+  
+  // Timer for overtime
+  Duration _overtimeDuration = Duration.zero;
 
   @override
   void initState() {
     super.initState();
+    // Only show tabs if field_officer role
+    final hasProjects = widget.role == 'field_officer';
+    _tabController = TabController(length: hasProjects ? 2 : 1, vsync: this);
+    _tabController.addListener(() {
+      if (!_tabController.indexIsChanging) {
+        setState(() {});
+      }
+    });
     _loadUserData();
     _loadTodayAttendance();
     _loadSummary();
+    if (hasProjects) {
+      _loadProjects();
+    }
     _startTimer();
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadUserData() async {
@@ -92,7 +118,30 @@ class _GenericDashboardState extends State<GenericDashboard> {
         setState(() {
           _remainingTime = Duration.zero;
         });
+        // Auto-checkout when countdown ends at 5 PM
+        if (_todayAttendance != null && 
+            _todayAttendance!.isCheckedIn && 
+            !_todayAttendance!.isCheckedOut) {
+          _checkOut();
+        }
       }
+    }
+    
+    // Update overtime timer if active
+    if (_todayAttendance != null && _todayAttendance!.isOvertimeActive && _todayAttendance!.overtimeStart != null) {
+      final now = DateTime.now();
+      setState(() {
+        _overtimeDuration = now.difference(_todayAttendance!.overtimeStart!);
+      });
+      Future.delayed(const Duration(seconds: 1), () {
+        if (mounted) {
+          _updateTimer();
+        }
+      });
+    } else {
+      setState(() {
+        _overtimeDuration = Duration.zero;
+      });
     }
   }
 
@@ -106,8 +155,14 @@ class _GenericDashboardState extends State<GenericDashboard> {
           _isWorkingDay = data['is_working_day'] ?? true;
           if (data['data'] != null) {
             _todayAttendance = Attendance.fromJson(data['data']);
+            // Initialize overtime duration if overtime is active
+            if (_todayAttendance!.isOvertimeActive && _todayAttendance!.overtimeStart != null) {
+              final now = DateTime.now();
+              _overtimeDuration = now.difference(_todayAttendance!.overtimeStart!);
+            }
           } else {
             _todayAttendance = null;
+            _overtimeDuration = Duration.zero;
           }
         }
       });
@@ -313,6 +368,13 @@ class _GenericDashboardState extends State<GenericDashboard> {
     return '$hours:$minutes:$seconds';
   }
 
+  bool _isOvertimeAllowed() {
+    final now = DateTime.now();
+    final hour = now.hour;
+    // Overtime allowed from 5 PM (17:00) to 8 AM (08:00) next day
+    return hour >= 17 || hour < 8;
+  }
+
   Future<void> _logout() async {
     final confirm = await showDialog<bool>(
       context: context,
@@ -343,6 +405,8 @@ class _GenericDashboardState extends State<GenericDashboard> {
 
   String _getDashboardTitle() {
     switch (widget.role) {
+      case 'field_officer':
+        return 'Field Officer Dashboard';
       case 'coordinator':
         return 'Coordinator Dashboard';
       case 'accessor':
@@ -363,6 +427,21 @@ class _GenericDashboardState extends State<GenericDashboard> {
         return 'Welcome';
       default:
         return 'Dashboard';
+    }
+  }
+
+  Future<void> _loadProjects() async {
+    setState(() => _isLoadingProjects = true);
+    final result = await ApiService.getProjects();
+    
+    if (mounted) {
+      setState(() {
+        _isLoadingProjects = false;
+        if (result['success']) {
+          final data = result['data'] as List<dynamic>;
+          _projects = data.map((p) => Project.fromJson(p)).toList();
+        }
+      });
     }
   }
 
@@ -513,35 +592,283 @@ class _GenericDashboardState extends State<GenericDashboard> {
             tooltip: 'Logout',
           ),
         ],
+        bottom: widget.role == 'field_officer'
+            ? TabBar(
+                controller: _tabController,
+                tabs: const [
+                  Tab(icon: Icon(Icons.access_time), text: 'Attendance'),
+                  Tab(icon: Icon(Icons.folder), text: 'Projects'),
+                ],
+              )
+            : null,
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : RefreshIndicator(
-              onRefresh: () async {
-                await _loadUserData();
-                await _loadTodayAttendance();
-                await _loadSummary();
-              },
-              child: SingleChildScrollView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
+          : widget.role == 'field_officer'
+              ? TabBarView(
+                  controller: _tabController,
                   children: [
-                    // Today's Attendance Card
-                    _buildTodayAttendanceCard(),
-                    const SizedBox(height: 16),
-                    
-                    // Attendance Summary
-                    _buildSummarySection(),
-                    const SizedBox(height: 16),
-                    
-                    // Charts Section
-                    if (_summary != null) _buildChartsSection(),
+                    _buildAttendanceTab(),
+                    _buildProjectsTab(),
+                  ],
+                )
+              : RefreshIndicator(
+                  onRefresh: () async {
+                    await _loadUserData();
+                    await _loadTodayAttendance();
+                    await _loadSummary();
+                  },
+                  child: SingleChildScrollView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: const EdgeInsets.all(16.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        // Today's Attendance Card
+                        _buildTodayAttendanceCard(),
+                        const SizedBox(height: 16),
+                        
+                        // Attendance Summary
+                        _buildSummarySection(),
+                        const SizedBox(height: 16),
+                        
+                        // Charts Section
+                        if (_summary != null) _buildChartsSection(),
+                      ],
+                    ),
+                  ),
+                ),
+    );
+  }
+
+  Widget _buildAttendanceTab() {
+    return RefreshIndicator(
+      onRefresh: () async {
+        await _loadUserData();
+        await _loadTodayAttendance();
+        await _loadSummary();
+      },
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Today's Attendance Card
+            _buildTodayAttendanceCard(),
+            const SizedBox(height: 16),
+            
+            // Attendance Summary
+            _buildSummarySection(),
+            const SizedBox(height: 16),
+            
+            // Charts Section
+            if (_summary != null) _buildChartsSection(),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildProjectsTab() {
+    return RefreshIndicator(
+      onRefresh: _loadProjects,
+      child: _isLoadingProjects
+          ? const Center(child: CircularProgressIndicator())
+          : _projects.isEmpty
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.folder_open, size: 64, color: Colors.grey[400]),
+                      const SizedBox(height: 16),
+                      Text(
+                        'No projects assigned',
+                        style: TextStyle(fontSize: 18, color: Colors.grey[600]),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Projects assigned to you will appear here',
+                        style: TextStyle(color: Colors.grey[500]),
+                      ),
+                    ],
+                  ),
+                )
+              : ListView.builder(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: _projects.length,
+                  itemBuilder: (context, index) {
+                    final project = _projects[index];
+                    return _buildProjectCard(project);
+                  },
+                ),
+    );
+  }
+
+  Widget _buildProjectCard(Project project) {
+    return Card(
+      elevation: 2,
+      margin: const EdgeInsets.only(bottom: 12),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: InkWell(
+        onTap: () => _viewProjectDetails(project),
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      project.title,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  Chip(
+                    label: Text(project.statusDisplay),
+                    backgroundColor: _getProjectStatusColor(project.status),
+                  ),
+                ],
+              ),
+              if (project.description != null) ...[
+                const SizedBox(height: 8),
+                Text(
+                  project.description!,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(color: Colors.grey[600]),
+                ),
+              ],
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Icon(Icons.person, size: 16, color: Colors.grey[600]),
+                  const SizedBox(width: 4),
+                  Text(
+                    'Coordinator: ${project.coordinatorName ?? project.coordinatorUsername}',
+                    style: TextStyle(color: Colors.grey[700]),
+                  ),
+                  const Spacer(),
+                  Icon(Icons.attach_file, size: 16, color: Colors.grey[600]),
+                  const SizedBox(width: 4),
+                  Text(
+                    '${project.documentsCount} docs',
+                    style: TextStyle(color: Colors.grey[600]),
+                  ),
+                ],
+              ),
+              if (project.startDate != null || project.endDate != null) ...[
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    if (project.startDate != null) ...[
+                      Icon(Icons.calendar_today, size: 14, color: Colors.grey[600]),
+                      const SizedBox(width: 4),
+                      Text(
+                        DateFormat('MMM dd, yyyy').format(project.startDate!),
+                        style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                      ),
+                    ],
+                    if (project.endDate != null) ...[
+                      const SizedBox(width: 16),
+                      Icon(Icons.event, size: 14, color: Colors.grey[600]),
+                      const SizedBox(width: 4),
+                      Text(
+                        DateFormat('MMM dd, yyyy').format(project.endDate!),
+                        style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                      ),
+                    ],
                   ],
                 ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Color _getProjectStatusColor(String status) {
+    switch (status) {
+      case 'pending':
+        return Colors.orange[100]!;
+      case 'in_progress':
+        return Colors.blue[100]!;
+      case 'completed':
+        return Colors.green[100]!;
+      case 'cancelled':
+        return Colors.red[100]!;
+      default:
+        return Colors.grey[200]!;
+    }
+  }
+
+  Future<void> _viewProjectDetails(Project project) async {
+    await showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(project.title),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (project.description != null) ...[
+                Text(
+                  'Description:',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 4),
+                Text(project.description!),
+                const SizedBox(height: 16),
+              ],
+              Text(
+                'Status: ${project.statusDisplay}',
+                style: TextStyle(fontWeight: FontWeight.bold),
               ),
-            ),
+              const SizedBox(height: 8),
+              Text(
+                'Coordinator: ${project.coordinatorName ?? project.coordinatorUsername}',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 16),
+              if (project.documents.isNotEmpty) ...[
+                const Text(
+                  'Documents:',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                ...project.documents.map((doc) => ListTile(
+                      title: Text(doc.name),
+                      subtitle: Text(doc.fileSizeFormatted),
+                      trailing: doc.fileUrl != null
+                          ? IconButton(
+                              icon: const Icon(Icons.download),
+                              onPressed: () {
+                                // TODO: Implement file download
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text('Download: ${doc.fileUrl}')),
+                                );
+                              },
+                            )
+                          : null,
+                    )),
+              ],
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
     );
   }
 
@@ -677,6 +1004,30 @@ class _GenericDashboardState extends State<GenericDashboard> {
                         foregroundColor: Colors.white,
                       ),
                     ),
+                  
+                  // Overtime Section (available from 5 PM to 8 AM, even if not checked out)
+                  if (_isOvertimeAllowed()) ...[
+                    const Divider(),
+                    const SizedBox(height: 8),
+                    if (_todayAttendance!.overtimeStart == null)
+                      _buildStartOvertimeButton()
+                    else if (_todayAttendance!.isOvertimeActive) ...[
+                      // Overtime Countdown Timer
+                      _buildOvertimeCountdown(),
+                      const SizedBox(height: 16),
+                      // End Overtime Button
+                      _buildEndOvertimeButton(),
+                    ]
+                    else if (_todayAttendance!.hasOvertime) ...[
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text('Overtime Hours:', style: TextStyle(fontWeight: FontWeight.w500)),
+                          Text('${_todayAttendance!.overtimeHours.toStringAsFixed(1)} hrs'),
+                        ],
+                      ),
+                    ],
+                  ],
                 ],
               )
             else
@@ -724,40 +1075,18 @@ class _GenericDashboardState extends State<GenericDashboard> {
                     ),
                   ],
                   
-                  // Overtime Section
-                  if (_todayAttendance!.isCheckedOut) ...[
+                  // Overtime Section (available from 5 PM to 8 AM, even if not checked out)
+                  if (_todayAttendance!.isCheckedIn && _isOvertimeAllowed()) ...[
                     const Divider(),
                     const SizedBox(height: 8),
-                    if (_todayAttendance!.overtimeStart == null && DateTime.now().hour >= 17)
-                      ElevatedButton.icon(
-                        onPressed: _startOvertime,
-                        icon: const Icon(Icons.access_time),
-                        label: const Text('Start Overtime'),
-                        style: ElevatedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          backgroundColor: Colors.orange,
-                          foregroundColor: Colors.white,
-                        ),
-                      )
+                    if (_todayAttendance!.overtimeStart == null)
+                      _buildStartOvertimeButton()
                     else if (_todayAttendance!.isOvertimeActive) ...[
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Text('Overtime Started:', style: TextStyle(fontWeight: FontWeight.w500)),
-                          Text(DateFormat('hh:mm a').format(_todayAttendance!.overtimeStart!)),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      ElevatedButton.icon(
-                        onPressed: _endOvertime,
-                        icon: const Icon(Icons.stop),
-                        label: const Text('End Overtime'),
-                        style: ElevatedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          backgroundColor: Colors.red,
-                          foregroundColor: Colors.white,
-                        ),
-                      ),
+                      // Overtime Countdown Timer
+                      _buildOvertimeCountdown(),
+                      const SizedBox(height: 16),
+                      // End Overtime Button
+                      _buildEndOvertimeButton(),
                     ]
                     else if (_todayAttendance!.hasOvertime) ...[
                       Row(
@@ -795,20 +1124,93 @@ class _GenericDashboardState extends State<GenericDashboard> {
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-                DropdownButton<String>(
-                  value: _selectedPeriod,
-                  items: const [
-                    DropdownMenuItem(value: 'daily', child: Text('Daily')),
-                    DropdownMenuItem(value: 'weekly', child: Text('Weekly')),
-                    DropdownMenuItem(value: 'monthly', child: Text('Monthly')),
-                    DropdownMenuItem(value: 'yearly', child: Text('Yearly')),
-                  ],
-                  onChanged: (value) {
-                    if (value != null) {
-                      setState(() => _selectedPeriod = value);
-                      _loadSummary();
-                    }
-                  },
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        Colors.blue[400]!,
+                        Colors.blue[600]!,
+                      ],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.blue.withOpacity(0.3),
+                        blurRadius: 8,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: DropdownButton<String>(
+                    value: _selectedPeriod,
+                    dropdownColor: Colors.blue[700],
+                    underline: const SizedBox.shrink(),
+                    icon: Icon(
+                      Icons.arrow_drop_down,
+                      color: Colors.white,
+                      size: 24,
+                    ),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    items: const [
+                      DropdownMenuItem(
+                        value: 'daily',
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.today, color: Colors.white, size: 18),
+                            SizedBox(width: 8),
+                            Text('Daily'),
+                          ],
+                        ),
+                      ),
+                      DropdownMenuItem(
+                        value: 'weekly',
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.date_range, color: Colors.white, size: 18),
+                            SizedBox(width: 8),
+                            Text('Weekly'),
+                          ],
+                        ),
+                      ),
+                      DropdownMenuItem(
+                        value: 'monthly',
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.calendar_month, color: Colors.white, size: 18),
+                            SizedBox(width: 8),
+                            Text('Monthly'),
+                          ],
+                        ),
+                      ),
+                      DropdownMenuItem(
+                        value: 'yearly',
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.calendar_today, color: Colors.white, size: 18),
+                            SizedBox(width: 8),
+                            Text('Yearly'),
+                          ],
+                        ),
+                      ),
+                    ],
+                    onChanged: (value) {
+                      if (value != null) {
+                        setState(() => _selectedPeriod = value);
+                        _loadSummary();
+                      }
+                    },
+                  ),
                 ),
               ],
             ),
@@ -925,23 +1327,73 @@ class _GenericDashboardState extends State<GenericDashboard> {
       return const SizedBox.shrink();
     }
 
-    return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+    return Container(
+      margin: const EdgeInsets.only(top: 16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            Theme.of(context).cardColor,
+            Theme.of(context).cardColor.withOpacity(0.95),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.1),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+            spreadRadius: 2,
+          ),
+          BoxShadow(
+            color: Colors.blue.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
       child: Padding(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.all(20.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(
-              'Attendance Chart',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.bold,
-              ),
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [Colors.blue[400]!, Colors.blue[600]!],
+                    ),
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.blue.withOpacity(0.3),
+                        blurRadius: 8,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: const Icon(
+                    Icons.bar_chart,
+                    color: Colors.white,
+                    size: 24,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  'Attendance Chart',
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 20,
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 20),
             SizedBox(
-              height: 200,
+              height: 250,
               child: _buildBarChart(),
             ),
           ],
@@ -952,84 +1404,165 @@ class _GenericDashboardState extends State<GenericDashboard> {
 
   Widget _buildBarChart() {
     if (_summary == null || _summary!.dailyData.isEmpty) {
-      return const Center(child: Text('No data to display'));
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.bar_chart, size: 48, color: Colors.grey[400]),
+            const SizedBox(height: 8),
+            Text(
+              'No data to display',
+              style: TextStyle(color: Colors.grey[600], fontSize: 16),
+            ),
+          ],
+        ),
+      );
     }
 
     final data = _summary!.dailyData;
     final maxHours = data.map((d) => d.workingHours).reduce((a, b) => a > b ? a : b);
     
-    return BarChart(
-      BarChartData(
-        alignment: BarChartAlignment.spaceAround,
-        maxY: maxHours > 0 ? maxHours + 1 : 10,
-        barTouchData: BarTouchData(
-          enabled: true,
-          touchTooltipData: BarTouchTooltipData(
-            tooltipRoundedRadius: 8,
-          ),
-        ),
-        titlesData: FlTitlesData(
-          show: true,
-          bottomTitles: AxisTitles(
-            sideTitles: SideTitles(
-              showTitles: true,
-              getTitlesWidget: (value, meta) {
-                if (value.toInt() < data.length) {
-                  final date = data[value.toInt()].date;
-                  return Padding(
-                    padding: const EdgeInsets.only(top: 8.0),
-                    child: Text(
-                      DateFormat('dd/MM').format(date),
-                      style: const TextStyle(fontSize: 10),
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: SizedBox(
+        width: data.length * 50.0 > MediaQuery.of(context).size.width - 40
+            ? data.length * 50.0
+            : MediaQuery.of(context).size.width - 40,
+        child: BarChart(
+          BarChartData(
+            alignment: BarChartAlignment.spaceAround,
+            maxY: maxHours > 0 ? maxHours + 2 : 10,
+            minY: 0,
+            barTouchData: BarTouchData(
+              enabled: true,
+              touchTooltipData: BarTouchTooltipData(
+                tooltipRoundedRadius: 12,
+                tooltipBgColor: Colors.blue[900]!.withOpacity(0.9),
+                tooltipPadding: const EdgeInsets.all(12),
+                getTooltipItem: (group, groupIndex, rod, rodIndex) {
+                  final dayData = data[groupIndex];
+                  return BarTooltipItem(
+                    '${dayData.workingHours.toStringAsFixed(1)}h\n${_getStatusDisplay(dayData.status)}',
+                    const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
                     ),
                   );
-                }
-                return const Text('');
-              },
+                },
+              ),
             ),
-          ),
-          leftTitles: AxisTitles(
-            sideTitles: SideTitles(
-              showTitles: true,
-              getTitlesWidget: (value, meta) {
-                return Text(
-                  '${value.toInt()}h',
-                  style: const TextStyle(fontSize: 10),
+            titlesData: FlTitlesData(
+              show: true,
+              bottomTitles: AxisTitles(
+                sideTitles: SideTitles(
+                  showTitles: true,
+                  reservedSize: 40,
+                  getTitlesWidget: (value, meta) {
+                    if (value.toInt() < data.length && value.toInt() >= 0) {
+                      final date = data[value.toInt()].date;
+                      return Padding(
+                        padding: const EdgeInsets.only(top: 8.0),
+                        child: Text(
+                          DateFormat('dd/MM').format(date),
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.grey[700],
+                          ),
+                        ),
+                      );
+                    }
+                    return const Text('');
+                  },
+                ),
+              ),
+              leftTitles: AxisTitles(
+                sideTitles: SideTitles(
+                  showTitles: true,
+                  reservedSize: 50,
+                  getTitlesWidget: (value, meta) {
+                    return Padding(
+                      padding: const EdgeInsets.only(right: 8.0),
+                      child: Text(
+                        '${value.toInt()}h',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.grey[700],
+                        ),
+                        textAlign: TextAlign.right,
+                      ),
+                    );
+                  },
+                ),
+              ),
+              topTitles: const AxisTitles(
+                sideTitles: SideTitles(showTitles: false),
+              ),
+              rightTitles: const AxisTitles(
+                sideTitles: SideTitles(showTitles: false),
+              ),
+            ),
+            gridData: FlGridData(
+              show: true,
+              drawVerticalLine: false,
+              drawHorizontalLine: true,
+              horizontalInterval: 1,
+              getDrawingHorizontalLine: (value) {
+                return FlLine(
+                  color: Colors.grey[300]!.withOpacity(0.3),
+                  strokeWidth: 1,
+                  dashArray: [5, 5],
                 );
               },
             ),
-          ),
-          topTitles: const AxisTitles(
-            sideTitles: SideTitles(showTitles: false),
-          ),
-          rightTitles: const AxisTitles(
-            sideTitles: SideTitles(showTitles: false),
-          ),
-        ),
-        gridData: FlGridData(
-          show: true,
-          drawVerticalLine: false,
-        ),
-        borderData: FlBorderData(show: false),
-        barGroups: data.asMap().entries.map((entry) {
-          final index = entry.key;
-          final dayData = entry.value;
-          final color = _getStatusColor(dayData.status);
-          
-          return BarChartGroupData(
-            x: index,
-            barRods: [
-              BarChartRodData(
-                toY: dayData.workingHours,
-                color: color,
-                width: 16,
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(4)),
+            borderData: FlBorderData(
+              show: true,
+              border: Border(
+                bottom: BorderSide(color: Colors.grey[300]!, width: 1),
+                left: BorderSide(color: Colors.grey[300]!, width: 1),
               ),
-            ],
-          );
-        }).toList(),
+            ),
+            barGroups: data.asMap().entries.map((entry) {
+              final index = entry.key;
+              final dayData = entry.value;
+              final color = _getStatusColor(dayData.status);
+              
+              return BarChartGroupData(
+                x: index,
+                barRods: [
+                  BarChartRodData(
+                    toY: dayData.workingHours,
+                    color: color,
+                    width: 24,
+                    borderRadius: const BorderRadius.vertical(top: Radius.circular(8)),
+                    backDrawRodData: BackgroundBarChartRodData(
+                      show: true,
+                      toY: maxHours > 0 ? maxHours + 2 : 10,
+                      color: Colors.grey[200]!.withOpacity(0.3),
+                    ),
+                  ),
+                ],
+              );
+            }).toList(),
+          ),
+        ),
       ),
     );
+  }
+
+  String _getStatusDisplay(String status) {
+    switch (status) {
+      case 'present':
+        return 'Present';
+      case 'half_day':
+        return 'Half Day';
+      case 'absent':
+        return 'Absent';
+      default:
+        return 'Unknown';
+    }
   }
 
   Color _getStatusColor(String status) {
@@ -1304,6 +1837,327 @@ class _GenericDashboardState extends State<GenericDashboard> {
       ),
     );
   }
+
+  Widget _buildStartOvertimeButton() {
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0.0, end: 1.0),
+      duration: const Duration(milliseconds: 600),
+      curve: Curves.easeOutBack,
+      builder: (context, value, child) {
+        return Transform.scale(
+          scale: 0.95 + (0.05 * value),
+          child: Container(
+            width: double.infinity,
+            height: 70,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  Colors.orange[400]!,
+                  Colors.orange[600]!,
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.orange.withOpacity(0.4),
+                  blurRadius: 20,
+                  offset: const Offset(0, 10),
+                  spreadRadius: 2,
+                ),
+                BoxShadow(
+                  color: Colors.orange.withOpacity(0.2),
+                  blurRadius: 10,
+                  offset: const Offset(0, 5),
+                ),
+              ],
+            ),
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: _startOvertime,
+                borderRadius: BorderRadius.circular(16),
+                splashColor: Colors.white.withOpacity(0.3),
+                highlightColor: Colors.white.withOpacity(0.1),
+                child: Stack(
+                  children: [
+                    // Pulsing background effect
+                    _PulsingButtonBackground(color: Colors.orange),
+                    // Button content
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 12.0),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.25),
+                              shape: BoxShape.circle,
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.2),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 4),
+                                ),
+                              ],
+                            ),
+                            child: const Icon(
+                              Icons.access_time,
+                              color: Colors.white,
+                              size: 24,
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          const Flexible(
+                            child: Text(
+                              'Start Overtime',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: 0.5,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Icon(
+                            Icons.arrow_forward_ios,
+                            color: Colors.white.withOpacity(0.9),
+                            size: 18,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildOvertimeCountdown() {
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0.0, end: 1.0),
+      duration: const Duration(milliseconds: 500),
+      builder: (context, value, child) {
+        return Transform.scale(
+          scale: 0.9 + (0.1 * value),
+          child: Container(
+            height: 120,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  Colors.red[400]!,
+                  Colors.orange[500]!,
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(20),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.red.withOpacity(0.5),
+                  blurRadius: 20,
+                  offset: const Offset(0, 8),
+                  spreadRadius: 2,
+                ),
+                BoxShadow(
+                  color: Colors.orange.withOpacity(0.3),
+                  blurRadius: 15,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Stack(
+              children: [
+                // Pulsing background animation
+                _PulsingContainer(
+                  color: Colors.red,
+                ),
+                // Content - Horizontal layout
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 16.0),
+                  child: Row(
+                    children: [
+                      // Icon on the left
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.2),
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.2),
+                              blurRadius: 8,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
+                        ),
+                        child: _RotatingIcon(
+                          icon: Icons.timer_outlined,
+                          color: Colors.white,
+                          size: 32,
+                        ),
+                      ),
+                      const SizedBox(width: 20),
+                      // Time and label in the center
+                      Expanded(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // Time display with scale animation
+                            TweenAnimationBuilder<double>(
+                              tween: Tween(begin: 0.0, end: 1.0),
+                              duration: const Duration(milliseconds: 300),
+                              builder: (context, scaleValue, child) {
+                                return Transform.scale(
+                                  scale: 0.8 + (0.2 * scaleValue),
+                                  child: Text(
+                                    _formatDuration(_overtimeDuration),
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 28,
+                                      fontWeight: FontWeight.bold,
+                                      letterSpacing: 2.0,
+                                      fontFeatures: [FontFeature.tabularFigures()],
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Overtime Duration',
+                              style: TextStyle(
+                                color: Colors.white.withOpacity(0.95),
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                letterSpacing: 0.5,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildEndOvertimeButton() {
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0.0, end: 1.0),
+      duration: const Duration(milliseconds: 600),
+      curve: Curves.easeOutBack,
+      builder: (context, value, child) {
+        return Transform.scale(
+          scale: 0.95 + (0.05 * value),
+          child: Container(
+            width: double.infinity,
+            height: 70,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  Colors.red[400]!,
+                  Colors.red[600]!,
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.red.withOpacity(0.4),
+                  blurRadius: 20,
+                  offset: const Offset(0, 10),
+                  spreadRadius: 2,
+                ),
+                BoxShadow(
+                  color: Colors.red.withOpacity(0.2),
+                  blurRadius: 10,
+                  offset: const Offset(0, 5),
+                ),
+              ],
+            ),
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: _endOvertime,
+                borderRadius: BorderRadius.circular(16),
+                splashColor: Colors.white.withOpacity(0.3),
+                highlightColor: Colors.white.withOpacity(0.1),
+                child: Stack(
+                  children: [
+                    // Pulsing background effect
+                    _PulsingButtonBackground(color: Colors.red),
+                    // Button content
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 12.0),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.25),
+                              shape: BoxShape.circle,
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.2),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 4),
+                                ),
+                              ],
+                            ),
+                            child: const Icon(
+                              Icons.stop_circle_outlined,
+                              color: Colors.white,
+                              size: 24,
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          const Flexible(
+                            child: Text(
+                              'End Overtime',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: 0.5,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Icon(
+                            Icons.arrow_forward_ios,
+                            color: Colors.white.withOpacity(0.9),
+                            size: 18,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
 }
 
 // Animated Widgets
@@ -1314,6 +2168,55 @@ class _PulsingContainer extends StatefulWidget {
 
   @override
   State<_PulsingContainer> createState() => _PulsingContainerState();
+}
+
+class _PulsingButtonBackground extends StatefulWidget {
+  final Color color;
+
+  const _PulsingButtonBackground({required this.color});
+
+  @override
+  State<_PulsingButtonBackground> createState() => _PulsingButtonBackgroundState();
+}
+
+class _PulsingButtonBackgroundState extends State<_PulsingButtonBackground>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: const Duration(seconds: 2),
+      vsync: this,
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        return Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            gradient: RadialGradient(
+              colors: [
+                widget.color.withOpacity(0.3 * (0.5 + 0.5 * _controller.value)),
+                Colors.transparent,
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
 }
 
 class _PulsingContainerState extends State<_PulsingContainer>

@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 import 'login_screen.dart';
 import 'admin_dashboard.dart';
-import 'field_officer_dashboard.dart';
 import 'generic_dashboard.dart';
 import 'coordinator_dashboard.dart';
 
@@ -58,12 +57,8 @@ class _HomeScreenState extends State<HomeScreen> {
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(builder: (_) => const CoordinatorDashboard()),
         );
-      } else if (widget.userRole == 'field_officer') {
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const FieldOfficerDashboard()),
-        );
       } else {
-        // Route to generic dashboard for all other roles
+        // Route to generic dashboard for all other roles (including field_officer)
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(
             builder: (_) => GenericDashboard(

@@ -96,6 +96,12 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
         setState(() {
           _remainingTime = Duration.zero;
         });
+        // Auto-checkout when countdown ends at 5 PM
+        if (_todayAttendance != null && 
+            _todayAttendance!.isCheckedIn && 
+            !_todayAttendance!.isCheckedOut) {
+          _checkOut();
+        }
       }
     }
   }
@@ -188,6 +194,23 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
     } finally {
       if (mounted) {
         setState(() => _isMarkingAttendance = false);
+      }
+    }
+  }
+
+  Future<void> _checkOut() async {
+    final result = await ApiService.checkOut();
+    
+    if (mounted) {
+      if (result['success']) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Checked out successfully!')),
+        );
+        await _loadTodayAttendance();
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(result['message'] ?? 'Failed to check out')),
+        );
       }
     }
   }

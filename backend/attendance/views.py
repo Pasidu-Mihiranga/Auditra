@@ -125,11 +125,12 @@ class CheckOutView(APIView):
 
 
 class StartOvertimeView(APIView):
-    """Start overtime work (after 5 PM)"""
+    """Start overtime work (from 5 PM to 8 AM next day, after checkout)"""
     permission_classes = [IsAuthenticated]
     
     def post(self, request):
-        today = timezone.now().date()
+        now = timezone.now()
+        today = now.date()
         user = request.user
         
         try:
@@ -151,15 +152,15 @@ class StartOvertimeView(APIView):
                 'error': 'Overtime already started'
             }, status=status.HTTP_400_BAD_REQUEST)
         
-        # Check if it's after 5 PM
-        now = timezone.now()
-        five_pm = timezone.make_aware(
-            datetime.combine(today, time(17, 0))
-        )
+        # Check if it's within overtime window (5 PM to 8 AM next day)
+        # Use local time (timezone-aware) for the check
+        local_now = timezone.localtime(now)
+        current_hour = local_now.hour
+        is_overtime_allowed = current_hour >= 17 or current_hour < 8
         
-        if now < five_pm:
+        if not is_overtime_allowed:
             return Response({
-                'error': 'Overtime can only start after 5 PM'
+                'error': f'Overtime can only start between 5 PM and 8 AM. Current time: {local_now.strftime("%I:%M %p")}'
             }, status=status.HTTP_400_BAD_REQUEST)
         
         attendance.overtime_start = now
