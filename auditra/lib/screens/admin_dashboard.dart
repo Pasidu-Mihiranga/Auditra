@@ -15,6 +15,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
   List<RoleOption> _roles = [];
   bool _isLoading = true;
   String? _username;
+  String? _roleDisplay;
 
   @override
   void initState() {
@@ -28,6 +29,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
     }
 
     final username = await ApiService.getUsername();
+    final roleResult = await ApiService.getMyRole();
     final usersResult = await ApiService.getAllUsers();
     final rolesResult = await ApiService.getRoles();
 
@@ -35,6 +37,9 @@ class _AdminDashboardState extends State<AdminDashboard> {
 
     setState(() {
       _username = username;
+      if (roleResult['success']) {
+        _roleDisplay = roleResult['data']['role_display'];
+      }
       if (usersResult['success']) {
         _users = (usersResult['data'] as List)
             .map((user) => UserModel.fromJson(user))
@@ -168,7 +173,118 @@ class _AdminDashboardState extends State<AdminDashboard> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Admin Dashboard'),
+        title: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'Admin Dashboard',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                letterSpacing: 0.5,
+              ),
+            ),
+            if (_username != null || _roleDisplay != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 4.0),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (_username != null)
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.person_outline,
+                            size: 14,
+                            color: Theme.of(context).brightness == Brightness.dark
+                                ? Colors.white.withOpacity(0.9)
+                                : Colors.black87.withOpacity(0.8),
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            _username!,
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: Theme.of(context).brightness == Brightness.dark
+                                  ? Colors.white.withOpacity(0.95)
+                                  : Colors.black87,
+                              letterSpacing: 0.3,
+                            ),
+                          ),
+                        ],
+                      ),
+                    if (_username != null && _roleDisplay != null)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                        child: Container(
+                          width: 1,
+                          height: 14,
+                          color: Theme.of(context).brightness == Brightness.dark
+                              ? Colors.white.withOpacity(0.3)
+                              : Colors.black26,
+                        ),
+                      ),
+                    if (_roleDisplay != null)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: Theme.of(context).brightness == Brightness.dark
+                                ? [
+                                    Colors.white.withOpacity(0.25),
+                                    Colors.white.withOpacity(0.15),
+                                  ]
+                                : [
+                                    Colors.blue.withOpacity(0.15),
+                                    Colors.blue.withOpacity(0.1),
+                                  ],
+                          ),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: Theme.of(context).brightness == Brightness.dark
+                                ? Colors.white.withOpacity(0.3)
+                                : Colors.blue.withOpacity(0.3),
+                            width: 1,
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.1),
+                              blurRadius: 4,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.badge_outlined,
+                              size: 12,
+                              color: Theme.of(context).brightness == Brightness.dark
+                                  ? Colors.white.withOpacity(0.9)
+                                  : Colors.blue[700],
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              _roleDisplay!,
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                letterSpacing: 0.5,
+                                color: Theme.of(context).brightness == Brightness.dark
+                                    ? Colors.white
+                                    : Colors.blue[900],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+          ],
+        ),
         centerTitle: true,
         actions: [
           IconButton(

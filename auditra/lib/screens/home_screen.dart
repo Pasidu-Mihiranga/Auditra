@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 import 'login_screen.dart';
 import 'admin_dashboard.dart';
+import 'field_officer_dashboard.dart';
+import 'generic_dashboard.dart';
 
 class HomeScreen extends StatefulWidget {
   final String userRole;
@@ -21,15 +23,6 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _loadUserData();
-    
-    // Route to admin dashboard if user is admin
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (widget.userRole == 'admin') {
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const AdminDashboard()),
-        );
-      }
-    });
   }
 
   Future<void> _loadUserData() async {
@@ -37,17 +30,45 @@ class _HomeScreenState extends State<HomeScreen> {
     final profileResult = await ApiService.getProfile();
     final roleResult = await ApiService.getMyRole();
 
-    setState(() {
-      _username = username;
-      if (profileResult['success']) {
-        _profile = profileResult['data'];
+    String? roleDisplay;
+    if (roleResult['success']) {
+      roleDisplay = roleResult['data']['role_display'];
+    }
+
+    if (mounted) {
+      setState(() {
+        _username = username;
+        if (profileResult['success']) {
+          _profile = profileResult['data'];
+        }
+        if (roleResult['success']) {
+          _profile?['role'] = roleResult['data']['role'];
+          _profile?['role_display'] = roleResult['data']['role_display'];
+        }
+        _isLoading = false;
+      });
+      
+      // Route to appropriate dashboard based on role
+      if (widget.userRole == 'admin') {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => const AdminDashboard()),
+        );
+      } else if (widget.userRole == 'field_officer') {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => const FieldOfficerDashboard()),
+        );
+      } else {
+        // Route to generic dashboard for all other roles
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(
+            builder: (_) => GenericDashboard(
+              role: widget.userRole,
+              roleDisplay: roleDisplay ?? widget.userRole,
+            ),
+          ),
+        );
       }
-      if (roleResult['success']) {
-        _profile?['role'] = roleResult['data']['role'];
-        _profile?['role_display'] = roleResult['data']['role_display'];
-      }
-      _isLoading = false;
-    });
+    }
   }
 
   Future<void> _logout() async {
@@ -82,7 +103,118 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Auditra'),
+        title: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'Auditra',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                letterSpacing: 0.5,
+              ),
+            ),
+            if (_username != null || _profile?['role_display'] != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 4.0),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (_username != null)
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.person_outline,
+                            size: 14,
+                            color: Theme.of(context).brightness == Brightness.dark
+                                ? Colors.white.withOpacity(0.9)
+                                : Colors.black87.withOpacity(0.8),
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            _username!,
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: Theme.of(context).brightness == Brightness.dark
+                                  ? Colors.white.withOpacity(0.95)
+                                  : Colors.black87,
+                              letterSpacing: 0.3,
+                            ),
+                          ),
+                        ],
+                      ),
+                    if (_username != null && _profile?['role_display'] != null)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                        child: Container(
+                          width: 1,
+                          height: 14,
+                          color: Theme.of(context).brightness == Brightness.dark
+                              ? Colors.white.withOpacity(0.3)
+                              : Colors.black26,
+                        ),
+                      ),
+                    if (_profile?['role_display'] != null)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: Theme.of(context).brightness == Brightness.dark
+                                ? [
+                                    Colors.white.withOpacity(0.25),
+                                    Colors.white.withOpacity(0.15),
+                                  ]
+                                : [
+                                    Colors.blue.withOpacity(0.15),
+                                    Colors.blue.withOpacity(0.1),
+                                  ],
+                          ),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: Theme.of(context).brightness == Brightness.dark
+                                ? Colors.white.withOpacity(0.3)
+                                : Colors.blue.withOpacity(0.3),
+                            width: 1,
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.1),
+                              blurRadius: 4,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.badge_outlined,
+                              size: 12,
+                              color: Theme.of(context).brightness == Brightness.dark
+                                  ? Colors.white.withOpacity(0.9)
+                                  : Colors.blue[700],
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              _profile!['role_display'],
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                letterSpacing: 0.5,
+                                color: Theme.of(context).brightness == Brightness.dark
+                                    ? Colors.white
+                                    : Colors.blue[900],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+          ],
+        ),
         centerTitle: true,
         actions: [
           IconButton(
