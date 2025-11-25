@@ -6,6 +6,7 @@ import '../services/api_service.dart';
 import '../models/attendance_model.dart';
 import '../models/project_model.dart';
 import 'login_screen.dart';
+import 'generic_dashboard.dart';
 
 class FieldOfficerDashboard extends StatefulWidget {
   const FieldOfficerDashboard({super.key});
@@ -44,10 +45,7 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
       }
     });
     _loadUserInfo();
-    _loadTodayAttendance();
-    _loadSummary();
     _loadProjects();
-    _startTimer();
   }
 
   @override
@@ -140,11 +138,15 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
   }
 
   Future<void> _loadProjects() async {
-    setState(() => _isLoadingProjects = true);
+    setState(() {
+      _isLoading = true;
+      _isLoadingProjects = true;
+    });
     final result = await ApiService.getProjects();
     
     if (mounted) {
       setState(() {
+        _isLoading = false;
         _isLoadingProjects = false;
         if (result['success']) {
           final data = result['data'] as List<dynamic>;
@@ -504,30 +506,10 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
           : TabBarView(
               controller: _tabController,
               children: [
-                RefreshIndicator(
-                  onRefresh: () async {
-                    await _loadTodayAttendance();
-                    await _loadSummary();
-                  },
-                  child: SingleChildScrollView(
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    padding: const EdgeInsets.all(16.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        // Today's Attendance Card
-                        _buildTodayAttendanceCard(),
-                        const SizedBox(height: 16),
-                        
-                        // Attendance Summary
-                        _buildSummarySection(),
-                        const SizedBox(height: 16),
-                        
-                        // Charts Section
-                        if (_summary != null) _buildChartsSection(),
-                      ],
-                    ),
-                  ),
+                GenericDashboard(
+                  role: 'field_officer',
+                  roleDisplay: _roleDisplay ?? 'Field Officer',
+                  isEmbedded: true,
                 ),
                 _buildProjectsTab(),
               ],
@@ -737,6 +719,7 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
     );
   }
 
+  // ignore: unused_element
   Widget _buildTodayAttendanceCard() {
     return Card(
       elevation: 4,
@@ -981,6 +964,7 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
     );
   }
 
+  // ignore: unused_element
   Widget _buildSummarySection() {
     return Card(
       elevation: 2,
@@ -1124,6 +1108,7 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
     );
   }
 
+  // ignore: unused_element
   Widget _buildChartsSection() {
     if (_summary == null || _summary!.dailyData.isEmpty) {
       return const SizedBox.shrink();

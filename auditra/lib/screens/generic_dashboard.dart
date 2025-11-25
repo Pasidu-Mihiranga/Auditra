@@ -4,17 +4,18 @@ import 'package:fl_chart/fl_chart.dart';
 import 'dart:math' as math;
 import '../services/api_service.dart';
 import '../models/attendance_model.dart';
-import '../models/project_model.dart';
 import 'login_screen.dart';
 
 class GenericDashboard extends StatefulWidget {
   final String role;
   final String roleDisplay;
+  final bool isEmbedded;
   
   const GenericDashboard({
     super.key,
     required this.role,
     required this.roleDisplay,
+    this.isEmbedded = false,
   });
 
   @override
@@ -34,10 +35,6 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
   bool _isLoadingSummary = false;
   bool _isMarkingAttendance = false;
   
-  // Project state (only for field_officer)
-  List<Project> _projects = [];
-  bool _isLoadingProjects = false;
-  late TabController _tabController;
   late TabController _periodTabController;
   
   // Timer for countdown
@@ -50,10 +47,6 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
   @override
   void initState() {
     super.initState();
-    // Only show tabs if field_officer role
-    final hasProjects = widget.role == 'field_officer';
-    _tabController = TabController(length: hasProjects ? 2 : 1, vsync: this);
-    
     // Initialize period tab controller and sync with selected period
     final periods = ['daily', 'weekly', 'monthly', 'yearly'];
     final initialPeriodIndex = periods.indexOf(_selectedPeriod);
@@ -68,23 +61,14 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
         _loadSummary();
       }
     });
-    _tabController.addListener(() {
-      if (!_tabController.indexIsChanging) {
-        setState(() {});
-      }
-    });
     _loadUserData();
     _loadTodayAttendance();
     _loadSummary();
-    if (hasProjects) {
-      _loadProjects();
-    }
     _startTimer();
   }
 
   @override
   void dispose() {
-    _tabController.dispose();
     _periodTabController.dispose();
     super.dispose();
   }
@@ -452,46 +436,16 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
     }
   }
 
-  Future<void> _loadProjects() async {
-    setState(() => _isLoadingProjects = true);
-    final result = await ApiService.getProjects();
-    
-    if (mounted) {
-      setState(() {
-        _isLoadingProjects = false;
-        if (result['success']) {
-          final data = result['data'] as List<dynamic>;
-          _projects = data.map((p) => Project.fromJson(p)).toList();
-        }
-      });
-    }
-  }
-
-  IconData _getRoleIcon() {
-    switch (widget.role) {
-      case 'coordinator':
-        return Icons.people_outline;
-      case 'accessor':
-        return Icons.assessment_outlined;
-      case 'senior_valuer':
-        return Icons.verified_user_outlined;
-      case 'md_gm':
-        return Icons.business_center_outlined;
-      case 'hr_staff':
-        return Icons.people_alt_outlined;
-      case 'general_employee':
-        return Icons.badge_outlined;
-      case 'client':
-        return Icons.person_outline;
-      case 'agent':
-        return Icons.handshake_outlined;
-      default:
-        return Icons.dashboard_outlined;
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
+    final body = _isLoading
+        ? const Center(child: CircularProgressIndicator())
+        : _buildDashboardBody();
+
+    if (widget.isEmbedded) {
+      return body;
+    }
+
     return Scaffold(
       appBar: AppBar(
         title: Column(
@@ -614,56 +568,12 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
             tooltip: 'Logout',
           ),
         ],
-        bottom: widget.role == 'field_officer'
-            ? TabBar(
-                controller: _tabController,
-                tabs: const [
-                  Tab(icon: Icon(Icons.access_time), text: 'Attendance'),
-                  Tab(icon: Icon(Icons.folder), text: 'Projects'),
-                ],
-              )
-            : null,
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : widget.role == 'field_officer'
-              ? TabBarView(
-                  controller: _tabController,
-                  children: [
-                    _buildAttendanceTab(),
-                    _buildProjectsTab(),
-                  ],
-                )
-              : RefreshIndicator(
-                  onRefresh: () async {
-                    await _loadUserData();
-                    await _loadTodayAttendance();
-                    await _loadSummary();
-                  },
-                  child: SingleChildScrollView(
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    padding: const EdgeInsets.all(16.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        // Today's Attendance Card
-                        _buildTodayAttendanceCard(),
-                        const SizedBox(height: 16),
-                        
-                        // Attendance Summary
-                        _buildSummarySection(),
-                        const SizedBox(height: 16),
-                        
-                        // Charts Section
-                        if (_summary != null) _buildChartsSection(),
-                      ],
-                    ),
-                  ),
-                ),
+      body: body,
     );
   }
 
-  Widget _buildAttendanceTab() {
+  Widget _buildDashboardBody() {
     return RefreshIndicator(
       onRefresh: () async {
         await _loadUserData();
@@ -688,208 +598,6 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
             if (_summary != null) _buildChartsSection(),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildProjectsTab() {
-    return RefreshIndicator(
-      onRefresh: _loadProjects,
-      child: _isLoadingProjects
-          ? const Center(child: CircularProgressIndicator())
-          : _projects.isEmpty
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.folder_open, size: 64, color: Colors.grey[400]),
-                      const SizedBox(height: 16),
-                      Text(
-                        'No projects assigned',
-                        style: TextStyle(fontSize: 18, color: Colors.grey[600]),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Projects assigned to you will appear here',
-                        style: TextStyle(color: Colors.grey[500]),
-                      ),
-                    ],
-                  ),
-                )
-              : ListView.builder(
-                  padding: const EdgeInsets.all(16),
-                  itemCount: _projects.length,
-                  itemBuilder: (context, index) {
-                    final project = _projects[index];
-                    return _buildProjectCard(project);
-                  },
-                ),
-    );
-  }
-
-  Widget _buildProjectCard(Project project) {
-    return Card(
-      elevation: 2,
-      margin: const EdgeInsets.only(bottom: 12),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: InkWell(
-        onTap: () => _viewProjectDetails(project),
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      project.title,
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                  Chip(
-                    label: Text(project.statusDisplay),
-                    backgroundColor: _getProjectStatusColor(project.status),
-                  ),
-                ],
-              ),
-              if (project.description != null) ...[
-                const SizedBox(height: 8),
-                Text(
-                  project.description!,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(color: Colors.grey[600]),
-                ),
-              ],
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Icon(Icons.person, size: 16, color: Colors.grey[600]),
-                  const SizedBox(width: 4),
-                  Text(
-                    'Coordinator: ${project.coordinatorName ?? project.coordinatorUsername}',
-                    style: TextStyle(color: Colors.grey[700]),
-                  ),
-                  const Spacer(),
-                  Icon(Icons.attach_file, size: 16, color: Colors.grey[600]),
-                  const SizedBox(width: 4),
-                  Text(
-                    '${project.documentsCount} docs',
-                    style: TextStyle(color: Colors.grey[600]),
-                  ),
-                ],
-              ),
-              if (project.startDate != null || project.endDate != null) ...[
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    if (project.startDate != null) ...[
-                      Icon(Icons.calendar_today, size: 14, color: Colors.grey[600]),
-                      const SizedBox(width: 4),
-                      Text(
-                        DateFormat('MMM dd, yyyy').format(project.startDate!),
-                        style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                      ),
-                    ],
-                    if (project.endDate != null) ...[
-                      const SizedBox(width: 16),
-                      Icon(Icons.event, size: 14, color: Colors.grey[600]),
-                      const SizedBox(width: 4),
-                      Text(
-                        DateFormat('MMM dd, yyyy').format(project.endDate!),
-                        style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                      ),
-                    ],
-                  ],
-                ),
-              ],
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Color _getProjectStatusColor(String status) {
-    switch (status) {
-      case 'pending':
-        return Colors.orange[100]!;
-      case 'in_progress':
-        return Colors.blue[100]!;
-      case 'completed':
-        return Colors.green[100]!;
-      case 'cancelled':
-        return Colors.red[100]!;
-      default:
-        return Colors.grey[200]!;
-    }
-  }
-
-  Future<void> _viewProjectDetails(Project project) async {
-    await showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(project.title),
-        content: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (project.description != null) ...[
-                Text(
-                  'Description:',
-                  style: TextStyle(fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 4),
-                Text(project.description!),
-                const SizedBox(height: 16),
-              ],
-              Text(
-                'Status: ${project.statusDisplay}',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Coordinator: ${project.coordinatorName ?? project.coordinatorUsername}',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 16),
-              if (project.documents.isNotEmpty) ...[
-                const Text(
-                  'Documents:',
-                  style: TextStyle(fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 8),
-                ...project.documents.map((doc) => ListTile(
-                      title: Text(doc.name),
-                      subtitle: Text(doc.fileSizeFormatted),
-                      trailing: doc.fileUrl != null
-                          ? IconButton(
-                              icon: const Icon(Icons.download),
-                              onPressed: () {
-                                // TODO: Implement file download
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(content: Text('Download: ${doc.fileUrl}')),
-                                );
-                              },
-                            )
-                          : null,
-                    )),
-              ],
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Close'),
-          ),
-        ],
       ),
     );
   }

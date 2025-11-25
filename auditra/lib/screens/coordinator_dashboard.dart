@@ -7,6 +7,7 @@ import '../services/api_service.dart';
 import '../models/attendance_model.dart';
 import '../models/project_model.dart';
 import 'login_screen.dart';
+import 'generic_dashboard.dart';
 
 class CoordinatorDashboard extends StatefulWidget {
   const CoordinatorDashboard({super.key});
@@ -20,23 +21,21 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
   String? _username;
   String? _roleDisplay;
   
-  // Attendance state
+  // Legacy attendance state (attendance UI now comes from GenericDashboard but these remain for compatibility)
   Attendance? _todayAttendance;
   bool _isWorkingDay = true;
   String _selectedPeriod = 'daily';
   AttendanceSummary? _summary;
   bool _isLoadingSummary = false;
   bool _isMarkingAttendance = false;
+  DateTime? _countdownEnd;
+  Duration _remainingTime = Duration.zero;
   
   // Project state
   List<Project> _projects = [];
   bool _isLoadingProjects = false;
   bool _isCreatingProject = false;
   late TabController _tabController;
-  
-  // Timer for countdown
-  DateTime? _countdownEnd;
-  Duration _remainingTime = Duration.zero;
 
   @override
   void initState() {
@@ -48,10 +47,7 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
       }
     });
     _loadUserInfo();
-    _loadTodayAttendance();
-    _loadSummary();
     _loadProjects();
-    _startTimer();
   }
 
   @override
@@ -724,25 +720,10 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
   }
 
   Widget _buildAttendanceTab() {
-    return RefreshIndicator(
-      onRefresh: () async {
-        await _loadTodayAttendance();
-        await _loadSummary();
-      },
-      child: SingleChildScrollView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            _buildTodayAttendanceCard(),
-            const SizedBox(height: 16),
-            _buildSummarySection(),
-            const SizedBox(height: 16),
-            if (_summary != null) _buildChartsSection(),
-          ],
-        ),
-      ),
+    return GenericDashboard(
+      role: 'coordinator',
+      roleDisplay: _roleDisplay ?? 'Coordinator',
+      isEmbedded: true,
     );
   }
 
@@ -904,6 +885,7 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
   }
 
   // Copy attendance UI methods from generic dashboard
+  // ignore: unused_element
   Widget _buildTodayAttendanceCard() {
     return Card(
       elevation: 4,
@@ -1132,6 +1114,7 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
     );
   }
 
+  // ignore: unused_element
   Widget _buildSummarySection() {
     return Card(
       elevation: 2,
@@ -1255,6 +1238,7 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
     );
   }
 
+  // ignore: unused_element
   Widget _buildChartsSection() {
     if (_summary == null || _summary!.dailyData.isEmpty) {
       return const SizedBox.shrink();
