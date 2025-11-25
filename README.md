@@ -7,6 +7,22 @@ A complete authentication system with Flutter mobile app and Django backend usin
 - ✅ User Registration
 - ✅ User Login with JWT Authentication
 - ✅ User Profile Management
+- ✅ Role-Based Access Control (Admin, Coordinator, Field Officer, etc.)
+- ✅ Attendance Management System
+  - Check-in/Check-out
+  - Overtime tracking
+  - Attendance summaries and charts
+  - Auto-checkout at 5 PM
+- ✅ Project Management
+  - Coordinators can create projects
+  - Assign projects to field officers
+  - Document attachments
+- ✅ Valuation System
+  - Field officers can create valuations for assigned projects
+  - Multiple categories: Land, Building, Vehicle, Other
+  - Photo attachments
+  - Live location capture (for Land and Building)
+  - Draft and submit functionality
 - ✅ Beautiful Material Design UI
 - ✅ Persistent Session Management
 - ✅ PostgreSQL Database
@@ -31,9 +47,21 @@ Auditra/
 │   ├── auditra_backend/
 │   │   ├── settings.py
 │   │   └── urls.py
-│   ├── authentication/
+│   ├── authentication/   # User authentication & roles
 │   │   ├── views.py
 │   │   ├── serializers.py
+│   │   └── urls.py
+│   ├── attendance/       # Attendance management
+│   │   ├── models.py
+│   │   ├── views.py
+│   │   └── urls.py
+│   ├── projects/        # Project management
+│   │   ├── models.py
+│   │   ├── views.py
+│   │   └── urls.py
+│   ├── valuations/      # Valuation system
+│   │   ├── models.py
+│   │   ├── views.py
 │   │   └── urls.py
 │   ├── manage.py
 │   └── requirements.txt
@@ -130,10 +158,21 @@ python manage.py makemigrations
 python manage.py migrate
 ```
 
-#### Step 6: Create Superuser (Optional)
+#### Step 6: Create Admin User
+
+The system requires an admin user to manage roles and access. Create the admin user:
 
 ```bash
-python manage.py createsuperuser
+python manage.py create_admin
+```
+
+This will create an admin user with:
+- **Username:** `admin`
+- **Password:** `admin@auditra2024`
+
+**Important:** Change the default password after first login for security:
+```bash
+python manage.py changepassword admin
 ```
 
 #### Step 7: Start Django Server
@@ -151,6 +190,22 @@ Backend will be available at: `http://localhost:8000/`
 ```bash
 cd ../auditra
 flutter pub get
+```
+
+**Note:** For location services (used in valuations), you may need to configure permissions:
+
+**Android:** Add to `android/app/src/main/AndroidManifest.xml`:
+```xml
+<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+<uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+```
+
+**iOS:** Add to `ios/Runner/Info.plist`:
+```xml
+<key>NSLocationWhenInUseUsageDescription</key>
+<string>We need your location to capture property coordinates for valuations.</string>
+<key>NSLocationAlwaysUsageDescription</key>
+<string>We need your location to capture property coordinates for valuations.</string>
 ```
 
 #### Step 2: Configure API URL
@@ -176,11 +231,50 @@ flutter run
 
 ## 🌐 API Endpoints
 
+### Authentication
+
 | Method | Endpoint | Description | Auth Required |
 |--------|----------|-------------|---------------|
 | POST | `/api/auth/register/` | Register new user | No |
 | POST | `/api/auth/login/` | Login user | No |
 | GET | `/api/auth/profile/` | Get user profile | Yes |
+| GET | `/api/auth/my-role/` | Get current user role | Yes |
+
+### Attendance
+
+| Method | Endpoint | Description | Auth Required |
+|--------|----------|-------------|---------------|
+| POST | `/api/attendance/mark/` | Mark attendance (check-in) | Yes |
+| GET | `/api/attendance/today/` | Get today's attendance | Yes |
+| POST | `/api/attendance/checkout/` | Check out | Yes |
+| POST | `/api/attendance/leave-early/` | Leave early | Yes |
+| POST | `/api/attendance/overtime/start/` | Start overtime | Yes |
+| POST | `/api/attendance/overtime/end/` | End overtime | Yes |
+| GET | `/api/attendance/summary/` | Get attendance summary | Yes |
+
+### Projects
+
+| Method | Endpoint | Description | Auth Required |
+|--------|----------|-------------|---------------|
+| GET | `/api/projects/` | List projects | Yes |
+| POST | `/api/projects/` | Create project (Coordinator) | Yes |
+| GET | `/api/projects/<id>/` | Get project details | Yes |
+| GET | `/api/projects/field-officers/` | List available field officers | Yes |
+| POST | `/api/projects/<id>/assign/` | Assign project to field officer | Yes |
+
+### Valuations
+
+| Method | Endpoint | Description | Auth Required |
+|--------|----------|-------------|---------------|
+| GET | `/api/valuations/` | List valuations | Yes |
+| POST | `/api/valuations/` | Create valuation | Yes |
+| GET | `/api/valuations/<id>/` | Get valuation details | Yes |
+| PUT | `/api/valuations/<id>/` | Update valuation | Yes |
+| DELETE | `/api/valuations/<id>/` | Delete valuation | Yes |
+| POST | `/api/valuations/<id>/submit/` | Submit valuation | Yes |
+| GET | `/api/valuations/<id>/photos/` | List valuation photos | Yes |
+| POST | `/api/valuations/<id>/photos/` | Upload photo | Yes |
+| DELETE | `/api/valuations/photos/<id>/` | Delete photo | Yes |
 
 ### Example API Requests
 
@@ -299,6 +393,12 @@ dependencies:
   shared_preferences: ^2.2.2
   provider: ^6.1.1
   cupertino_icons: ^1.0.8
+  fl_chart: ^0.66.0
+  intl: ^0.19.0
+  file_picker: ^8.0.0
+  path_provider: ^2.1.1
+  image_picker: ^1.0.7
+  geolocator: ^12.0.0
 ```
 
 ### Django (requirements.txt)
@@ -311,6 +411,145 @@ python-decouple==3.8
 djangorestframework-simplejwt==5.3.1
 ```
 
+## 📖 Valuation System
+
+The valuation system allows field officers to create detailed valuations for assigned projects.
+
+### Features
+
+1. **Category Selection**
+   - Land: Area, type, location with GPS coordinates
+   - Building: Area, type, location, floors, year built
+   - Vehicle: Make, model, year, registration, mileage, condition
+   - Other: Custom type and specifications
+
+2. **Photo Management**
+   - Upload multiple photos from gallery or camera
+   - Add captions to photos
+   - Delete photos
+
+3. **Location Services**
+   - Capture live GPS location for Land and Building categories
+   - Stores latitude and longitude coordinates
+
+4. **Workflow**
+   - Save as draft for later editing
+   - Submit when complete
+   - View and edit existing valuations
+
+### Usage
+
+1. Coordinator assigns a project to a field officer
+2. Field officer opens project details
+3. Field officer clicks "Create Valuation"
+4. Select category and fill in relevant details
+5. Attach photos and capture location (if applicable)
+6. Save draft or submit directly
+
+## 👤 Admin User Setup
+
+The system requires an admin user to manage roles and system access.
+
+### Create Admin User
+
+```bash
+cd backend
+python manage.py create_admin
+```
+
+This creates an admin user with:
+- **Username:** `admin`
+- **Password:** `admin@auditra2024`
+
+### Change Admin Password
+
+For security, change the default password:
+
+```bash
+python manage.py changepassword admin
+```
+
+### Admin Privileges
+
+- View all registered users
+- Assign roles to users (except admin role)
+- Change user roles
+- Access admin dashboard
+- View system statistics
+
+**Note:** Only one admin user exists in the system. The admin role cannot be assigned to other users.
+
+### Create Admin Command Code
+
+The admin user is created using a Django management command located at `backend/authentication/management/commands/create_admin.py`:
+
+```python
+from django.core.management.base import BaseCommand
+from django.contrib.auth.models import User
+from authentication.models import UserRole
+
+
+class Command(BaseCommand):
+    help = 'Creates admin user with shared credentials'
+
+    def handle(self, *args, **options):
+        # Shared admin credentials
+        username = 'admin'
+        password = 'admin@auditra2024'
+        email = 'admin@auditra.com'
+        
+        # Check if admin already exists
+        if User.objects.filter(username=username).exists():
+            self.stdout.write(self.style.WARNING(
+                f'Admin user "{username}" already exists!'
+            ))
+            admin_user = User.objects.get(username=username)
+        else:
+            # Create admin user
+            admin_user = User.objects.create_user(
+                username=username,
+                email=email,
+                password=password,
+                first_name='System',
+                last_name='Administrator',
+                is_staff=True,
+                is_superuser=True
+            )
+            self.stdout.write(self.style.SUCCESS(
+                f'Successfully created admin user: {username}'
+            ))
+        
+        # Assign admin role
+        user_role, created = UserRole.objects.get_or_create(user=admin_user)
+        user_role.role = 'admin'
+        user_role.save()
+        
+        self.stdout.write(self.style.SUCCESS(
+            '\n' + '='*50
+        ))
+        self.stdout.write(self.style.SUCCESS(
+            'ADMIN CREDENTIALS (Share these with authorized admins):'
+        ))
+        self.stdout.write(self.style.SUCCESS(
+            '='*50
+        ))
+        self.stdout.write(self.style.WARNING(
+            f'Username: {username}'
+        ))
+        self.stdout.write(self.style.WARNING(
+            f'Password: {password}'
+        ))
+        self.stdout.write(self.style.SUCCESS(
+            '='*50 + '\n'
+        ))
+        
+        self.stdout.write(self.style.SUCCESS(
+            'Admin user is ready to assign roles to other users!'
+        ))
+```
+
+For more details, see [ADMIN_SETUP.md](backend/ADMIN_SETUP.md)
+
 ## 🎯 Future Enhancements
 
 - [ ] Email verification
@@ -321,6 +560,8 @@ djangorestframework-simplejwt==5.3.1
 - [ ] Push notifications
 - [ ] Dark mode theme
 - [ ] Multi-language support
+- [ ] Valuation review and approval workflow
+- [ ] Export valuations to PDF
 
 ## 📄 License
 

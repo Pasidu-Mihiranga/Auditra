@@ -1,3 +1,5 @@
+import 'valuation_model.dart';
+
 class Project {
   final int id;
   final String title;
@@ -14,6 +16,8 @@ class Project {
   final DateTime? endDate;
   final List<ProjectDocument> documents;
   final int documentsCount;
+  final List<Valuation> valuations;
+  final int valuationsCount;
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -33,19 +37,54 @@ class Project {
     this.endDate,
     required this.documents,
     required this.documentsCount,
+    required this.valuations,
+    required this.valuationsCount,
     required this.createdAt,
     required this.updatedAt,
   });
 
   factory Project.fromJson(Map<String, dynamic> json) {
+    // Helper to safely parse int values
+    int? parseIntSafely(dynamic value) {
+      if (value == null) return null;
+      if (value is int) return value;
+      if (value is String) return int.tryParse(value);
+      if (value is double) return value.toInt();
+      return null;
+    }
+
+    // Parse required int fields with validation
+    final id = parseIntSafely(json['id']);
+    final coordinatorId = parseIntSafely(json['coordinator']);
+
+    if (id == null) {
+      throw FormatException('Required field "id" is null or cannot be parsed in Project JSON: ${json['id']}');
+    }
+    if (coordinatorId == null) {
+      throw FormatException('Required field "coordinator" is null or cannot be parsed in Project JSON: ${json['coordinator']}');
+    }
+
+    // Parse valuations safely, skipping any that fail to parse
+    List<Valuation> valuations = [];
+    if (json['valuations'] != null && json['valuations'] is List) {
+      for (var valJson in json['valuations']) {
+        try {
+          valuations.add(Valuation.fromJson(valJson));
+        } catch (e) {
+          print('Warning: Failed to parse valuation: $e');
+          // Continue with other valuations
+        }
+      }
+    }
+
     return Project(
-      id: json['id'],
-      title: json['title'],
+      id: id,
+      title: json['title'] ?? '',
       description: json['description'],
-      coordinatorId: json['coordinator'],
+      coordinatorId: coordinatorId,
       coordinatorUsername: json['coordinator_username'] ?? '',
       coordinatorName: json['coordinator_name'],
-      assignedFieldOfficerId: json['assigned_field_officer'],
+      assignedFieldOfficerId: parseIntSafely(json['assigned_field_officer']),
       assignedFieldOfficerUsername: json['assigned_field_officer_username'],
       assignedFieldOfficerName: json['assigned_field_officer_name'],
       status: json['status'] ?? 'pending',
@@ -53,9 +92,19 @@ class Project {
       startDate: json['start_date'] != null ? DateTime.parse(json['start_date']) : null,
       endDate: json['end_date'] != null ? DateTime.parse(json['end_date']) : null,
       documents: (json['documents'] as List<dynamic>?)
-          ?.map((doc) => ProjectDocument.fromJson(doc))
+          ?.map((doc) {
+            try {
+              return ProjectDocument.fromJson(doc);
+            } catch (e) {
+              print('Warning: Failed to parse document: $e');
+              return null;
+            }
+          })
+          .whereType<ProjectDocument>()
           .toList() ?? [],
-      documentsCount: json['documents_count'] ?? 0,
+      documentsCount: parseIntSafely(json['documents_count']) ?? 0,
+      valuations: valuations,
+      valuationsCount: parseIntSafely(json['valuations_count']) ?? valuations.length,
       createdAt: DateTime.parse(json['created_at']),
       updatedAt: DateTime.parse(json['updated_at']),
     );
@@ -91,14 +140,33 @@ class ProjectDocument {
   });
 
   factory ProjectDocument.fromJson(Map<String, dynamic> json) {
+    // Helper to safely parse int values
+    int? parseIntSafely(dynamic value) {
+      if (value == null) return null;
+      if (value is int) return value;
+      if (value is String) return int.tryParse(value);
+      if (value is double) return value.toInt();
+      return null;
+    }
+
+    final id = parseIntSafely(json['id']);
+    final projectId = parseIntSafely(json['project']);
+
+    if (id == null) {
+      throw FormatException('Required field "id" is null or cannot be parsed in ProjectDocument JSON: ${json['id']}');
+    }
+    if (projectId == null) {
+      throw FormatException('Required field "project" is null or cannot be parsed in ProjectDocument JSON: ${json['project']}');
+    }
+
     return ProjectDocument(
-      id: json['id'],
-      projectId: json['project'],
+      id: id,
+      projectId: projectId,
       fileUrl: json['file_url'],
-      fileSize: json['file_size'],
-      name: json['name'],
+      fileSize: parseIntSafely(json['file_size']),
+      name: json['name'] ?? '',
       description: json['description'],
-      uploadedById: json['uploaded_by'],
+      uploadedById: parseIntSafely(json['uploaded_by']),
       uploadedByUsername: json['uploaded_by_username'],
       uploadedAt: DateTime.parse(json['uploaded_at']),
     );

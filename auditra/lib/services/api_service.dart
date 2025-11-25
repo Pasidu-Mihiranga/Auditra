@@ -724,5 +724,311 @@ class ApiService {
       return {'success': false, 'message': 'Connection error: $e'};
     }
   }
+
+  // Valuation API methods
+  static Future<Map<String, dynamic>> getValuations({int? projectId}) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token');
+
+      if (token == null) {
+        return {'success': false, 'message': 'Not authenticated'};
+      }
+
+      String url = '$baseUrl/valuations/';
+      if (projectId != null) {
+        url += '?project=$projectId';
+      }
+
+      final response = await http.get(
+        Uri.parse(url),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      final data = jsonDecode(response.body);
+
+      if (response.statusCode == 200) {
+        return {'success': true, 'data': data};
+      } else {
+        return {'success': false, 'message': data['detail'] ?? 'Failed to load valuations'};
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'Connection error: $e'};
+    }
+  }
+
+  static Future<Map<String, dynamic>> getValuation(int valuationId) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token');
+
+      if (token == null) {
+        return {'success': false, 'message': 'Not authenticated'};
+      }
+
+      final response = await http.get(
+        Uri.parse('$baseUrl/valuations/$valuationId/'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      final data = jsonDecode(response.body);
+
+      if (response.statusCode == 200) {
+        return {'success': true, 'data': data};
+      } else {
+        return {'success': false, 'message': data['detail'] ?? 'Failed to load valuation'};
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'Connection error: $e'};
+    }
+  }
+
+  static Future<Map<String, dynamic>> createValuation(Map<String, dynamic> valuationData) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token');
+
+      if (token == null) {
+        return {'success': false, 'message': 'Not authenticated'};
+      }
+
+      final response = await http.post(
+        Uri.parse('$baseUrl/valuations/'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode(valuationData),
+      );
+
+      final responseBody = response.body;
+      Map<String, dynamic> data;
+      
+      try {
+        data = jsonDecode(responseBody);
+      } catch (e) {
+        return {'success': false, 'message': 'Invalid response from server: $responseBody'};
+      }
+
+      if (response.statusCode == 201) {
+        return {'success': true, 'data': data};
+      } else {
+        // Try to extract detailed error messages
+        String errorMessage = 'Failed to create valuation';
+        
+        // Check for errors dictionary (Django REST Framework format)
+        if (data.containsKey('errors')) {
+          final errors = data['errors'];
+          if (errors is Map) {
+            final fieldErrors = <String>[];
+            errors.forEach((key, value) {
+              if (value is List && value.isNotEmpty) {
+                fieldErrors.add('$key: ${value.join(", ")}');
+              } else if (value is String && value.isNotEmpty) {
+                fieldErrors.add('$key: $value');
+              }
+            });
+            if (fieldErrors.isNotEmpty) {
+              errorMessage = fieldErrors.join('\n');
+            }
+          }
+        } else if (data.containsKey('detail')) {
+          errorMessage = data['detail'].toString();
+        } else if (data.containsKey('message')) {
+          errorMessage = data['message'].toString();
+        } else if (data.containsKey('error')) {
+          errorMessage = data['error'].toString();
+        } else if (data.containsKey('non_field_errors')) {
+          errorMessage = data['non_field_errors'].toString();
+        } else {
+          // Check for field-specific errors (direct in response)
+          final fieldErrors = <String>[];
+          data.forEach((key, value) {
+            if (key != 'success' && value != null) {
+              if (value is List && value.isNotEmpty) {
+                fieldErrors.add('$key: ${value.join(", ")}');
+              } else if (value is String && value.isNotEmpty) {
+                fieldErrors.add('$key: $value');
+              }
+            }
+          });
+          if (fieldErrors.isNotEmpty) {
+            errorMessage = fieldErrors.join('\n');
+          } else {
+            errorMessage = 'Status ${response.statusCode}: ${responseBody}';
+          }
+        }
+        
+        // Log full response for debugging
+        print('Valuation creation error response: $responseBody');
+        return {'success': false, 'message': errorMessage};
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'Connection error: $e'};
+    }
+  }
+
+  static Future<Map<String, dynamic>> updateValuation(int valuationId, Map<String, dynamic> valuationData) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token');
+
+      if (token == null) {
+        return {'success': false, 'message': 'Not authenticated'};
+      }
+
+      final response = await http.patch(
+        Uri.parse('$baseUrl/valuations/$valuationId/'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode(valuationData),
+      );
+
+      final responseBody = response.body;
+      Map<String, dynamic> data;
+      
+      try {
+        data = jsonDecode(responseBody);
+      } catch (e) {
+        return {'success': false, 'message': 'Invalid response from server: $responseBody'};
+      }
+
+      if (response.statusCode == 200) {
+        return {'success': true, 'data': data};
+      } else {
+        // Try to extract detailed error messages
+        String errorMessage = 'Failed to update valuation';
+        if (data.containsKey('detail')) {
+          errorMessage = data['detail'].toString();
+        } else if (data.containsKey('message')) {
+          errorMessage = data['message'].toString();
+        } else if (data.containsKey('error')) {
+          errorMessage = data['error'].toString();
+        } else if (data.containsKey('non_field_errors')) {
+          errorMessage = data['non_field_errors'].toString();
+        } else {
+          // Check for field-specific errors
+          final fieldErrors = <String>[];
+          data.forEach((key, value) {
+            if (value is List && value.isNotEmpty) {
+              fieldErrors.add('$key: ${value.join(", ")}');
+            } else if (value is String && value.isNotEmpty) {
+              fieldErrors.add('$key: $value');
+            }
+          });
+          if (fieldErrors.isNotEmpty) {
+            errorMessage = fieldErrors.join('\n');
+          } else {
+            errorMessage = 'Status ${response.statusCode}: ${responseBody}';
+          }
+        }
+        return {'success': false, 'message': errorMessage};
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'Connection error: $e'};
+    }
+  }
+
+  static Future<Map<String, dynamic>> submitValuation(int valuationId) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token');
+
+      if (token == null) {
+        return {'success': false, 'message': 'Not authenticated'};
+      }
+
+      final response = await http.post(
+        Uri.parse('$baseUrl/valuations/$valuationId/submit/'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      final data = jsonDecode(response.body);
+
+      if (response.statusCode == 200) {
+        return {'success': true, 'data': data};
+      } else {
+        return {'success': false, 'message': data['error'] ?? data['detail'] ?? 'Failed to submit valuation'};
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'Connection error: $e'};
+    }
+  }
+
+  static Future<Map<String, dynamic>> uploadValuationPhoto(int valuationId, String photoPath, {String? caption}) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token');
+
+      if (token == null) {
+        return {'success': false, 'message': 'Not authenticated'};
+      }
+
+      final request = http.MultipartRequest(
+        'POST',
+        Uri.parse('$baseUrl/valuations/$valuationId/photos/'),
+      );
+
+      request.headers['Authorization'] = 'Bearer $token';
+      request.fields['valuation'] = valuationId.toString();
+      if (caption != null && caption.isNotEmpty) {
+        request.fields['caption'] = caption;
+      }
+
+      final file = await http.MultipartFile.fromPath('photo', photoPath);
+      request.files.add(file);
+
+      final streamedResponse = await request.send();
+      final response = await http.Response.fromStream(streamedResponse);
+      final data = jsonDecode(response.body);
+
+      if (response.statusCode == 201) {
+        return {'success': true, 'data': data};
+      } else {
+        return {'success': false, 'message': data['detail'] ?? data['message'] ?? 'Failed to upload photo'};
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'Connection error: $e'};
+    }
+  }
+
+  static Future<Map<String, dynamic>> deleteValuationPhoto(int photoId) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token');
+
+      if (token == null) {
+        return {'success': false, 'message': 'Not authenticated'};
+      }
+
+      final response = await http.delete(
+        Uri.parse('$baseUrl/valuations/photos/$photoId/'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      if (response.statusCode == 204 || response.statusCode == 200) {
+        return {'success': true};
+      } else {
+        final data = jsonDecode(response.body);
+        return {'success': false, 'message': data['detail'] ?? 'Failed to delete photo'};
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'Connection error: $e'};
+    }
+  }
 }
 

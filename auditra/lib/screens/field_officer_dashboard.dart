@@ -7,6 +7,7 @@ import '../models/attendance_model.dart';
 import '../models/project_model.dart';
 import 'login_screen.dart';
 import 'generic_dashboard.dart';
+import 'valuation_form_screen.dart';
 
 class FieldOfficerDashboard extends StatefulWidget {
   const FieldOfficerDashboard({super.key});
@@ -149,8 +150,26 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
         _isLoading = false;
         _isLoadingProjects = false;
         if (result['success']) {
-          final data = result['data'] as List<dynamic>;
-          _projects = data.map((p) => Project.fromJson(p)).toList();
+          try {
+            final data = result['data'] as List<dynamic>;
+            _projects = data.map((p) => Project.fromJson(p)).toList();
+          } catch (e) {
+            print('Error parsing projects: $e');
+            print('Response data: ${result['data']}');
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Error loading projects: $e'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Failed to load projects: ${result['message'] ?? 'Unknown error'}'),
+              backgroundColor: Colors.red,
+            ),
+          );
         }
       });
     }
@@ -633,6 +652,90 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
                   ],
                 ),
               ],
+              if (project.valuationsCount > 0) ...[
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.blue[50],
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.blue[200]!),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(Icons.assessment, size: 16, color: Colors.blue[700]),
+                          const SizedBox(width: 6),
+                          Text(
+                            'Valuations (${project.valuationsCount})',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.blue[900],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      ...project.valuations.take(3).map((valuation) => Padding(
+                        padding: const EdgeInsets.only(bottom: 6),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 8,
+                              height: 8,
+                              decoration: BoxDecoration(
+                                color: _getValuationStatusColor(valuation.status),
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                '${valuation.categoryDisplay} - ${valuation.statusDisplay}',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey[800],
+                                ),
+                              ),
+                            ),
+                            if (valuation.canBeEdited && valuation.status == 'submitted')
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: Colors.orange[100],
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Text(
+                                  'Editable',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    color: Colors.orange[900],
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      )),
+                      if (project.valuationsCount > 3)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Text(
+                            '+ ${project.valuationsCount - 3} more',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.blue[700],
+                              fontStyle: FontStyle.italic,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
             ],
           ),
         ),
@@ -652,6 +755,23 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
         return Colors.red[100]!;
       default:
         return Colors.grey[200]!;
+    }
+  }
+
+  Color _getValuationStatusColor(String status) {
+    switch (status) {
+      case 'draft':
+        return Colors.grey[600]!;
+      case 'submitted':
+        return Colors.blue[600]!;
+      case 'reviewed':
+        return Colors.purple[600]!;
+      case 'approved':
+        return Colors.green[600]!;
+      case 'rejected':
+        return Colors.red[600]!;
+      default:
+        return Colors.grey[400]!;
     }
   }
 
@@ -705,11 +825,73 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
                             )
                           : null,
                     )),
+                const SizedBox(height: 16),
+              ],
+              if (project.valuations.isNotEmpty) ...[
+                const Text(
+                  'Valuations:',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                ...project.valuations.map((valuation) => ListTile(
+                      leading: Container(
+                        width: 12,
+                        height: 12,
+                        decoration: BoxDecoration(
+                          color: _getValuationStatusColor(valuation.status),
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      title: Text('${valuation.categoryDisplay}'),
+                      subtitle: Text('Status: ${valuation.statusDisplay}'),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (valuation.canBeEdited || valuation.status == 'draft')
+                            IconButton(
+                              icon: const Icon(Icons.edit),
+                              onPressed: () {
+                                Navigator.of(context).pop();
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (_) => ValuationFormScreen(
+                                      project: project,
+                                      existingValuation: valuation,
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                          if (valuation.status == 'draft')
+                            IconButton(
+                              icon: const Icon(Icons.delete_outline),
+                              onPressed: () async {
+                                // TODO: Implement delete functionality
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('Delete functionality coming soon')),
+                                );
+                              },
+                            ),
+                        ],
+                      ),
+                    )),
               ],
             ],
           ),
         ),
         actions: [
+          TextButton.icon(
+            onPressed: () {
+              Navigator.of(context).pop();
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => ValuationFormScreen(project: project),
+                ),
+              );
+            },
+            icon: const Icon(Icons.add),
+            label: const Text('Create Valuation'),
+          ),
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
             child: const Text('Close'),

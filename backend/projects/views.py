@@ -27,17 +27,24 @@ class ProjectListView(generics.ListCreateAPIView):
         
         # Coordinators see all projects they created
         if hasattr(user, 'role') and user.role.role == 'coordinator':
-            return Project.objects.filter(coordinator=user)
+            queryset = Project.objects.filter(coordinator=user)
         
         # Field officers see only assigned projects
         elif hasattr(user, 'role') and user.role.role == 'field_officer':
-            return Project.objects.filter(assigned_field_officer=user)
+            queryset = Project.objects.filter(assigned_field_officer=user)
         
         # Admins see all projects
         elif user.is_staff or user.is_superuser:
-            return Project.objects.all()
+            queryset = Project.objects.all()
+        else:
+            queryset = Project.objects.none()
         
-        return Project.objects.none()
+        # Optimize queryset with select_related and prefetch_related
+        return queryset.select_related(
+            'coordinator', 'assigned_field_officer'
+        ).prefetch_related(
+            'documents', 'valuations__field_officer', 'valuations__photos'
+        )
     
     def perform_create(self, serializer):
         # Only coordinators can create projects

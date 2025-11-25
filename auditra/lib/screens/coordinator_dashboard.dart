@@ -142,8 +142,26 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
       setState(() {
         _isLoadingProjects = false;
         if (result['success']) {
-          final data = result['data'] as List<dynamic>;
-          _projects = data.map((p) => Project.fromJson(p)).toList();
+          try {
+            final data = result['data'] as List<dynamic>;
+            _projects = data.map((p) => Project.fromJson(p)).toList();
+          } catch (e) {
+            print('Error parsing projects: $e');
+            print('Response data: ${result['data']}');
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Error loading projects: $e'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Failed to load projects: ${result['message'] ?? 'Unknown error'}'),
+              backgroundColor: Colors.red,
+            ),
+          );
         }
       });
     }
@@ -862,11 +880,96 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
                   ],
                 ),
               ],
+              if (project.valuationsCount > 0) ...[
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.blue[50],
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.blue[200]!),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(Icons.assessment, size: 16, color: Colors.blue[700]),
+                          const SizedBox(width: 6),
+                          Text(
+                            'Valuations (${project.valuationsCount})',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.blue[900],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      ...project.valuations.take(3).map((valuation) => Padding(
+                        padding: const EdgeInsets.only(bottom: 6),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 8,
+                              height: 8,
+                              decoration: BoxDecoration(
+                                color: _getValuationStatusColor(valuation.status),
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                '${valuation.categoryDisplay} - ${valuation.statusDisplay}',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey[800],
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      )),
+                      if (project.valuationsCount > 3)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Text(
+                            '+ ${project.valuationsCount - 3} more',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.blue[700],
+                              fontStyle: FontStyle.italic,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
             ],
           ),
         ),
       ),
     );
+  }
+
+  Color _getValuationStatusColor(String status) {
+    switch (status) {
+      case 'draft':
+        return Colors.grey[600]!;
+      case 'submitted':
+        return Colors.blue[600]!;
+      case 'reviewed':
+        return Colors.purple[600]!;
+      case 'approved':
+        return Colors.green[600]!;
+      case 'rejected':
+        return Colors.red[600]!;
+      default:
+        return Colors.grey[400]!;
+    }
   }
 
   Color _getStatusColor(String status) {
