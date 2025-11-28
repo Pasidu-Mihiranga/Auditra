@@ -52,11 +52,21 @@ class _SplashScreenState extends State<SplashScreen> {
 
     if (!mounted) return;
 
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(
-        builder: (_) => isLoggedIn ? const HomeScreen() : const LoginScreen(),
-      ),
-    );
+    if (isLoggedIn) {
+      // Get user role to route to appropriate dashboard
+      await ApiService.getMyRole();
+      final role = await ApiService.getUserRole();
+      
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(
+          builder: (_) => HomeScreen(userRole: role ?? 'unassigned'),
+        ),
+      );
+    } else {
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (_) => const LoginScreen()),
+      );
+    }
   }
 
   @override
