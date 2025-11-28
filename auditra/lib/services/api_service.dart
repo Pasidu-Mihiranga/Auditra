@@ -5,7 +5,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 class ApiService {
   // Change this to your computer's IP address when testing on physical device
   // For emulator, use 10.0.2.2 (Android) or localhost (iOS)
-  static const String baseUrl = 'http://localhost:8000/api';
+  // For physical device, use your computer's IP address (e.g., 'http://192.168.1.100:8000/api')
+  static const String baseUrl = 'http://10.83.209.111:8000/api';
 
   // Register new user
   static Future<Map<String, dynamic>> register({
