@@ -4,6 +4,7 @@ import 'package:fl_chart/fl_chart.dart';
 import 'dart:math' as math;
 import '../services/api_service.dart';
 import '../models/attendance_model.dart';
+import '../models/project_model.dart';
 import 'login_screen.dart';
 
 class GenericDashboard extends StatefulWidget {
@@ -36,6 +37,11 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
   bool _isMarkingAttendance = false;
   
   late TabController _periodTabController;
+  TabController? _mainTabController; // For Attendance/Projects tabs
+  
+  // Project state (for roles that can view projects)
+  List<Project> _projects = [];
+  bool _isLoadingProjects = false;
   
   // Timer for countdown
   DateTime? _countdownEnd;
@@ -43,6 +49,14 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
   
   // Timer for overtime
   Duration _overtimeDuration = Duration.zero;
+  
+  // Check if this role should see projects
+  bool get _shouldShowProjects {
+    return widget.role == 'client' || 
+           widget.role == 'agent' || 
+           widget.role == 'accessor' || 
+           widget.role == 'senior_valuer';
+  }
 
   @override
   void initState() {
@@ -61,6 +75,18 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
         _loadSummary();
       }
     });
+    
+    // Initialize main tab controller if this role should see projects
+    if (_shouldShowProjects) {
+      _mainTabController = TabController(length: 2, vsync: this);
+      _mainTabController!.addListener(() {
+        if (!_mainTabController!.indexIsChanging && mounted) {
+          setState(() {});
+        }
+      });
+      _loadProjects();
+    }
+    
     _loadUserData();
     _loadTodayAttendance();
     _loadSummary();
@@ -70,7 +96,29 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
   @override
   void dispose() {
     _periodTabController.dispose();
+    _mainTabController?.dispose();
     super.dispose();
+  }
+  
+  Future<void> _loadProjects() async {
+    if (!_shouldShowProjects) return;
+    
+    setState(() => _isLoadingProjects = true);
+    
+    final result = await ApiService.getProjects();
+    
+    if (mounted) {
+      setState(() {
+        _isLoadingProjects = false;
+        if (result['success']) {
+          final data = result['data'];
+          final projectsList = data is List ? data : (data['results'] ?? []);
+          _projects = (projectsList as List<dynamic>)
+              .map((p) => Project.fromJson(p))
+              .toList();
+        }
+      });
+    }
   }
 
   Future<void> _loadUserData() async {
@@ -438,11 +486,10 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
 
   @override
   Widget build(BuildContext context) {
-    final body = _isLoading
-        ? const Center(child: CircularProgressIndicator())
-        : _buildDashboardBody();
-
     if (widget.isEmbedded) {
+      final body = _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : _buildDashboardBody();
       return body;
     }
 
@@ -568,8 +615,27 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
             tooltip: 'Logout',
           ),
         ],
+        bottom: _shouldShowProjects && _mainTabController != null
+            ? TabBar(
+                controller: _mainTabController,
+                tabs: const [
+                  Tab(icon: Icon(Icons.access_time), text: 'Attendance'),
+                  Tab(icon: Icon(Icons.folder), text: 'Projects'),
+                ],
+              )
+            : null,
       ),
-      body: body,
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : _shouldShowProjects && _mainTabController != null
+              ? TabBarView(
+                  controller: _mainTabController,
+                  children: [
+                    _buildDashboardBody(),
+                    _buildProjectsTab(),
+                  ],
+                )
+              : _buildDashboardBody(),
     );
   }
 
@@ -598,6 +664,289 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
             if (_summary != null) _buildChartsSection(),
           ],
         ),
+      ),
+    );
+  }
+  
+  // Project viewing methods (for client, agent, accessor, senior valuer)
+  Widget _buildProjectsTab() {
+    return RefreshIndicator(
+      onRefresh: _loadProjects,
+      child: _isLoadingProjects
+          ? const Center(child: CircularProgressIndicator())
+          : _projects.isEmpty
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.folder_open, size: 64, color: Colors.grey[400]),
+                      const SizedBox(height: 16),
+                      Text(
+                        'No projects assigned',
+                        style: TextStyle(fontSize: 18, color: Colors.grey[600]),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Projects assigned to you will appear here',
+                        style: TextStyle(color: Colors.grey[500]),
+                      ),
+                    ],
+                  ),
+                )
+              : ListView.builder(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: _projects.length,
+                  itemBuilder: (context, index) {
+                    final project = _projects[index];
+                    return _buildProjectCard(project);
+                  },
+                ),
+    );
+  }
+
+  Widget _buildProjectCard(Project project) {
+    final priority = project.priority ?? 'medium';
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Card(
+          elevation: 2,
+          margin: const EdgeInsets.only(bottom: 12),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          child: InkWell(
+            onTap: () => _viewProjectDetails(project),
+            borderRadius: BorderRadius.circular(12),
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const SizedBox(height: 20), // Space for priority label
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          project.title,
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                      Chip(
+                        label: Text(project.statusDisplay),
+                        backgroundColor: _getProjectStatusColor(project.status),
+                      ),
+                    ],
+                  ),
+              if (project.description != null) ...[
+                const SizedBox(height: 8),
+                Text(
+                  project.description!,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(color: Colors.grey[600]),
+                ),
+              ],
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Icon(Icons.person, size: 16, color: Colors.grey[600]),
+                  const SizedBox(width: 4),
+                  Text(
+                    'Coordinator: ${project.coordinatorName ?? project.coordinatorUsername}',
+                    style: TextStyle(color: Colors.grey[700]),
+                  ),
+                  const Spacer(),
+                  Icon(Icons.attach_file, size: 16, color: Colors.grey[600]),
+                  const SizedBox(width: 4),
+                  Text(
+                    '${project.documentsCount} docs',
+                    style: TextStyle(color: Colors.grey[600]),
+                  ),
+                ],
+              ),
+              if (project.startDate != null || project.endDate != null) ...[
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    if (project.startDate != null) ...[
+                      Icon(Icons.calendar_today, size: 14, color: Colors.grey[600]),
+                      const SizedBox(width: 4),
+                      Text(
+                        DateFormat('MMM dd, yyyy').format(project.startDate!),
+                        style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                      ),
+                    ],
+                    if (project.endDate != null) ...[
+                      const SizedBox(width: 16),
+                      Icon(Icons.event, size: 14, color: Colors.grey[600]),
+                      const SizedBox(width: 4),
+                      Text(
+                        DateFormat('MMM dd, yyyy').format(project.endDate!),
+                        style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                      ),
+                    ],
+                  ],
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+      ),
+      // Priority ribbon at top-left corner
+      Positioned(
+        top: 4,
+        left: 8,
+        child: _buildPriorityRibbon(priority),
+      ),
+    ],
+    );
+  }
+  
+  Color _getPriorityColor(String priority) {
+    switch (priority.toLowerCase()) {
+      case 'high':
+        return Colors.red[600]!;
+      case 'low':
+        return Colors.green[600]!;
+      case 'medium':
+      default:
+        return Colors.orange[600]!;
+    }
+  }
+  
+  String _formatPriorityLabel(String priority) {
+    if (priority.isEmpty) return 'Medium';
+    final lower = priority.toLowerCase();
+    if (lower == 'high') return 'High';
+    if (lower == 'low') return 'Low';
+    return 'Medium';
+  }
+  
+  Widget _buildPriorityRibbon(String priority) {
+    final color = _getPriorityColor(priority);
+    final label = _formatPriorityLabel(priority);
+    
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: color.withOpacity(0.3),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            priority.toLowerCase() == 'high'
+                ? Icons.priority_high
+                : priority.toLowerCase() == 'low'
+                    ? Icons.arrow_downward
+                    : Icons.remove_circle_outline,
+            size: 14,
+            color: Colors.white,
+          ),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Color _getProjectStatusColor(String status) {
+    switch (status) {
+      case 'pending':
+        return Colors.orange[100]!;
+      case 'in_progress':
+        return Colors.blue[100]!;
+      case 'completed':
+        return Colors.green[100]!;
+      case 'cancelled':
+        return Colors.red[100]!;
+      default:
+        return Colors.grey[200]!;
+    }
+  }
+
+  Future<void> _viewProjectDetails(Project project) async {
+    await showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(project.title),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (project.description != null) ...[
+                const Text(
+                  'Description:',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 4),
+                Text(project.description!),
+                const SizedBox(height: 16),
+              ],
+              Text(
+                'Status: ${project.statusDisplay}',
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Priority: ${_formatPriorityLabel(project.priority ?? 'medium')}',
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Coordinator: ${project.coordinatorName ?? project.coordinatorUsername}',
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 16),
+              if (project.documents.isNotEmpty) ...[
+                const Text(
+                  'Documents:',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                ...project.documents.map((doc) => ListTile(
+                      title: Text(doc.name),
+                      subtitle: Text(doc.fileSizeFormatted),
+                      trailing: doc.fileUrl != null
+                          ? IconButton(
+                              icon: const Icon(Icons.download),
+                              onPressed: () {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text('Download: ${doc.fileUrl}')),
+                                );
+                              },
+                            )
+                          : null,
+                    )),
+              ],
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Close'),
+          ),
+        ],
       ),
     );
   }
