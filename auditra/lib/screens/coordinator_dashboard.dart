@@ -202,10 +202,15 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
       setState(() {
         _isLoadingProjects = false;
         if (result['success']) {
-<<<<<<< HEAD
           try {
-            final data = result['data'] as List<dynamic>;
-            _projects = data.map((p) => Project.fromJson(p)).toList();
+            final data = result['data'];
+            if (data is List) {
+              _projects = data.map((p) => Project.fromJson(p)).toList();
+              // Sort by creation date (oldest first - creation order)
+              _projects.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+            } else {
+              _projects = [];
+            }
           } catch (e) {
             print('Error parsing projects: $e');
             print('Response data: ${result['data']}');
@@ -215,21 +220,6 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
                 backgroundColor: Colors.red,
               ),
             );
-          }
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Failed to load projects: ${result['message'] ?? 'Unknown error'}'),
-              backgroundColor: Colors.red,
-            ),
-          );
-=======
-          final data = result['data'];
-          if (data is List) {
-            _projects = data.map((p) => Project.fromJson(p)).toList();
-            // Sort by creation date (oldest first - creation order)
-            _projects.sort((a, b) => a.createdAt.compareTo(b.createdAt));
-          } else {
             _projects = [];
           }
         } else {
@@ -243,7 +233,6 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
             );
           }
           _projects = [];
->>>>>>> origin/Sapuni
         }
       });
     }
@@ -4985,31 +4974,6 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
                     ),
                   ],
                 ),
-<<<<<<< HEAD
-              ],
-              if (project.valuationsCount > 0) ...[
-                const SizedBox(height: 12),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.blue[50],
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.blue[200]!),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Icon(Icons.assessment, size: 16, color: Colors.blue[700]),
-                          const SizedBox(width: 6),
-                          Text(
-                            'Valuations (${project.valuationsCount})',
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.blue[900],
-=======
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -5198,55 +5162,10 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
                               ),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
->>>>>>> origin/Sapuni
                             ),
                           ),
                         ],
                       ),
-<<<<<<< HEAD
-                      const SizedBox(height: 8),
-                      ...project.valuations.take(3).map((valuation) => Padding(
-                        padding: const EdgeInsets.only(bottom: 6),
-                        child: Row(
-                          children: [
-                            Container(
-                              width: 8,
-                              height: 8,
-                              decoration: BoxDecoration(
-                                color: _getValuationStatusColor(valuation.status),
-                                shape: BoxShape.circle,
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                '${valuation.categoryDisplay} - ${valuation.statusDisplay}',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.grey[800],
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      )),
-                      if (project.valuationsCount > 3)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 4),
-                          child: Text(
-                            '+ ${project.valuationsCount - 3} more',
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: Colors.blue[700],
-                              fontStyle: FontStyle.italic,
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-              ],
-=======
                     ),
                     // Attachment, Edit & Delete buttons aligned with title
                     Row(
@@ -5693,7 +5612,6 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
                   ),
                 ),
               ),
->>>>>>> origin/Sapuni
             ],
           ),
         ),

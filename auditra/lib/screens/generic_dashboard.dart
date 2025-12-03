@@ -4,12 +4,9 @@ import 'package:fl_chart/fl_chart.dart';
 import 'dart:math' as math;
 import '../services/api_service.dart';
 import '../models/attendance_model.dart';
-<<<<<<< HEAD
 import '../models/payment_slip_model.dart';
-import 'payment_slips_screen.dart';
-=======
 import '../models/project_model.dart';
->>>>>>> origin/Sapuni
+import 'payment_slips_screen.dart';
 import 'login_screen.dart';
 
 class GenericDashboard extends StatefulWidget {
