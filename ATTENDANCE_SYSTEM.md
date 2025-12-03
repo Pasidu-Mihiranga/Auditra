@@ -17,7 +17,7 @@ The attendance system allows field officers to mark their attendance, track work
 - Displays in HH:MM:SS format
 
 ### 3. Early Leave
-- Field officers can leave early before 5 PM
+- Field officers can leave early before 5 PM 
 - System automatically calculates if it's a full day (≥4.5 hours) or half day (<4.5 hours)
 - Shows working hours for the day
 

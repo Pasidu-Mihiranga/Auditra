@@ -572,35 +572,40 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
   }
 
   Widget _buildProjectCard(Project project) {
-    return Card(
-      elevation: 2,
-      margin: const EdgeInsets.only(bottom: 12),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: InkWell(
-        onTap: () => _viewProjectDetails(project),
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
+    final priority = project.priority ?? 'medium';
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Card(
+          elevation: 2,
+          margin: const EdgeInsets.only(bottom: 12),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          child: InkWell(
+            onTap: () => _viewProjectDetails(project),
+            borderRadius: BorderRadius.circular(12),
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Expanded(
-                    child: Text(
-                      project.title,
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
+                  const SizedBox(height: 20), // Space for priority label
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          project.title,
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                       ),
-                    ),
+                      Chip(
+                        label: Text(project.statusDisplay),
+                        backgroundColor: _getProjectStatusColor(project.status),
+                      ),
+                    ],
                   ),
-                  Chip(
-                    label: Text(project.statusDisplay),
-                    backgroundColor: _getProjectStatusColor(project.status),
-                  ),
-                ],
-              ),
               if (project.description != null) ...[
                 const SizedBox(height: 8),
                 Text(
@@ -740,6 +745,77 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
           ),
         ),
       ),
+      ),
+      // Priority ribbon at top-left corner
+      Positioned(
+        top: 4,
+        left: 8,
+        child: _buildPriorityRibbon(priority),
+      ),
+    ],
+    );
+  }
+  
+  Color _getPriorityColor(String priority) {
+    switch (priority.toLowerCase()) {
+      case 'high':
+        return Colors.red[600]!;
+      case 'low':
+        return Colors.green[600]!;
+      case 'medium':
+      default:
+        return Colors.orange[600]!;
+    }
+  }
+  
+  String _formatPriorityLabel(String priority) {
+    if (priority.isEmpty) return 'Medium';
+    final lower = priority.toLowerCase();
+    if (lower == 'high') return 'High';
+    if (lower == 'low') return 'Low';
+    return 'Medium';
+  }
+  
+  Widget _buildPriorityRibbon(String priority) {
+    final color = _getPriorityColor(priority);
+    final label = _formatPriorityLabel(priority);
+    
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: color.withOpacity(0.3),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            priority.toLowerCase() == 'high'
+                ? Icons.priority_high
+                : priority.toLowerCase() == 'low'
+                    ? Icons.arrow_downward
+                    : Icons.remove_circle_outline,
+            size: 14,
+            color: Colors.white,
+          ),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -796,6 +872,11 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
               ],
               Text(
                 'Status: ${project.statusDisplay}',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Priority: ${_formatPriorityLabel(project.priority ?? 'medium')}',
                 style: TextStyle(fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 8),

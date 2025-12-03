@@ -10,6 +10,27 @@ class Project {
   final int? assignedFieldOfficerId;
   final String? assignedFieldOfficerUsername;
   final String? assignedFieldOfficerName;
+  final String? assignedFieldOfficerEmail;
+  final int? assignedClientId;
+  final String? assignedClientUsername;
+  final String? assignedClientName;
+  final String? assignedClientEmail;
+  final int? assignedAgentId;
+  final String? assignedAgentUsername;
+  final String? assignedAgentName;
+  final String? assignedAgentEmail;
+  final int? assignedAccessorId;
+  final String? assignedAccessorUsername;
+  final String? assignedAccessorName;
+  final String? assignedAccessorEmail;
+  final int? assignedSeniorValuerId;
+  final String? assignedSeniorValuerUsername;
+  final String? assignedSeniorValuerName;
+  final String? assignedSeniorValuerEmail;
+  final bool hasAgent;
+  final Map<String, dynamic>? clientInfo;
+  final Map<String, dynamic>? agentInfo;
+  final String? priority;
   final String status;
   final String statusDisplay;
   final DateTime? startDate;
@@ -31,6 +52,27 @@ class Project {
     this.assignedFieldOfficerId,
     this.assignedFieldOfficerUsername,
     this.assignedFieldOfficerName,
+    this.assignedFieldOfficerEmail,
+    this.assignedClientId,
+    this.assignedClientUsername,
+    this.assignedClientName,
+    this.assignedClientEmail,
+    this.assignedAgentId,
+    this.assignedAgentUsername,
+    this.assignedAgentName,
+    this.assignedAgentEmail,
+    this.assignedAccessorId,
+    this.assignedAccessorUsername,
+    this.assignedAccessorName,
+    this.assignedAccessorEmail,
+    this.assignedSeniorValuerId,
+    this.assignedSeniorValuerUsername,
+    this.assignedSeniorValuerName,
+    this.assignedSeniorValuerEmail,
+    this.hasAgent = false,
+    this.clientInfo,
+    this.agentInfo,
+    this.priority,
     required this.status,
     required this.statusDisplay,
     this.startDate,
@@ -87,6 +129,27 @@ class Project {
       assignedFieldOfficerId: parseIntSafely(json['assigned_field_officer']),
       assignedFieldOfficerUsername: json['assigned_field_officer_username'],
       assignedFieldOfficerName: json['assigned_field_officer_name'],
+      assignedFieldOfficerEmail: json['assigned_field_officer_email'],
+      assignedClientId: json['assigned_client'],
+      assignedClientUsername: json['assigned_client_username'],
+      assignedClientName: json['assigned_client_name'],
+      assignedClientEmail: json['assigned_client_email'],
+      assignedAgentId: json['assigned_agent'],
+      assignedAgentUsername: json['assigned_agent_username'],
+      assignedAgentName: json['assigned_agent_name'],
+      assignedAgentEmail: json['assigned_agent_email'],
+      assignedAccessorId: json['assigned_accessor'],
+      assignedAccessorUsername: json['assigned_accessor_username'],
+      assignedAccessorName: json['assigned_accessor_name'],
+      assignedAccessorEmail: json['assigned_accessor_email'],
+      assignedSeniorValuerId: json['assigned_senior_valuer'],
+      assignedSeniorValuerUsername: json['assigned_senior_valuer_username'],
+      assignedSeniorValuerName: json['assigned_senior_valuer_name'],
+      assignedSeniorValuerEmail: json['assigned_senior_valuer_email'],
+      hasAgent: json['has_agent'] ?? false,
+      clientInfo: json['client_info'] != null ? Map<String, dynamic>.from(json['client_info']) : null,
+      agentInfo: json['agent_info'] != null ? Map<String, dynamic>.from(json['agent_info']) : null,
+      priority: (json['priority'] ?? 'medium').toString(),
       status: json['status'] ?? 'pending',
       statusDisplay: json['status_display'] ?? 'Pending',
       startDate: json['start_date'] != null ? DateTime.parse(json['start_date']) : null,
@@ -125,6 +188,9 @@ class ProjectDocument {
   final String? description;
   final int? uploadedById;
   final String? uploadedByUsername;
+  final int? assignedToId;
+  final String? assignedToUsername;
+  final String? assignedToName;
   final DateTime uploadedAt;
 
   ProjectDocument({
@@ -136,6 +202,9 @@ class ProjectDocument {
     this.description,
     this.uploadedById,
     this.uploadedByUsername,
+    this.assignedToId,
+    this.assignedToUsername,
+    this.assignedToName,
     required this.uploadedAt,
   });
 
@@ -168,6 +237,9 @@ class ProjectDocument {
       description: json['description'],
       uploadedById: parseIntSafely(json['uploaded_by']),
       uploadedByUsername: json['uploaded_by_username'],
+      assignedToId: json['assigned_to'],
+      assignedToUsername: json['assigned_to_username'],
+      assignedToName: json['assigned_to_name'],
       uploadedAt: DateTime.parse(json['uploaded_at']),
     );
   }
@@ -201,6 +273,134 @@ class FieldOfficer {
 
   factory FieldOfficer.fromJson(Map<String, dynamic> json) {
     return FieldOfficer(
+      id: json['id'],
+      username: json['username'],
+      email: json['email'],
+      firstName: json['first_name'],
+      lastName: json['last_name'],
+      fullName: json['full_name'] ?? json['username'],
+      assignedProjectsCount: json['assigned_projects_count'] ?? 0,
+    );
+  }
+}
+
+class Client {
+  final int id;
+  final String username;
+  final String email;
+  final String? firstName;
+  final String? lastName;
+  final String fullName;
+  final int assignedProjectsCount;
+
+  Client({
+    required this.id,
+    required this.username,
+    required this.email,
+    this.firstName,
+    this.lastName,
+    required this.fullName,
+    required this.assignedProjectsCount,
+  });
+
+  factory Client.fromJson(Map<String, dynamic> json) {
+    return Client(
+      id: json['id'],
+      username: json['username'],
+      email: json['email'],
+      firstName: json['first_name'],
+      lastName: json['last_name'],
+      fullName: json['full_name'] ?? json['username'],
+      assignedProjectsCount: json['assigned_projects_count'] ?? 0,
+    );
+  }
+}
+
+class Agent {
+  final int id;
+  final String username;
+  final String email;
+  final String? firstName;
+  final String? lastName;
+  final String fullName;
+  final int assignedProjectsCount;
+
+  Agent({
+    required this.id,
+    required this.username,
+    required this.email,
+    this.firstName,
+    this.lastName,
+    required this.fullName,
+    required this.assignedProjectsCount,
+  });
+
+  factory Agent.fromJson(Map<String, dynamic> json) {
+    return Agent(
+      id: json['id'],
+      username: json['username'],
+      email: json['email'],
+      firstName: json['first_name'],
+      lastName: json['last_name'],
+      fullName: json['full_name'] ?? json['username'],
+      assignedProjectsCount: json['assigned_projects_count'] ?? 0,
+    );
+  }
+}
+
+class Accessor {
+  final int id;
+  final String username;
+  final String email;
+  final String? firstName;
+  final String? lastName;
+  final String fullName;
+  final int assignedProjectsCount;
+
+  Accessor({
+    required this.id,
+    required this.username,
+    required this.email,
+    this.firstName,
+    this.lastName,
+    required this.fullName,
+    required this.assignedProjectsCount,
+  });
+
+  factory Accessor.fromJson(Map<String, dynamic> json) {
+    return Accessor(
+      id: json['id'],
+      username: json['username'],
+      email: json['email'],
+      firstName: json['first_name'],
+      lastName: json['last_name'],
+      fullName: json['full_name'] ?? json['username'],
+      assignedProjectsCount: json['assigned_projects_count'] ?? 0,
+    );
+  }
+}
+
+class SeniorValuer {
+  final int id;
+  final String username;
+  final String email;
+  final String? firstName;
+  final String? lastName;
+  final String fullName;
+  final int assignedProjectsCount;
+
+  SeniorValuer({
+    required this.id,
+    required this.username,
+    required this.email,
+    this.firstName,
+    this.lastName,
+    required this.fullName,
+    required this.assignedProjectsCount,
+  });
+
+  factory SeniorValuer.fromJson(Map<String, dynamic> json) {
+    return SeniorValuer(
       id: json['id'],
       username: json['username'],
       email: json['email'],
