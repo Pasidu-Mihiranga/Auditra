@@ -19,6 +19,30 @@ from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
 
+# Test imports (removed emojis for Windows compatibility)
+try:
+    print("[INFO] Loading URL patterns...")
+    print("[INFO] Testing authentication.urls import...")
+    from authentication import urls as auth_urls
+    print(f"[OK] Authentication URLs loaded: {len(auth_urls.urlpatterns)} patterns")
+    
+    print("[INFO] Testing attendance.urls import...")
+    from attendance import urls as attendance_urls
+    print(f"[OK] Attendance URLs loaded: {len(attendance_urls.urlpatterns)} patterns")
+    
+    print("[INFO] Testing projects.urls import...")
+    from projects import urls as projects_urls
+    print(f"[OK] Projects URLs loaded: {len(projects_urls.urlpatterns)} patterns")
+    
+    print("[INFO] Testing valuations.urls import...")
+    from valuations import urls as valuations_urls
+    print(f"[OK] Valuations URLs loaded: {len(valuations_urls.urlpatterns)} patterns")
+    
+except Exception as e:
+    print(f"[ERROR] ERROR loading URLs: {e}")
+    import traceback
+    traceback.print_exc()
+
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/auth/', include('authentication.urls')),

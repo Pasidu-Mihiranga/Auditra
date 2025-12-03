@@ -6,7 +6,11 @@ from .views import (
     AssignRoleView,
     AllUsersView,
     RoleListView,
-    MyRoleView
+    MyRoleView,
+    GeneratePaymentSlipsView,
+    MyPaymentSlipsView,
+    AllPaymentSlipsView,
+    PaymentSlipDetailView
 )
 
 urlpatterns = [
@@ -17,5 +21,9 @@ urlpatterns = [
     path('roles/', RoleListView.as_view(), name='roles'),
     path('assign-role/', AssignRoleView.as_view(), name='assign-role'),
     path('users/', AllUsersView.as_view(), name='all-users'),
+    path('payment-slips/generate/', GeneratePaymentSlipsView.as_view(), name='generate-payment-slips'),
+    path('payment-slips/my/', MyPaymentSlipsView.as_view(), name='my-payment-slips'),
+    path('payment-slips/', AllPaymentSlipsView.as_view(), name='all-payment-slips'),
+    path('payment-slips/<int:pk>/', PaymentSlipDetailView.as_view(), name='payment-slip-detail'),
 ]
 

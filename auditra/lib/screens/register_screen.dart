@@ -33,9 +33,25 @@ class _RegisterScreenState extends State<RegisterScreen> {
   }
 
   Future<void> _register() async {
-    if (!_formKey.currentState!.validate()) return;
+    try {
+      print('🟢 Register button clicked!');
+      
+      if (!_formKey.currentState!.validate()) {
+        print('❌ Form validation failed');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Please fill in all required fields correctly'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+        return;
+      }
+      print('✅ Form validation passed');
 
     if (_passwordController.text != _confirmPasswordController.text) {
+      print('❌ Passwords do not match');
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Passwords do not match'),
@@ -46,6 +62,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     }
 
     setState(() => _isLoading = true);
+    print('🟡 Starting registration...');
 
     final result = await ApiService.register(
       username: _usernameController.text.trim(),
@@ -56,26 +73,42 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
 
     setState(() => _isLoading = false);
+    print('🟡 Registration attempt completed');
+    print('🟡 Result: ${result.toString()}');
 
     if (!mounted) return;
 
     if (result['success']) {
-      // Get user role to route to appropriate dashboard
-      await ApiService.getMyRole();
-      final role = await ApiService.getUserRole();
+      print('✅ Registration successful!');
       
       if (!mounted) return;
       
+      // Navigate directly - role will be fetched later if needed
       Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => HomeScreen(userRole: role ?? 'unassigned')),
+        MaterialPageRoute(builder: (_) => HomeScreen(userRole: 'unassigned')),
       );
     } else {
+      print('❌ Registration failed: ${result['message']}');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(result['message']),
+          content: Text(result['message'] ?? 'Registration failed. Please try again.'),
           backgroundColor: Colors.red,
+          duration: const Duration(seconds: 5),
         ),
       );
+    }
+    } catch (e) {
+      print('❌ Unexpected error in _register: $e');
+      setState(() => _isLoading = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('An error occurred: ${e.toString()}'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      }
     }
   }
 
@@ -247,7 +280,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
                 // Register Button
                 ElevatedButton(
-                  onPressed: _isLoading ? null : _register,
+                  onPressed: _isLoading 
+                    ? null 
+                    : () {
+                        print('🟡 Button onPressed triggered');
+                        _register();
+                      },
                   style: ElevatedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 16),
                     shape: RoundedRectangleBorder(

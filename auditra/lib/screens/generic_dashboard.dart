@@ -4,6 +4,8 @@ import 'package:fl_chart/fl_chart.dart';
 import 'dart:math' as math;
 import '../services/api_service.dart';
 import '../models/attendance_model.dart';
+import '../models/payment_slip_model.dart';
+import 'payment_slips_screen.dart';
 import 'login_screen.dart';
 
 class GenericDashboard extends StatefulWidget {
@@ -147,40 +149,97 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
   }
 
   Future<void> _loadTodayAttendance() async {
-    final result = await ApiService.getTodayAttendance();
-    
-    if (mounted) {
-      setState(() {
-        if (result['success']) {
-          final data = result['data'];
-          _isWorkingDay = data['is_working_day'] ?? true;
-          if (data['data'] != null) {
-            _todayAttendance = Attendance.fromJson(data['data']);
-            // Initialize overtime duration if overtime is active
-            if (_todayAttendance!.isOvertimeActive && _todayAttendance!.overtimeStart != null) {
-              final now = DateTime.now();
-              _overtimeDuration = now.difference(_todayAttendance!.overtimeStart!);
+    try {
+      final result = await ApiService.getTodayAttendance();
+      
+      if (mounted) {
+        setState(() {
+          if (result['success']) {
+            final data = result['data'];
+            _isWorkingDay = data['is_working_day'] ?? true;
+            if (data['data'] != null) {
+              _todayAttendance = Attendance.fromJson(data['data']);
+              // Initialize overtime duration if overtime is active
+              if (_todayAttendance!.isOvertimeActive && _todayAttendance!.overtimeStart != null) {
+                final now = DateTime.now();
+                _overtimeDuration = now.difference(_todayAttendance!.overtimeStart!);
+              }
+            } else {
+              _todayAttendance = null;
+              _overtimeDuration = Duration.zero;
             }
           } else {
             _todayAttendance = null;
             _overtimeDuration = Duration.zero;
+            // Show error message if available
+            if (result['message'] != null && mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(result['message'] ?? 'Failed to load attendance'),
+                  backgroundColor: Colors.red,
+                  duration: const Duration(seconds: 4),
+                ),
+              );
+            }
           }
-        }
-      });
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _todayAttendance = null;
+          _overtimeDuration = Duration.zero;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error loading attendance: $e'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
     }
   }
 
   Future<void> _loadSummary() async {
     setState(() => _isLoadingSummary = true);
-    final result = await ApiService.getAttendanceSummary(period: _selectedPeriod);
-    
-    if (mounted) {
-      setState(() {
-        _isLoadingSummary = false;
-        if (result['success'] && result['data']['data'] != null) {
-          _summary = AttendanceSummary.fromJson(result['data']['data']);
-        }
-      });
+    try {
+      final result = await ApiService.getAttendanceSummary(period: _selectedPeriod);
+      
+      if (mounted) {
+        setState(() {
+          _isLoadingSummary = false;
+          if (result['success'] && result['data'] != null && result['data']['data'] != null) {
+            _summary = AttendanceSummary.fromJson(result['data']['data']);
+          } else {
+            _summary = null;
+            // Show error message if available
+            if (result['message'] != null) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(result['message'] ?? 'Failed to load summary'),
+                  backgroundColor: Colors.orange,
+                  duration: const Duration(seconds: 3),
+                ),
+              );
+            }
+          }
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoadingSummary = false;
+          _summary = null;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error loading summary: $e'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
     }
   }
 
@@ -592,6 +651,10 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
             
             // Attendance Summary
             _buildSummarySection(),
+            const SizedBox(height: 16),
+            
+            // Payment Slips Section
+            _buildPaymentSection(),
             const SizedBox(height: 16),
             
             // Charts Section
@@ -1089,6 +1152,120 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
             textAlign: TextAlign.center,
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildPaymentSection() {
+    // Only show payment section for roles that should have payment slips
+    final allowedRoles = [
+      'coordinator',
+      'field_officer',
+      'accessor',
+      'senior_valuer',
+      'md_gm',
+      'hr_staff',
+      'general_employee',
+    ];
+    
+    // Don't show for client, agent, unassigned, or admin
+    if (!allowedRoles.contains(widget.role)) {
+      print('Payment section hidden for role: ${widget.role}');
+      return const SizedBox.shrink();
+    }
+    
+    print('Payment section visible for role: ${widget.role}');
+    
+    void _navigateToPaymentSlips() {
+      print('Payment slips navigation called!');
+      try {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => const PaymentSlipsScreen(),
+          ),
+        ).then((value) {
+          print('Payment slips screen closed');
+        }).catchError((error) {
+          print('Error navigating to payment slips: $error');
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Error opening payment slips: $error'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+        });
+      } catch (e) {
+        print('Exception in payment slips navigation: $e');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Error: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    }
+    
+    return Card(
+      elevation: 4,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Padding(
+        padding: const EdgeInsets.all(20.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.payment, color: Colors.green[700], size: 28),
+                const SizedBox(width: 12),
+                Text(
+                  'Payment Slips',
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'View your monthly payment slips and salary information.',
+              style: TextStyle(color: Colors.grey),
+            ),
+            const SizedBox(height: 16),
+            GestureDetector(
+              onTap: () {
+                print('GestureDetector tapped!');
+                _navigateToPaymentSlips();
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+                decoration: BoxDecoration(
+                  color: Colors.green,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: const [
+                    Icon(Icons.visibility, color: Colors.white, size: 20),
+                    SizedBox(width: 8),
+                    Text(
+                      'View Payment Slips',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

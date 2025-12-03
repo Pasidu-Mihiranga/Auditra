@@ -141,6 +141,138 @@ class _AdminDashboardState extends State<AdminDashboard> {
     }
   }
 
+  Future<void> _generatePaymentSlips() async {
+    final now = DateTime.now();
+    final currentMonth = now.month;
+    final currentYear = now.year;
+
+    final result = await showDialog<Map<String, int>>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          int selectedMonth = currentMonth;
+          int selectedYear = currentYear;
+
+          return AlertDialog(
+            title: const Text('Generate Payment Slips'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text('Select month and year for payment slip generation:'),
+                const SizedBox(height: 20),
+                DropdownButtonFormField<int>(
+                  value: selectedMonth,
+                  decoration: const InputDecoration(
+                    labelText: 'Month',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: List.generate(12, (index) {
+                    final month = index + 1;
+                    final monthNames = [
+                      'January', 'February', 'March', 'April', 'May', 'June',
+                      'July', 'August', 'September', 'October', 'November', 'December'
+                    ];
+                    return DropdownMenuItem(
+                      value: month,
+                      child: Text(monthNames[index]),
+                    );
+                  }),
+                  onChanged: (value) {
+                    setDialogState(() => selectedMonth = value!);
+                  },
+                ),
+                const SizedBox(height: 16),
+                DropdownButtonFormField<int>(
+                  value: selectedYear,
+                  decoration: const InputDecoration(
+                    labelText: 'Year',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: List.generate(5, (index) {
+                    final year = currentYear - 2 + index;
+                    return DropdownMenuItem(
+                      value: year,
+                      child: Text(year.toString()),
+                    );
+                  }),
+                  onChanged: (value) {
+                    setDialogState(() => selectedYear = value!);
+                  },
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, null),
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context, {
+                  'month': selectedMonth,
+                  'year': selectedYear,
+                }),
+                child: const Text('Generate'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+
+    if (result != null) {
+      // Show loading
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(child: CircularProgressIndicator()),
+      );
+
+      final generateResult = await ApiService.generatePaymentSlips(
+        month: result['month'],
+        year: result['year'],
+      );
+
+      if (!mounted) return;
+      Navigator.pop(context); // Close loading dialog
+
+      if (generateResult['success']) {
+        final data = generateResult['data'];
+        final generated = data['generated_count'] ?? 0;
+        final updated = data['updated_count'] ?? 0;
+        final total = data['total_count'] ?? 0;
+        
+        String message;
+        if (total > 0) {
+          if (generated > 0 && updated > 0) {
+            message = 'Payment slips: $generated created, $updated updated (Total: $total users)';
+          } else if (updated > 0) {
+            message = 'Payment slips updated successfully for $updated users';
+          } else {
+            message = 'Payment slips generated successfully for $generated users';
+          }
+        } else {
+          message = data['message'] ?? 'No payment slips generated. All eligible users may already have payment slips for this month/year.';
+        }
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(message),
+            backgroundColor: total > 0 ? Colors.green : Colors.orange,
+            duration: Duration(seconds: total > 0 ? 3 : 5),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(generateResult['message'] ?? 'Failed to generate payment slips'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    }
+  }
+
   Future<void> _logout() async {
     final confirm = await showDialog<bool>(
       context: context,
@@ -371,6 +503,66 @@ class _AdminDashboardState extends State<AdminDashboard> {
                         ),
                       ),
                     ],
+                  ),
+                  const SizedBox(height: 24),
+
+                  // Payment Slip Generation
+                  Card(
+                    elevation: 4,
+                    color: Colors.green[50],
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      side: BorderSide(color: Colors.green[300]!, width: 2),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(20.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(Icons.payment, color: Colors.green[700], size: 28),
+                              const SizedBox(width: 12),
+                              const Text(
+                                'Payment Management',
+                                style: TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                          const Text(
+                            'Generate payment slips for all employees at the end of each month.',
+                            style: TextStyle(
+                              color: Colors.grey,
+                              fontSize: 14,
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          ElevatedButton.icon(
+                            onPressed: _generatePaymentSlips,
+                            icon: const Icon(Icons.upload_file, size: 24),
+                            label: const Text(
+                              'Upload Payment',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            style: ElevatedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 16),
+                              backgroundColor: Colors.green,
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
                   const SizedBox(height: 24),
 
