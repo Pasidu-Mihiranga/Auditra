@@ -72,6 +72,12 @@ class Project(models.Model):
     client_info = models.JSONField(null=True, blank=True, help_text='Client information from project creation form')
     agent_info = models.JSONField(null=True, blank=True, help_text='Agent information from project creation form')
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    workflow_stage = models.CharField(
+        max_length=50,
+        null=True,
+        blank=True,
+        help_text='Current stage in the project workflow'
+    )
     start_date = models.DateField(null=True, blank=True)
     end_date = models.DateField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)

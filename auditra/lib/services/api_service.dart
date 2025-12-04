@@ -1,6 +1,44 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+
+// Helper function to safely parse JSON response and handle HTML errors
+Map<String, dynamic>? _safeParseJsonResponse(http.Response response) {
+  // Check if response is HTML (error page) before parsing JSON
+  String contentType = response.headers['content-type'] ?? '';
+  String bodyTrimmed = response.body.trim();
+  
+  if (bodyTrimmed.startsWith('<!DOCTYPE') || 
+      bodyTrimmed.startsWith('<html') ||
+      (!contentType.contains('application/json') && response.body.isNotEmpty && !bodyTrimmed.startsWith('{'))) {
+    return null; // Indicates HTML response
+  }
+
+  // Try to parse JSON response
+  try {
+    if (response.body.isEmpty) {
+      return {};
+    } else {
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    }
+  } catch (e) {
+    // If parsing fails, check if it's HTML
+    if (bodyTrimmed.startsWith('<!DOCTYPE') || bodyTrimmed.startsWith('<html')) {
+      return null; // Indicates HTML response
+    }
+    rethrow; // Re-throw if it's a different parsing error
+  }
+}
+
+// Helper function to get user-friendly error message for HTML responses
+String _getHtmlErrorMessage(http.Response response) {
+  if (response.statusCode != 200 && response.statusCode != 201) {
+    return 'Server error (Status ${response.statusCode}). Please check if the backend server is running correctly.';
+  } else {
+    return 'Server returned HTML instead of JSON. Please check backend configuration.';
+  }
+}
 
 class ApiService {
   // Change this to your computer's IP address when testing on physical device
@@ -1192,6 +1230,62 @@ class ApiService {
     }
   }
 
+  // Update project workflow stage
+  static Future<Map<String, dynamic>> updateProjectWorkflowStage({
+    required int projectId,
+    String? workflowStage,
+  }) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token');
+
+      if (token == null) {
+        return {'success': false, 'message': 'Not authenticated'};
+      }
+
+      final response = await http.patch(
+        Uri.parse('$baseUrl/projects/$projectId/'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({
+          'workflow_stage': workflowStage,
+        }),
+      );
+
+      // Safely parse JSON response (handles HTML error pages)
+      final data = _safeParseJsonResponse(response);
+      
+      if (data == null) {
+        // HTML response detected
+        return {
+          'success': false,
+          'message': _getHtmlErrorMessage(response)
+        };
+      }
+
+      if (response.statusCode == 200) {
+        return {'success': true, 'data': data};
+      } else {
+        // Try to extract error message from various possible formats
+        String errorMessage = 'Failed to update workflow stage';
+        if (data.containsKey('error')) {
+          errorMessage = data['error'].toString();
+        } else if (data.containsKey('message')) {
+          errorMessage = data['message'].toString();
+        } else if (data.containsKey('detail')) {
+          errorMessage = data['detail'].toString();
+        } else if (data.containsKey('non_field_errors')) {
+          errorMessage = (data['non_field_errors'] as List).join(', ');
+        }
+        return {'success': false, 'message': errorMessage};
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'Connection error: ${e.toString()}'};
+    }
+  }
+
   // Upload document to project
   static Future<Map<String, dynamic>> uploadProjectDocument({
     required int projectId,
@@ -1217,6 +1311,22 @@ class ApiService {
         'Authorization': 'Bearer $token',
       });
 
+      // Validate file exists and get file size
+      final file = File(filePath);
+      if (!await file.exists()) {
+        return {'success': false, 'message': 'Selected file does not exist'};
+      }
+      
+      // Check file size (limit to 50MB)
+      final fileSize = await file.length();
+      const maxFileSize = 50 * 1024 * 1024; // 50MB
+      if (fileSize > maxFileSize) {
+        return {
+          'success': false,
+          'message': 'File size exceeds maximum limit of 50MB. Current size: ${(fileSize / (1024 * 1024)).toStringAsFixed(2)}MB'
+        };
+      }
+
       request.fields['project'] = projectId.toString();
       request.fields['name'] = fileName;
       if (description != null) {
@@ -1226,17 +1336,78 @@ class ApiService {
         request.fields['assigned_to'] = assignedToId.toString();
       }
 
-      final file = await http.MultipartFile.fromPath('file', filePath);
-      request.files.add(file);
+      final multipartFile = await http.MultipartFile.fromPath('file', filePath);
+      request.files.add(multipartFile);
 
       final streamedResponse = await request.send();
       final response = await http.Response.fromStream(streamedResponse);
-      final data = jsonDecode(response.body);
+      
+      // Check if response is JSON before parsing
+      String contentType = response.headers['content-type'] ?? '';
+      
+      // Check if response body starts with HTML (common error indicator)
+      if (response.body.trim().startsWith('<!DOCTYPE') || 
+          response.body.trim().startsWith('<html') ||
+          (!contentType.contains('application/json') && response.body.isNotEmpty && !response.body.trim().startsWith('{'))) {
+        String errorMessage = 'Server returned an error page';
+        if (response.statusCode != 201 && response.statusCode != 200) {
+          errorMessage = 'Server error (Status ${response.statusCode}). Please check if the backend server is running correctly.';
+        } else {
+          errorMessage = 'Server returned HTML instead of JSON. Please check backend configuration.';
+        }
+        return {
+          'success': false,
+          'message': errorMessage
+        };
+      }
+
+      // Try to parse JSON response
+      Map<String, dynamic> data;
+      try {
+        if (response.body.isEmpty) {
+          data = {};
+        } else {
+          data = jsonDecode(response.body);
+        }
+      } catch (e) {
+        // If parsing fails, check if it's HTML
+        if (response.body.trim().startsWith('<!DOCTYPE') || response.body.trim().startsWith('<html')) {
+          return {
+            'success': false,
+            'message': 'Server returned an HTML error page instead of JSON. Status: ${response.statusCode}. Please check backend server.'
+          };
+        }
+        return {
+          'success': false,
+          'message': 'Failed to parse server response. Status: ${response.statusCode}. Response: ${response.body.length > 200 ? response.body.substring(0, 200) + "..." : response.body}'
+        };
+      }
 
       if (response.statusCode == 201) {
         return {'success': true, 'data': data};
       } else {
-        return {'success': false, 'message': data['error'] ?? 'Failed to upload document'};
+        // Try to extract error message from various possible formats
+        String errorMessage = 'Failed to upload document';
+        if (data.containsKey('error')) {
+          errorMessage = data['error'].toString();
+        } else if (data.containsKey('message')) {
+          errorMessage = data['message'].toString();
+        } else if (data.containsKey('detail')) {
+          errorMessage = data['detail'].toString();
+        } else if (data.containsKey('non_field_errors')) {
+          errorMessage = (data['non_field_errors'] as List).join(', ');
+        } else if (data.isNotEmpty) {
+          // If there are field errors, format them
+          final fieldErrors = data.entries
+              .where((e) => e.value is List || e.value is String)
+              .map((e) => '${e.key}: ${e.value}')
+              .join(', ');
+          if (fieldErrors.isNotEmpty) {
+            errorMessage = fieldErrors;
+          }
+        }
+        
+        return {'success': false, 'message': errorMessage};
       }
     } catch (e) {
       return {'success': false, 'message': 'Connection error: $e'};

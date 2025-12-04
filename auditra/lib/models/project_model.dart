@@ -31,6 +31,7 @@ class Project {
   final String? priority;
   final String status;
   final String statusDisplay;
+  final String? workflowStage;
   final DateTime? startDate;
   final DateTime? endDate;
   final List<ProjectDocument> documents;
@@ -71,6 +72,7 @@ class Project {
     this.priority,
     required this.status,
     required this.statusDisplay,
+    this.workflowStage,
     this.startDate,
     this.endDate,
     required this.documents,
@@ -113,6 +115,7 @@ class Project {
       priority: (json['priority'] ?? 'medium').toString(),
       status: json['status'] ?? 'pending',
       statusDisplay: json['status_display'] ?? 'Pending',
+      workflowStage: json['workflow_stage'],
       startDate: json['start_date'] != null ? DateTime.parse(json['start_date']) : null,
       endDate: json['end_date'] != null ? DateTime.parse(json['end_date']) : null,
       documents: (json['documents'] as List<dynamic>?)
@@ -165,7 +168,7 @@ class ProjectDocument {
       projectId: json['project'],
       fileUrl: json['file_url'],
       fileSize: json['file_size'],
-      name: json['name'],
+      name: json['name'] ?? 'Unknown Document',
       description: json['description'],
       uploadedById: json['uploaded_by'],
       uploadedByUsername: json['uploaded_by_username'],

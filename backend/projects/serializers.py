@@ -118,7 +118,7 @@ class ProjectSerializer(serializers.ModelSerializer):
             'assigned_accessor_username', 'assigned_accessor_name', 'assigned_accessor_email',
             'assigned_senior_valuer', 'assigned_senior_valuer_username', 'assigned_senior_valuer_name',
             'assigned_senior_valuer_email', 'has_agent', 'client_info', 'agent_info',
-            'status', 'status_display', 'priority', 'start_date', 'end_date',
+            'status', 'status_display', 'workflow_stage', 'priority', 'start_date', 'end_date',
             'documents', 'documents_count', 'created_at', 'updated_at'
         )
         read_only_fields = ('coordinator', 'created_at', 'updated_at')

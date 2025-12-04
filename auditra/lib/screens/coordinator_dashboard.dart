@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'dart:math' as math;
 import '../services/api_service.dart';
 import '../models/attendance_model.dart';
@@ -327,11 +328,7 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
                 Container(
                   padding: const EdgeInsets.all(20),
                   decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [Theme.of(context).primaryColor, Theme.of(context).primaryColor.withOpacity(0.7)],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
+                    color: Colors.orange[500]!,
                     borderRadius: const BorderRadius.only(
                       topLeft: Radius.circular(20),
                       topRight: Radius.circular(20),
@@ -342,7 +339,7 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
                       Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.2),
+                          color: Colors.orange[400]!,
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: const Icon(Icons.edit, color: Colors.white, size: 24),
@@ -364,7 +361,7 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
                             Text(
                               project.title,
                               style: TextStyle(
-                                color: Colors.white.withOpacity(0.9),
+                                color: Colors.white,
                                 fontSize: 14,
                               ),
                               maxLines: 1,
@@ -506,7 +503,7 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
                                       return Theme(
                                         data: Theme.of(context).copyWith(
                                           colorScheme: ColorScheme.light(
-                                            primary: Theme.of(context).primaryColor,
+                                            primary: Colors.orange[600]!,
                                             onPrimary: Colors.white,
                                             surface: Colors.white,
                                             onSurface: Colors.black87,
@@ -538,7 +535,7 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
                                       return Theme(
                                         data: Theme.of(context).copyWith(
                                           colorScheme: ColorScheme.light(
-                                            primary: Theme.of(context).primaryColor,
+                                            primary: Colors.orange[600]!,
                                             onPrimary: Colors.white,
                                             surface: Colors.white,
                                             onSurface: Colors.black87,
@@ -564,7 +561,7 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
                           elevation: 2,
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                           child: ExpansionTile(
-                            leading: Icon(Icons.tune, color: Theme.of(context).primaryColor),
+                            leading: Icon(Icons.tune, color: Colors.orange[600]!),
                             title: const Text(
                               'Additional Options',
                               style: TextStyle(fontWeight: FontWeight.w600),
@@ -711,6 +708,8 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
                                   }
                                 },
                           style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.orange[600],
+                            foregroundColor: Colors.white,
                             padding: const EdgeInsets.symmetric(vertical: 16),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),
@@ -758,7 +757,7 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
           children: [
             Row(
               children: [
-                Icon(icon, color: Theme.of(context).primaryColor, size: 20),
+                Icon(icon, color: Colors.orange[600]!, size: 20),
                 const SizedBox(width: 8),
                 Text(
                   title,
@@ -789,7 +788,7 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
         decoration: BoxDecoration(
-          color: isSelected ? color.withOpacity(0.15) : Colors.grey[100],
+          color: isSelected ? Colors.grey[200]! : Colors.grey[100]!,
           border: Border.all(
             color: isSelected ? color : Colors.grey[300]!,
             width: isSelected ? 2 : 1,
@@ -837,7 +836,7 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
         ),
         child: Row(
           children: [
-            Icon(icon, color: Theme.of(context).primaryColor),
+            Icon(icon, color: Colors.orange[600]!),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
@@ -926,11 +925,7 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
               Container(
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [Colors.red[600]!, Colors.red[400]!],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
+                  color: Colors.red[500]!,
                   borderRadius: const BorderRadius.only(
                     topLeft: Radius.circular(20),
                     topRight: Radius.circular(20),
@@ -941,7 +936,7 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.2),
+                              color: Colors.red[400]!,
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: const Icon(Icons.delete_outline, color: Colors.white, size: 24),
@@ -1162,11 +1157,7 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
               Container(
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [Colors.red[600]!, Colors.red[400]!],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
+                  color: Colors.red[500]!,
                   borderRadius: const BorderRadius.only(
                     topLeft: Radius.circular(20),
                     topRight: Radius.circular(20),
@@ -1177,7 +1168,7 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.2),
+                              color: Colors.red[400]!,
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: const Icon(Icons.cancel_outlined, color: Colors.white, size: 24),
@@ -1310,6 +1301,790 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
     }
   }
 
+  Future<void> _completeProject(Project project) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: MediaQuery.of(context).size.width * 0.85,
+            maxHeight: MediaQuery.of(context).size.height * 0.7,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Header
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.teal[500]!,
+                  borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(20),
+                    topRight: Radius.circular(20),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                              color: Colors.teal[400]!,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(Icons.check_circle_outline, color: Colors.white, size: 20),
+                    ),
+                    const SizedBox(width: 12),
+                    const Expanded(
+                      child: Text(
+                        'Complete Project',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              // Content
+              Flexible(
+                child: SingleChildScrollView(
+                  child: Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.check_circle,
+                          size: 56,
+                          color: Colors.teal[300],
+                        ),
+                        const SizedBox(height: 12),
+                        const Text(
+                          'Mark as Completed?',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        Text(
+                          'You are about to mark "${project.title}" as completed. This action will finalize the project.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: Colors.grey[700],
+                            height: 1.4,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              // Action Buttons
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.grey[50],
+                  borderRadius: const BorderRadius.only(
+                    bottomLeft: Radius.circular(20),
+                    bottomRight: Radius.circular(20),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.of(context).pop(false),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        child: const Text('Cancel', style: TextStyle(fontSize: 14)),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: () => Navigator.of(context).pop(true),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.teal[600],
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          elevation: 2,
+                        ),
+                        child: const Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.check_circle, size: 18),
+                            SizedBox(width: 6),
+                            Flexible(
+                              child: Text(
+                                'Complete Project',
+                                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    if (confirm != true) return;
+
+    final result = await ApiService.updateProjectStatus(
+      projectId: project.id,
+      status: 'completed',
+    );
+
+    if (mounted) {
+      if (result['success']) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Project completed successfully!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        await _loadProjects();
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(result['message'] ?? 'Failed to complete project'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  // Workflow stages
+  static const List<Map<String, dynamic>> workflowStages = [
+    {
+      'id': 'field_officer_receives',
+      'label': 'Field Officer Receives Assignment',
+      'icon': Icons.person_outline,
+      'order': 1,
+    },
+    {
+      'id': 'performs_field_work',
+      'label': 'Performs Field Work',
+      'icon': Icons.work_outline,
+      'order': 2,
+    },
+    {
+      'id': 'submit_draft_report',
+      'label': 'Submit Draft Report',
+      'icon': Icons.description_outlined,
+      'order': 3,
+    },
+    {
+      'id': 'accessor_reviews',
+      'label': 'Accessor Reviews Report',
+      'icon': Icons.rate_review_outlined,
+      'order': 4,
+    },
+    {
+      'id': 'senior_valuer_reviews',
+      'label': 'Senior Valuer Reviews Report',
+      'icon': Icons.verified_user_outlined,
+      'order': 5,
+    },
+    {
+      'id': 'mg_gm_approves',
+      'label': 'MG/GM Approves Report',
+      'icon': Icons.approval_outlined,
+      'order': 6,
+    },
+  ];
+
+  Future<void> _showStatusDialog(Project project) async {
+    // Check if all stages are completed
+    final projectCurrentStageIndex = project.workflowStage != null 
+        ? workflowStages.indexWhere((s) => s['id'] == project.workflowStage)
+        : -1;
+    final allStagesCompleted = projectCurrentStageIndex == workflowStages.length - 1;
+    
+    // If all stages are completed, don't select anything initially
+    String? selectedWorkflowStage = allStagesCompleted ? null : project.workflowStage;
+    
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => Dialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: MediaQuery.of(context).size.width * 0.9,
+              maxHeight: MediaQuery.of(context).size.height * 0.85,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Header
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.blue[500]!,
+                    borderRadius: const BorderRadius.only(
+                      topLeft: Radius.circular(20),
+                      topRight: Radius.circular(20),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: Colors.blue[400]!,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Icon(Icons.account_tree, color: Colors.white, size: 20),
+                      ),
+                      const SizedBox(width: 12),
+                      const Expanded(
+                        child: Text(
+                          'Project Workflow',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                // Content
+                Flexible(
+                  child: SingleChildScrollView(
+                    child: Padding(
+                      padding: const EdgeInsets.all(20),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Project title
+                          Text(
+                            project.title,
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          // Current status
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.grey[100],
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Row(
+                              children: [
+                                const Text(
+                                  'Project Status: ',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                Chip(
+                                  label: Text(project.statusDisplay),
+                                  backgroundColor: _getProjectStatusColor(project.status),
+                                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 24),
+                          // Workflow tree title
+                          const Text(
+                            'Workflow Stages:',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          // Workflow tree
+                          Builder(
+                            builder: (context) {
+                              // Calculate if all stages are completed
+                              final projectCurrentStageIndex = project.workflowStage != null 
+                                  ? workflowStages.indexWhere((s) => s['id'] == project.workflowStage)
+                                  : -1;
+                              final allStagesCompleted = projectCurrentStageIndex == workflowStages.length - 1;
+                              
+                              // Calculate if selected stage is a completed (past) stage
+                              final selectedStageIndex = selectedWorkflowStage != null
+                                  ? workflowStages.indexWhere((s) => s['id'] == selectedWorkflowStage)
+                                  : -1;
+                              final isSelectedStageCompleted = projectCurrentStageIndex > selectedStageIndex && selectedStageIndex != -1;
+                              
+                              return Column(
+                                children: [
+                                  ...workflowStages.asMap().entries.map((entry) {
+                                    final index = entry.key;
+                                    final stage = entry.value;
+                                    final isSelected = selectedWorkflowStage == stage['id'];
+                                    // A stage is completed if:
+                                    // 1. The project has moved past it (projectCurrentStageIndex > index), OR
+                                    // 2. It's the final stage and the project is currently at it (all stages completed)
+                                    final isCompleted = projectCurrentStageIndex > index || 
+                                        (projectCurrentStageIndex == index && projectCurrentStageIndex == workflowStages.length - 1);
+                                    final isCurrent = project.workflowStage == stage['id'];
+                                    // Check if this is the final stage and all stages are completed
+                                    final isFinalStageCompleted = index == workflowStages.length - 1 && allStagesCompleted;
+                                    
+                                    return Column(
+                                      children: [
+                                        _buildWorkflowStage(
+                                          context,
+                                          stage: stage,
+                                          index: index + 1,
+                                          isSelected: isSelected,
+                                          isCompleted: isCompleted,
+                                          isCurrent: isCurrent,
+                                          isFinalStageCompleted: isFinalStageCompleted,
+                                          allStagesCompleted: allStagesCompleted,
+                                          onTap: () {
+                                            setDialogState(() {
+                                              // If all stages are completed and final stage is selected, deselect it
+                                              if (allStagesCompleted && isFinalStageCompleted && isSelected) {
+                                                selectedWorkflowStage = null;
+                                              } else {
+                                                selectedWorkflowStage = stage['id'];
+                                              }
+                                            });
+                                          },
+                                        ),
+                                        if (index < workflowStages.length - 1)
+                                          Container(
+                                            margin: const EdgeInsets.symmetric(vertical: 4),
+                                            width: 2,
+                                            height: 30,
+                                            color: isCompleted ? Colors.blue[400] : Colors.grey[300],
+                                          ),
+                                      ],
+                                    );
+                                  }),
+                                ],
+                              );
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                // Action Buttons
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.grey[50],
+                    borderRadius: const BorderRadius.only(
+                      bottomLeft: Radius.circular(20),
+                      bottomRight: Radius.circular(20),
+                    ),
+                  ),
+                  child: Builder(
+                    builder: (context) {
+                      final projectCurrentStageIndex = project.workflowStage != null 
+                          ? workflowStages.indexWhere((s) => s['id'] == project.workflowStage)
+                          : -1;
+                      final allStagesCompleted = projectCurrentStageIndex == workflowStages.length - 1;
+                      
+                      final selectedStageIndex = selectedWorkflowStage != null
+                          ? workflowStages.indexWhere((s) => s['id'] == selectedWorkflowStage)
+                          : -1;
+                      final isSelectedStageCompleted = projectCurrentStageIndex > selectedStageIndex && selectedStageIndex != -1;
+                      final isButtonEnabled = selectedWorkflowStage != null && !isSelectedStageCompleted;
+                      
+                      return Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed: () => Navigator.of(context).pop(),
+                              style: OutlinedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(vertical: 12),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                              child: const Text('Cancel', style: TextStyle(fontSize: 14)),
+                            ),
+                          ),
+                          // Only show spacing and button if not all stages are completed
+                          if (!allStagesCompleted) ...[
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: ElevatedButton(
+                                onPressed: isButtonEnabled
+                                    ? () async {
+                                        Navigator.of(context).pop();
+                                        await _updateWorkflowStage(project, selectedWorkflowStage);
+                                      }
+                                    : null,
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.blue[600],
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  elevation: 2,
+                                ),
+                                child: const Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.save, size: 18),
+                                    SizedBox(width: 6),
+                                    Flexible(
+                                      child: Text(
+                                        'Update Workflow',
+                                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildWorkflowStage(
+    BuildContext context, {
+    required Map<String, dynamic> stage,
+    required int index,
+    required bool isSelected,
+    required bool isCompleted,
+    required bool isCurrent,
+    required bool isFinalStageCompleted,
+    required bool allStagesCompleted,
+    required VoidCallback onTap,
+  }) {
+    Color stageColor;
+    IconData stageIcon;
+    
+    // When all stages are completed OR this is the final completed stage, show original icons (no checkmarks)
+    if (allStagesCompleted || isFinalStageCompleted) {
+      stageColor = Colors.blue[600]!;
+      stageIcon = stage['icon'] as IconData;
+    } else if (isCompleted) {
+      // Show checkmark for completed stages when not all stages are completed
+      stageColor = Colors.blue[600]!;
+      stageIcon = Icons.check_circle;
+    } else if (isCurrent) {
+      stageColor = Colors.blue[600]!;
+      stageIcon = Icons.radio_button_checked;
+    } else {
+      stageColor = Colors.grey[400]!;
+      stageIcon = stage['icon'] as IconData;
+    }
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: isSelected ? stageColor.withOpacity(0.1) : Colors.transparent,
+          border: Border.all(
+            color: isSelected ? stageColor : Colors.grey[300]!,
+            width: isSelected ? 2 : 1,
+          ),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          children: [
+            // Stage number and icon
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                color: isCompleted || isCurrent ? stageColor : Colors.grey[200],
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                stageIcon,
+                color: isCompleted || isCurrent ? Colors.white : Colors.grey[600],
+                size: 24,
+              ),
+            ),
+            const SizedBox(width: 16),
+            // Stage label
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Text(
+                        'Stage $index',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: isCompleted || isCurrent ? stageColor : Colors.grey[600],
+                        ),
+                      ),
+                      // Show "Current" tag only if not completed
+                      if (isCurrent && !isCompleted) ...[
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: stageColor,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Text(
+                            'Current',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ],
+                      // Show "Completed" tag if completed (this takes priority over "Current")
+                      if (isCompleted) ...[
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: Colors.blue[600],
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Text(
+                            'Completed',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    stage['label'] as String,
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                      color: isCompleted || isCurrent ? Colors.black87 : Colors.grey[700],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            // Selection indicator - hide when all stages are completed
+            if (isSelected && !allStagesCompleted)
+              Icon(
+                Icons.check_circle,
+                color: stageColor,
+                size: 24,
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStatusOption(
+    BuildContext context, {
+    required String label,
+    required String value,
+    required String selectedValue,
+    required Color color,
+    required IconData icon,
+    required VoidCallback onTap,
+  }) {
+    final isSelected = value == selectedValue;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: isSelected ? color.withOpacity(0.15) : Colors.grey[50],
+          border: Border.all(
+            color: isSelected ? color : Colors.grey[300]!,
+            width: isSelected ? 2 : 1,
+          ),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              icon,
+              color: isSelected ? color : Colors.grey[600],
+              size: 24,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                label,
+                style: TextStyle(
+                  color: isSelected ? color : Colors.grey[700],
+                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                  fontSize: 14,
+                ),
+              ),
+            ),
+            if (isSelected)
+              Icon(
+                Icons.check_circle,
+                color: color,
+                size: 20,
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _updateWorkflowStage(Project project, String? workflowStage) async {
+    final result = await ApiService.updateProjectWorkflowStage(
+      projectId: project.id,
+      workflowStage: workflowStage,
+    );
+
+    if (mounted) {
+      if (result['success']) {
+        // Check if the updated stage is the last stage (all stages completed)
+        final lastStageId = workflowStages.last['id'];
+        final allStagesCompleted = workflowStage == lastStageId;
+        
+        if (allStagesCompleted) {
+          // Show completion message dialog
+          await showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (context) => Dialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Success icon
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.blue[100],
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        Icons.check_circle,
+                        color: Colors.blue[600],
+                        size: 64,
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    // Title
+                    Text(
+                      'All Workflow Stages Completed!',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.blue[900],
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 12),
+                    // Message
+                    Text(
+                      'All workflow stages have been completed successfully.',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.grey[700],
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 24),
+                    // OK button
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.blue[600],
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          elevation: 2,
+                        ),
+                        child: const Text(
+                          'OK',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        } else {
+          // Show regular success message
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text('Workflow stage updated successfully!'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+        await _loadProjects();
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(result['message'] ?? 'Failed to update workflow stage'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
   Future<void> _assignFieldOfficer(Project project) async {
     final officersResult = await ApiService.getAvailableFieldOfficers();
     
@@ -1348,11 +2123,7 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
               Container(
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [Colors.lightBlue[600]!, Colors.lightBlue[400]!],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
+                  color: Colors.lightBlue[500]!,
                   borderRadius: const BorderRadius.only(
                     topLeft: Radius.circular(20),
                     topRight: Radius.circular(20),
@@ -1363,7 +2134,7 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.2),
+                              color: Colors.lightBlue[400]!,
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: const Icon(Icons.person_outline, color: Colors.white, size: 24),
@@ -1581,11 +2352,7 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
               Container(
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [Colors.cyan[600]!, Colors.cyan[400]!],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
+                  color: Colors.cyan[500]!,
                   borderRadius: const BorderRadius.only(
                     topLeft: Radius.circular(20),
                     topRight: Radius.circular(20),
@@ -1596,7 +2363,7 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.2),
+                              color: Colors.cyan[400]!,
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: const Icon(Icons.business_outlined, color: Colors.white, size: 24),
@@ -1799,11 +2566,7 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
               Container(
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [Colors.orange[700]!, Colors.orange[500]!],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
+                  color: Colors.orange[600]!,
                   borderRadius: const BorderRadius.only(
                     topLeft: Radius.circular(20),
                     topRight: Radius.circular(20),
@@ -1814,7 +2577,7 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.2),
+                              color: Colors.orange[400]!,
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: const Icon(Icons.badge_outlined, color: Colors.white, size: 24),
@@ -2026,11 +2789,7 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
                 Container(
                   padding: const EdgeInsets.all(20),
                   decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [Colors.blue[600]!, Colors.blue[400]!],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
+                    color: Colors.blue[500]!,
                     borderRadius: const BorderRadius.only(
                       topLeft: Radius.circular(20),
                       topRight: Radius.circular(20),
@@ -2041,7 +2800,7 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
                       Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.2),
+                          color: Colors.blue[400]!,
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: const Icon(Icons.person_add, color: Colors.white, size: 24),
@@ -2169,6 +2928,59 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
     
     tabController.dispose();
     await _loadProjects();
+    
+    // Check assigned users after dialog closes
+    if (mounted) {
+      // Get updated project
+      final updatedProject = _projects.firstWhere(
+        (p) => p.id == project.id,
+        orElse: () => project,
+      );
+      
+      // Check all users (including Senior Valuer and Accessor)
+      final List<String> allMissingRoles = [];
+      
+      if (updatedProject.assignedFieldOfficerName == null) {
+        allMissingRoles.add('Field Officer');
+      }
+      if (updatedProject.assignedClientName == null) {
+        allMissingRoles.add('Client');
+      }
+      if (updatedProject.hasAgent && updatedProject.assignedAgentName == null) {
+        allMissingRoles.add('Agent');
+      }
+      if (updatedProject.assignedAccessorName == null) {
+        allMissingRoles.add('Accessor');
+      }
+      if (updatedProject.assignedSeniorValuerName == null) {
+        allMissingRoles.add('Senior Valuer');
+      }
+      
+      // Show appropriate message
+      if (allMissingRoles.isEmpty) {
+        // All users assigned (including Senior Valuer and Accessor) - show success
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('All relevant users have been assigned successfully!'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 3),
+          ),
+        );
+      } else {
+        // Some users missing - show all missing roles
+        final missingText = allMissingRoles.length == 1
+            ? 'Missing user role: ${allMissingRoles.first}'
+            : 'Missing user roles: ${allMissingRoles.join(', ')}';
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(missingText),
+            backgroundColor: Colors.orange,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+    }
   }
 
   Future<void> _showUserAssignedProjects(
@@ -2216,11 +3028,7 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
               Container(
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [Colors.blue[600]!, Colors.blue[400]!],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
+                  color: Colors.blue[500]!,
                   borderRadius: const BorderRadius.only(
                     topLeft: Radius.circular(20),
                     topRight: Radius.circular(20),
@@ -2231,7 +3039,7 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.2),
+                              color: Colors.blue[400]!,
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: const Icon(Icons.assignment, color: Colors.white, size: 24),
@@ -2253,7 +3061,7 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
                           Text(
                             'Assigned Projects',
                             style: TextStyle(
-                              color: Colors.white.withOpacity(0.9),
+                                            color: Colors.white,
                               fontSize: 14,
                             ),
                           ),
@@ -2351,13 +3159,13 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
                                             style: const TextStyle(fontSize: 11),
                                           ),
                                           backgroundColor: project['status'] == 'in_progress'
-                                              ? Colors.green[50]
+                                              ? Colors.blue[50]
                                               : project['status'] == 'completed'
                                                   ? Colors.teal[50]
                                                   : Colors.grey[200],
                                           labelStyle: TextStyle(
                                             color: project['status'] == 'in_progress'
-                                                ? Colors.green[700]
+                                                ? Colors.blue[500]
                                                 : project['status'] == 'completed'
                                                     ? Colors.teal[700]
                                                     : Colors.grey[700],
@@ -3240,11 +4048,7 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
                   Container(
                     padding: EdgeInsets.all(_getResponsivePadding(context)),
                     decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [Colors.teal[600]!, Colors.teal[400]!],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
+                      color: Colors.teal[500]!,
                       borderRadius: const BorderRadius.only(
                         topLeft: Radius.circular(20),
                         topRight: Radius.circular(20),
@@ -3255,7 +4059,7 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
                         Container(
                           padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.2),
+                            color: Colors.teal[400]!,
                             borderRadius: BorderRadius.circular(12),
                           ),
                           child: Icon(Icons.attach_file, color: Colors.white, size: _getResponsiveIconSize(context)),
@@ -3277,7 +4081,7 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
                               Text(
                                 currentProject.title,
                                 style: TextStyle(
-                                  color: Colors.white.withOpacity(0.9),
+                                  color: Colors.white,
                                   fontSize: _getResponsiveFontSize(context, 12),
                                 ),
                                 maxLines: 1,
@@ -3430,7 +4234,7 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
                                                 SizedBox(width: _getResponsivePadding(context) * 0.4),
                                                 Flexible(
                                                   child: Text(
-                                                    'Selected: ${uploadState.selectedUserName}',
+                                                    'Selected: ${uploadState.selectedUserName ?? 'Unknown'}',
                                                     style: TextStyle(
                                                       fontSize: _getResponsiveFontSize(context, 12),
                                                       fontWeight: FontWeight.w600,
@@ -3453,11 +4257,63 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
                                                       allowMultiple: false,
                                                     );
                                                     
-                                                    if (result != null && result.files.single.path != null) {
-                                                      setDialogState(() {
-                                                        uploadState.selectedFile = result.files.single.path!;
-                                                        uploadState.selectedFileName = result.files.single.name;
-                                                      });
+                                                    if (result != null && result.files.isNotEmpty) {
+                                                      try {
+                                                        final files = result.files;
+                                                        if (files.isEmpty) {
+                                                          if (context.mounted) {
+                                                            ScaffoldMessenger.of(context).showSnackBar(
+                                                              const SnackBar(
+                                                                content: Text('No file selected'),
+                                                                backgroundColor: Colors.red,
+                                                              ),
+                                                            );
+                                                          }
+                                                          return;
+                                                        }
+                                                        
+                                                        final file = files.first;
+                                                        // Safely access file properties - these can be null on some platforms
+                                                        String? filePath;
+                                                        String? fileName;
+                                                        
+                                                        try {
+                                                          filePath = file.path;
+                                                        } catch (e) {
+                                                          filePath = null;
+                                                        }
+                                                        
+                                                        try {
+                                                          fileName = file.name;
+                                                        } catch (e) {
+                                                          fileName = null;
+                                                        }
+                                                        
+                                                        if (filePath != null && filePath.isNotEmpty) {
+                                                          setDialogState(() {
+                                                            uploadState.selectedFile = filePath;
+                                                            uploadState.selectedFileName = (fileName != null && fileName.isNotEmpty) ? fileName : 'document';
+                                                          });
+                                                        } else {
+                                                          if (context.mounted) {
+                                                            ScaffoldMessenger.of(context).showSnackBar(
+                                                              const SnackBar(
+                                                                content: Text('Failed to get file path. Please try selecting the file again.'),
+                                                                backgroundColor: Colors.red,
+                                                              ),
+                                                            );
+                                                          }
+                                                        }
+                                                      } catch (fileError) {
+                                                        if (context.mounted) {
+                                                          ScaffoldMessenger.of(context).showSnackBar(
+                                                            SnackBar(
+                                                              content: Text('Error processing file: $fileError'),
+                                                              backgroundColor: Colors.red,
+                                                            ),
+                                                          );
+                                                        }
+                                                      }
                                                     }
                                                   } catch (e) {
                                                     if (context.mounted) {
@@ -3519,7 +4375,7 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
                                                     ),
                                                     const SizedBox(height: 4),
                                                     Text(
-                                                      uploadState.selectedFileName!,
+                                                      uploadState.selectedFileName ?? 'Unknown file',
                                                       style: TextStyle(
                                                         fontSize: 16,
                                                         fontWeight: FontWeight.w600,
@@ -3565,28 +4421,43 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
                                         width: double.infinity,
                                         decoration: BoxDecoration(
                                           borderRadius: BorderRadius.circular(12),
-                                          gradient: LinearGradient(
-                                            colors: [Colors.green[600]!, Colors.green[700]!],
-                                            begin: Alignment.topLeft,
-                                            end: Alignment.bottomRight,
-                                          ),
+                                          color: Colors.green[600]!,
                                           boxShadow: [
                                             BoxShadow(
-                                              color: Colors.green[300]!.withOpacity(0.5),
+                                              color: Colors.grey[300]!,
                                               blurRadius: 12,
                                               offset: const Offset(0, 6),
                                             ),
                                           ],
                                         ),
                                         child: ElevatedButton.icon(
-                                          onPressed: uploadState.isUploading ? null : () async {
+                                          onPressed: (uploadState.isUploading || uploadState.selectedFile == null || uploadState.selectedFileName == null) 
+                                              ? null 
+                                              : () async {
                                               setDialogState(() => uploadState.isUploading = true);
                                               
                                               try {
+                                                // Validate required fields before upload
+                                                final selectedFilePath = uploadState.selectedFile;
+                                                final selectedFileName = uploadState.selectedFileName;
+                                                
+                                                if (selectedFilePath == null || selectedFilePath.isEmpty) {
+                                                  setDialogState(() => uploadState.isUploading = false);
+                                                  if (mounted) {
+                                                    ScaffoldMessenger.of(context).showSnackBar(
+                                                      const SnackBar(
+                                                        content: Text('Please select a file to upload'),
+                                                        backgroundColor: Colors.red,
+                                                      ),
+                                                    );
+                                                  }
+                                                  return;
+                                                }
+                                                
                                                 final uploadResult = await ApiService.uploadProjectDocument(
                                                   projectId: currentProject.id,
-                                                  filePath: uploadState.selectedFile!,
-                                                  fileName: uploadState.selectedFileName!,
+                                                  filePath: selectedFilePath,
+                                                  fileName: selectedFileName ?? 'document',
                                                   assignedToId: uploadState.selectedUserId,
                                                 );
                                                 
@@ -3594,7 +4465,7 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
                                                   if (uploadResult['success']) {
                                                     ScaffoldMessenger.of(context).showSnackBar(
                                                       SnackBar(
-                                                        content: Text('Document uploaded successfully for ${uploadState.selectedUserName}!'),
+                                                        content: Text('Document uploaded successfully${uploadState.selectedUserName != null ? ' for ${uploadState.selectedUserName}' : ''}!'),
                                                         backgroundColor: Colors.green,
                                                       ),
                                                     );
@@ -3610,10 +4481,20 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
                                                     setDialogState(() => uploadState.isUploading = false);
                                                     ScaffoldMessenger.of(context).showSnackBar(
                                                       SnackBar(
-                                                        content: Text(
-                                                          uploadResult['message'] ?? 'Failed to upload document',
+                                                        content: Row(
+                                                          children: [
+                                                            const Icon(Icons.error, color: Colors.white, size: 20),
+                                                            const SizedBox(width: 8),
+                                                            Expanded(
+                                                              child: Text(
+                                                                uploadResult['message'] ?? 'Failed to upload document',
+                                                                style: const TextStyle(fontSize: 14),
+                                                              ),
+                                                            ),
+                                                          ],
                                                         ),
                                                         backgroundColor: Colors.red,
+                                                        duration: const Duration(seconds: 4),
                                                       ),
                                                     );
                                                   }
@@ -3623,8 +4504,20 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
                                                 if (mounted) {
                                                   ScaffoldMessenger.of(context).showSnackBar(
                                                     SnackBar(
-                                                      content: Text('Error: $e'),
+                                                      content: Row(
+                                                        children: [
+                                                          const Icon(Icons.error, color: Colors.white, size: 20),
+                                                          const SizedBox(width: 8),
+                                                          Expanded(
+                                                            child: Text(
+                                                              'Upload error: ${e.toString()}',
+                                                              style: const TextStyle(fontSize: 14),
+                                                            ),
+                                                          ),
+                                                        ],
+                                                      ),
                                                       backgroundColor: Colors.red,
+                                                      duration: const Duration(seconds: 4),
                                                     ),
                                                   );
                                                 }
@@ -3909,9 +4802,22 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
         allowMultiple: false,
       );
 
-      if (result != null && result.files.single.path != null) {
-        final filePath = result.files.single.path!;
-        final fileName = result.files.single.name;
+      if (result != null && result.files.isNotEmpty) {
+        final file = result.files.single;
+        final filePathNullable = file.path;
+        if (filePathNullable == null || filePathNullable.isEmpty) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Failed to get file path'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+          return;
+        }
+        final filePath = filePathNullable; // Now guaranteed non-null
+        final fileName = (file.name != null && file.name.isNotEmpty) ? file.name : 'document';
 
         final uploadResult = await ApiService.uploadProjectDocument(
           projectId: project.id,
@@ -4021,11 +4927,7 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
               Container(
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [Colors.teal[600]!, Colors.teal[400]!],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
+                  color: Colors.teal[500]!,
                   borderRadius: const BorderRadius.only(
                     topLeft: Radius.circular(20),
                     topRight: Radius.circular(20),
@@ -4036,7 +4938,7 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.2),
+                              color: Colors.teal[400]!,
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: const Icon(Icons.person, color: Colors.white, size: 24),
@@ -4151,9 +5053,22 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
         allowMultiple: false,
       );
 
-      if (result != null && result.files.single.path != null) {
-        final filePath = result.files.single.path!;
-        final fileName = result.files.single.name;
+      if (result != null && result.files.isNotEmpty) {
+        final file = result.files.single;
+        final filePathNullable = file.path;
+        if (filePathNullable == null || filePathNullable.isEmpty) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Failed to get file path'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+          return;
+        }
+        final filePath = filePathNullable; // Now guaranteed non-null
+        final fileName = (file.name != null && file.name.isNotEmpty) ? file.name : 'document';
 
         final uploadResult = await ApiService.uploadProjectDocument(
           projectId: project.id,
@@ -4214,11 +5129,7 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
               Container(
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [Theme.of(context).primaryColor, Theme.of(context).primaryColor.withOpacity(0.7)],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
+                  color: Theme.of(context).primaryColor,
                   borderRadius: const BorderRadius.only(
                     topLeft: Radius.circular(20),
                     topRight: Radius.circular(20),
@@ -4229,7 +5140,7 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.2),
+                              color: Theme.of(context).primaryColor,
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: const Icon(Icons.info_outline, color: Colors.white, size: 24),
@@ -4253,7 +5164,7 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                             decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.2),
+                              color: Colors.grey[200]!,
                               borderRadius: BorderRadius.circular(8),
                             ),
                             child: Text(
@@ -4484,11 +5395,7 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
               Container(
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [Colors.orange[600]!, Colors.orange[400]!],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
+                  color: Colors.orange[500]!,
                   borderRadius: const BorderRadius.only(
                     topLeft: Radius.circular(20),
                     topRight: Radius.circular(20),
@@ -4499,7 +5406,7 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.2),
+                              color: Colors.orange[400]!,
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: const Icon(Icons.logout, color: Colors.white, size: 24),
@@ -4648,8 +5555,8 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
                             Icons.person_outline,
                             size: 14,
                             color: Theme.of(context).brightness == Brightness.dark
-                                ? Colors.white.withOpacity(0.9)
-                                : Colors.black87.withOpacity(0.8),
+                                ? Colors.white
+                                : Colors.black87,
                           ),
                           const SizedBox(width: 4),
                           Text(
@@ -4658,7 +5565,7 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
                               fontSize: 13,
                               fontWeight: FontWeight.w600,
                               color: Theme.of(context).brightness == Brightness.dark
-                                  ? Colors.white.withOpacity(0.95)
+                                  ? Colors.white
                                   : Colors.black87,
                               letterSpacing: 0.3,
                             ),
@@ -4672,35 +5579,27 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
                           width: 1,
                           height: 14,
                           color: Theme.of(context).brightness == Brightness.dark
-                              ? Colors.white.withOpacity(0.3)
-                              : Colors.black26,
+                              ? Colors.grey[400]!
+                              : Colors.grey[400]!,
                         ),
                       ),
                     if (_roleDisplay != null)
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                         decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            colors: Theme.of(context).brightness == Brightness.dark
-                                ? [
-                                    Colors.white.withOpacity(0.25),
-                                    Colors.white.withOpacity(0.15),
-                                  ]
-                                : [
-                                    Colors.blue.withOpacity(0.15),
-                                    Colors.blue.withOpacity(0.1),
-                                  ],
-                          ),
+                          color: Theme.of(context).brightness == Brightness.dark
+                              ? Colors.grey[200]!
+                              : Colors.grey[200]!,
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(
                             color: Theme.of(context).brightness == Brightness.dark
-                                ? Colors.white.withOpacity(0.3)
-                                : Colors.blue.withOpacity(0.3),
+                                ? Colors.grey[400]!
+                                : Colors.grey[400]!,
                             width: 1,
                           ),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withOpacity(0.1),
+                              color: Colors.grey[300]!,
                               blurRadius: 4,
                               offset: const Offset(0, 2),
                             ),
@@ -4713,8 +5612,8 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
                               Icons.badge_outlined,
                               size: 12,
                               color: Theme.of(context).brightness == Brightness.dark
-                                  ? Colors.white.withOpacity(0.9)
-                                  : Colors.blue[700],
+                                  ? Colors.white
+                                  : Colors.blue[700]!,
                             ),
                             const SizedBox(width: 4),
                             Text(
@@ -4838,7 +5737,7 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
             color: Colors.white,
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.05),
+                color: Colors.grey[200]!,
                 blurRadius: 4,
                 offset: const Offset(0, 2),
               ),
@@ -4956,7 +5855,7 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
                   border: Border.all(color: Colors.blue[200]!, width: 1.5),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.blue.withOpacity(0.1),
+                      color: Colors.grey[200]!,
                       blurRadius: 4,
                       offset: const Offset(0, 2),
                     ),
@@ -5080,7 +5979,8 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
   }
 
   Widget _buildProjectCard(Project project, {bool isReceivedTab = false, bool isCancelledTab = false}) {
-    final isPending = project.status == 'pending';
+    final isPending = project.status.toLowerCase() == 'pending';
+    final isOngoing = project.status.toLowerCase() == 'in_progress';
     final priority = project.priority ?? 'medium';
 
     return Stack(
@@ -5091,33 +5991,21 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(16),
-            border: Border(
-              left: BorderSide(
-                color: project.status == 'in_progress'
-                    ? Colors.green[400]!
-                    : project.status == 'completed'
-                        ? Colors.teal[400]!
-                        : project.status == 'cancelled'
-                            ? Colors.red[400]!
-                            : Colors.grey[300]!,
-                width: 4,
-              ),
-            ),
             boxShadow: [
               BoxShadow(
                 color: project.status == 'in_progress'
-                    ? Colors.green.withOpacity(0.08)
+                    ? Colors.grey[200]!
                     : project.status == 'completed'
-                        ? Colors.teal.withOpacity(0.08)
+                        ? Colors.grey[200]!
                         : project.status == 'cancelled'
-                            ? Colors.red.withOpacity(0.08)
-                            : Colors.grey.withOpacity(0.08),
+                            ? Colors.grey[200]!
+                            : Colors.grey[200]!,
                 blurRadius: 12,
                 offset: const Offset(0, 4),
                 spreadRadius: 0,
               ),
               BoxShadow(
-                color: Colors.black.withOpacity(0.04),
+                color: Colors.grey[200]!,
                 blurRadius: 6,
                 offset: const Offset(0, 2),
                 spreadRadius: 0,
@@ -5176,11 +6064,32 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
                             ),
                           ),
                         ),
+                        // Status icon button (only for ongoing projects)
+                        if (isOngoing) ...[
+                          const SizedBox(width: 4),
+                          IconButton(
+                            onPressed: () => _showStatusDialog(project),
+                            icon: const Icon(Icons.account_tree, size: 18),
+                            color: Colors.blue[700],
+                            padding: const EdgeInsets.all(4),
+                            constraints: const BoxConstraints(
+                              minWidth: 32,
+                              minHeight: 32,
+                            ),
+                            tooltip: 'View/Update Status',
+                            style: IconButton.styleFrom(
+                              backgroundColor: Colors.blue[50],
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                            ),
+                          ),
+                        ],
                         const SizedBox(width: 4),
                         IconButton(
                           onPressed: () => _editProject(project),
                           icon: const Icon(Icons.edit_outlined, size: 18),
-                          color: Colors.lightBlue[700],
+                          color: Colors.orange[700],
                           padding: const EdgeInsets.all(4),
                           constraints: const BoxConstraints(
                             minWidth: 32,
@@ -5188,7 +6097,7 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
                           ),
                           tooltip: 'Edit Project',
                           style: IconButton.styleFrom(
-                            backgroundColor: Colors.lightBlue[50],
+                            backgroundColor: Colors.orange[50],
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(6),
                             ),
@@ -5216,8 +6125,8 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
                     ),
                   ],
                 ),
-                // Description row with Cancel and Start buttons (for pending projects)
-                if (project.description != null || isPending) ...[
+                // Description row with Cancel and Start buttons (for pending projects) or Cancel button (for ongoing projects)
+                if (project.description != null || isPending || isOngoing) ...[
                   SizedBox(height: isReceivedTab ? 4 : 8),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -5238,6 +6147,9 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
                             ),
                           ),
                         ),
+                      // Spacer to push buttons to the right when there's no description
+                      if (project.description == null && !isPending && isOngoing)
+                        const Spacer(),
                       // Cancel and Start buttons (for pending projects)
                       if (isPending) ...[
                         if (project.description != null)
@@ -5248,6 +6160,23 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
                             _HoverableStartButton(
                               canStart: _canStartProject(project),
                               onPressed: () => _startProject(project),
+                            ),
+                            const SizedBox(width: 4),
+                            _HoverableCancelButton(
+                              onPressed: () => _cancelProject(project),
+                            ),
+                          ],
+                        ),
+                      ],
+                      // Cancel and Complete buttons for ongoing projects (parallel with description) - MUST appear before contact button
+                      if (isOngoing && !isPending) ...[
+                        if (project.description != null)
+                          const SizedBox(width: 8),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            _HoverableCompleteButton(
+                              onPressed: () => _completeProject(project),
                             ),
                             const SizedBox(width: 4),
                             _HoverableCancelButton(
@@ -5317,26 +6246,13 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
                 ),
               ),
             ],
+            // Cancel button for ongoing projects (before contact button)
+            // Note: Cancel button is now in the description row above, so this section is removed
             // Contact Assigned Users Button (for ongoing projects)
-            if (!isPending && project.status == 'in_progress') ...[
+            if (!isPending && project.status.toLowerCase() == 'in_progress') ...[
               const SizedBox(height: 8),
-              Container(
+              SizedBox(
                 width: double.infinity,
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: <Color>[Colors.purple[500]!, Colors.purple[600]!],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  borderRadius: BorderRadius.circular(8),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.purple.withOpacity(0.25),
-                      blurRadius: 6,
-                      offset: const Offset(0, 3),
-                    ),
-                  ],
-                ),
                 child: ElevatedButton.icon(
                   onPressed: () => _showContactAssignedUsers(project),
                   icon: const Icon(Icons.contact_mail, size: 18),
@@ -5349,24 +6265,14 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
                     ),
                   ),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.transparent,
+                    backgroundColor: Colors.blue[700],
                     foregroundColor: Colors.white,
-                    shadowColor: Colors.transparent,
                     padding: const EdgeInsets.symmetric(vertical: 12),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(8),
                     ),
+                    elevation: 2,
                   ),
-                ),
-              ),
-            ],
-            // Cancel button for ongoing projects
-            if (project.status == 'in_progress') ...[
-              SizedBox(height: isReceivedTab ? 4 : 8),
-              SizedBox(
-                width: double.infinity,
-                child: _HoverableCancelButton(
-                  onPressed: () => _cancelProject(project),
                 ),
               ),
             ],
@@ -5390,6 +6296,34 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
     );
   }
   
+  Future<void> _launchEmail(String email) async {
+    final Uri emailUri = Uri(
+      scheme: 'mailto',
+      path: email,
+    );
+    
+    try {
+      if (await canLaunchUrl(emailUri)) {
+        await launchUrl(
+          emailUri,
+          mode: LaunchMode.externalApplication,
+        );
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Could not launch email client for $email')),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error opening email: $e')),
+        );
+      }
+    }
+  }
+
   Future<void> _showContactAssignedUsers(Project project) async {
     final List<Map<String, String>> contacts = [];
     
@@ -5420,6 +6354,24 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
       });
     }
     
+    if (project.assignedAccessorName != null) {
+      contacts.add({
+        'role': 'Accessor',
+        'name': project.assignedAccessorName!,
+        'email': project.assignedAccessorEmail ?? 'N/A',
+        'username': project.assignedAccessorUsername ?? 'N/A',
+      });
+    }
+    
+    if (project.assignedSeniorValuerName != null) {
+      contacts.add({
+        'role': 'Senior Valuer',
+        'name': project.assignedSeniorValuerName!,
+        'email': project.assignedSeniorValuerEmail ?? 'N/A',
+        'username': project.assignedSeniorValuerUsername ?? 'N/A',
+      });
+    }
+    
     if (contacts.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('No assigned users to contact')),
@@ -5444,11 +6396,7 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
               Container(
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [Colors.purple[600]!, Colors.purple[400]!],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
+                  color: Colors.lightBlue[500]!,
                   borderRadius: const BorderRadius.only(
                     topLeft: Radius.circular(20),
                     topRight: Radius.circular(20),
@@ -5459,7 +6407,7 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.2),
+                              color: Colors.lightBlue[400]!,
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: const Icon(Icons.contact_mail, color: Colors.white, size: 24),
@@ -5493,12 +6441,20 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
                           ? Colors.lightBlue[700]
                           : contact['role'] == 'Client'
                               ? Colors.cyan[700]
-                              : Colors.orange[700];
+                              : contact['role'] == 'Agent'
+                                  ? Colors.orange[700]
+                                  : contact['role'] == 'Accessor'
+                                      ? Colors.purple[700]
+                                      : Colors.teal[700]; // Senior Valuer
                       final roleIcon = contact['role'] == 'Field Officer'
                           ? Icons.person
                           : contact['role'] == 'Client'
                               ? Icons.business
-                              : Icons.badge;
+                              : contact['role'] == 'Agent'
+                                  ? Icons.badge
+                                  : contact['role'] == 'Accessor'
+                                      ? Icons.assessment
+                                      : Icons.verified_user; // Senior Valuer
 
                       return Card(
                         margin: const EdgeInsets.only(bottom: 16),
@@ -5506,68 +6462,88 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
                         ),
-                        child: Padding(
-                          padding: const EdgeInsets.all(16),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  Container(
-                                    padding: const EdgeInsets.all(8),
-                                    decoration: BoxDecoration(
-                                      color: roleColor!.withOpacity(0.1),
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                    child: Icon(roleIcon, color: roleColor, size: 20),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Text(
-                                    contact['role']!,
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 14,
-                                      color: roleColor,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 12),
-                              Text(
-                                contact['name']!,
-                                style: const TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.w600,
+                        child: InkWell(
+                          onTap: () {
+                            if (contact['email'] != null && contact['email'] != 'N/A') {
+                              _launchEmail(contact['email']!);
+                            } else {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Email address not available'),
                                 ),
-                              ),
-                              const SizedBox(height: 12),
-                              Row(
-                                children: [
-                                  Icon(Icons.email, size: 18, color: Colors.grey[600]),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: Text(
-                                      contact['email']!,
-                                      style: const TextStyle(fontSize: 14),
+                              );
+                            }
+                          },
+                          borderRadius: BorderRadius.circular(12),
+                          child: Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.all(8),
+                                      decoration: BoxDecoration(
+                                        color: Colors.blue[100]!,
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: Icon(roleIcon, color: roleColor, size: 20),
                                     ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 8),
-                              Row(
-                                children: [
-                                  Icon(Icons.person_outline, size: 18, color: Colors.grey[600]),
-                                  const SizedBox(width: 8),
-                                  Text(
-                                    '@${contact['username']!}',
-                                    style: TextStyle(
-                                      fontSize: 14,
-                                      color: Colors.grey[700],
+                                    const SizedBox(width: 12),
+                                    Text(
+                                      contact['role']!,
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 14,
+                                        color: roleColor,
+                                      ),
                                     ),
+                                    const Spacer(),
+                                    Icon(
+                                      Icons.arrow_forward_ios,
+                                      size: 16,
+                                      color: Colors.grey[400],
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 12),
+                                Text(
+                                  contact['name']!,
+                                  style: const TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w600,
                                   ),
-                                ],
-                              ),
-                            ],
+                                ),
+                                const SizedBox(height: 12),
+                                Row(
+                                  children: [
+                                    Icon(Icons.email, size: 18, color: Colors.grey[600]),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        contact['email']!,
+                                        style: const TextStyle(fontSize: 14),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 8),
+                                Row(
+                                  children: [
+                                    Icon(Icons.person_outline, size: 18, color: Colors.grey[600]),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      '@${contact['username']!}',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        color: Colors.grey[700],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       );
@@ -5612,7 +6588,7 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
       case 'pending':
         return Colors.orange[600]!;
       case 'in_progress':
-        return Colors.blue[600]!;
+        return Colors.blue[400]!;
       case 'completed':
         return Colors.green[600]!;
       case 'cancelled':
@@ -5948,9 +6924,9 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: Colors.grey[200]!,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: color.withOpacity(0.3)),
+        border: Border.all(color: Colors.grey[400]!),
       ),
       child: Column(
         children: [
@@ -6134,7 +7110,7 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
         borderRadius: BorderRadius.circular(100),
         boxShadow: [
           BoxShadow(
-            color: color.withOpacity(0.25),
+            color: Colors.grey[300]!,
             blurRadius: 4,
             offset: const Offset(0, 2),
           ),
@@ -6157,7 +7133,7 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
     final color = isPending
         ? Colors.amber[600]!
         : project.status == 'in_progress'
-            ? Colors.green[600]!
+            ? Colors.blue[400]!
             : project.status == 'completed'
                 ? Colors.teal[600]!
                 : project.status == 'cancelled'
@@ -6173,7 +7149,7 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
         borderRadius: BorderRadius.circular(100),
         boxShadow: [
           BoxShadow(
-            color: color.withOpacity(0.25),
+            color: Colors.grey[300]!,
             blurRadius: 4,
             offset: const Offset(0, 2),
           ),
@@ -6189,6 +7165,21 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
         ),
       ),
     );
+  }
+
+  Color _getProjectStatusColor(String status) {
+    switch (status.toLowerCase()) {
+      case 'pending':
+        return Colors.amber[600]!;
+      case 'in_progress':
+        return Colors.blue[400]!;
+      case 'completed':
+        return Colors.green[600]!;
+      case 'cancelled':
+        return Colors.red[600]!;
+      default:
+        return Colors.grey[600]!;
+    }
   }
 
   Widget _buildCreateProjectButton() {
@@ -6209,23 +7200,19 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
               minHeight: isSmallScreen ? 60 : 72,
             ),
             decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: _isCreatingProject
-                    ? [Colors.green[400]!, Colors.green[600]!]
-                    : [Colors.green[500]!, Colors.green[700]!],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
+              color: _isCreatingProject
+                  ? Colors.green[500]!
+                  : Colors.green[600]!,
               borderRadius: BorderRadius.circular(18),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.green.withOpacity(_isCreatingProject ? 0.15 : 0.20),
+                  color: Colors.grey[200]!,
                   blurRadius: 8,
                   offset: const Offset(0, 3),
                   spreadRadius: 0,
                 ),
                 BoxShadow(
-                  color: Colors.green.withOpacity(0.08),
+                  color: Colors.grey[200]!,
                   blurRadius: 4,
                   offset: const Offset(0, 1),
                 ),
@@ -6236,8 +7223,8 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
               child: InkWell(
                 onTap: _isCreatingProject ? null : _createProject,
                 borderRadius: BorderRadius.circular(20),
-                splashColor: Colors.white.withOpacity(0.3),
-                highlightColor: Colors.white.withOpacity(0.1),
+                splashColor: Colors.grey[300]!,
+                highlightColor: Colors.grey[200]!,
                 child: Stack(
                   children: [
                     // Pulsing background effect (only when not loading)
@@ -6282,13 +7269,13 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
                                 Container(
                                   padding: const EdgeInsets.all(8),
                                   decoration: BoxDecoration(
-                                    color: Colors.white.withOpacity(0.22),
+                                    color: Colors.green[400]!,
                                     shape: BoxShape.circle,
                                     boxShadow: [
                                       BoxShadow(
-                                        color: Colors.black.withOpacity(0.18),
-                                        blurRadius: 7,
-                                        offset: const Offset(0, 3),
+                                        color: Colors.grey[400]!,
+                                        blurRadius: 3,
+                                        offset: const Offset(0, 1),
                                       ),
                                     ],
                                   ),
@@ -6319,7 +7306,7 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
                                         Text(
                                           'Start a new project',
                                           style: TextStyle(
-                                            color: Colors.white.withOpacity(0.9),
+                                            color: Colors.white,
                                             fontSize: 12,
                                             fontWeight: FontWeight.w500,
                                           ),
@@ -6355,24 +7342,15 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
           child: Container(
             height: 100,
             decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: isAfter5PM
-                    ? [Colors.red[300]!, Colors.red[500]!]
-                    : isNearEnd
-                        ? [Colors.orange[300]!, Colors.orange[500]!]
-                        : [Colors.blue[300]!, Colors.blue[500]!],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
+              color: isAfter5PM
+                  ? Colors.red[400]!
+                  : isNearEnd
+                      ? Colors.orange[400]!
+                      : Colors.blue[400]!,
               borderRadius: BorderRadius.circular(16),
               boxShadow: [
                 BoxShadow(
-                  color: (isAfter5PM
-                          ? Colors.red
-                          : isNearEnd
-                              ? Colors.orange
-                              : Colors.blue)
-                      .withOpacity(0.4),
+                  color: Colors.grey[300]!,
                   blurRadius: 12,
                   offset: const Offset(0, 6),
                   spreadRadius: 1,
@@ -6421,7 +7399,7 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
                       Text(
                         isAfter5PM ? 'Time Over' : 'Until 5 PM',
                         style: TextStyle(
-                          color: Colors.white.withOpacity(0.9),
+                                            color: Colors.white,
                           fontSize: 10,
                           fontWeight: FontWeight.w500,
                         ),
@@ -6441,15 +7419,11 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
     return Container(
       height: 100,
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [Colors.green[400]!, Colors.green[600]!],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
+        color: Colors.green[500]!,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.green.withOpacity(0.4),
+            color: Colors.grey[300]!,
             blurRadius: 15,
             offset: const Offset(0, 8),
           ),
@@ -6493,7 +7467,7 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
                       Container(
                         padding: const EdgeInsets.all(5),
                         decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.2),
+                          color: Colors.grey[200]!,
                           shape: BoxShape.circle,
                         ),
                         child: const Icon(
@@ -6530,15 +7504,11 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
     return Container(
       height: 100,
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [Colors.orange[400]!, Colors.orange[600]!],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
+        color: Colors.orange[500]!,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.orange.withOpacity(0.4),
+            color: Colors.grey[300]!,
             blurRadius: 15,
             offset: const Offset(0, 8),
           ),
@@ -6585,7 +7555,7 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
                 Container(
                   padding: const EdgeInsets.all(5),
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.2),
+                              color: Colors.grey[200]!,
                     shape: BoxShape.circle,
                   ),
                   child: const Icon(
@@ -6656,12 +7626,7 @@ class _PulsingContainerState extends State<_PulsingContainer>
         return Container(
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(16),
-            gradient: RadialGradient(
-              colors: [
-                widget.color.withOpacity(0.3 * (0.5 + 0.5 * _controller.value)),
-                Colors.transparent,
-              ],
-            ),
+            color: Colors.grey[200]!,
           ),
         );
       },
@@ -6705,12 +7670,7 @@ class _PulsingButtonBackgroundState extends State<_PulsingButtonBackground>
         return Container(
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(20),
-            gradient: RadialGradient(
-              colors: [
-                widget.color.withOpacity(0.3 * (0.5 + 0.5 * _controller.value)),
-                Colors.transparent,
-              ],
-            ),
+            color: Colors.grey[200]!,
           ),
         );
       },
@@ -6816,7 +7776,7 @@ class _HoverableStartButtonState extends State<_HoverableStartButton> {
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           fixedSize: const Size(70, 28),
           elevation: _isHovered ? 3 : 2,
-          shadowColor: backgroundColor.withOpacity(0.4),
+          shadowColor: Colors.grey[400]!,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(8),
           ),
@@ -6857,7 +7817,7 @@ class _HoverableCancelButtonState extends State<_HoverableCancelButton> {
         child: Text(
           'Cancel',
           style: TextStyle(
-            fontSize: 11,
+            fontSize: 10,
             fontWeight: FontWeight.w600,
             color: foregroundColor,
           ),
@@ -6865,12 +7825,64 @@ class _HoverableCancelButtonState extends State<_HoverableCancelButton> {
         style: ElevatedButton.styleFrom(
           backgroundColor: backgroundColor,
           foregroundColor: foregroundColor,
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-          fixedSize: const Size(70, 28),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          fixedSize: const Size(60, 24),
           elevation: _isHovered ? 3 : 2,
-          shadowColor: backgroundColor.withOpacity(0.4),
+          shadowColor: Colors.grey[400]!,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.circular(6),
+          ),
+        ).copyWith(
+          overlayColor: WidgetStateProperty.all(Colors.transparent),
+        ),
+      ),
+    );
+  }
+}
+
+class _HoverableCompleteButton extends StatefulWidget {
+  final VoidCallback onPressed;
+
+  const _HoverableCompleteButton({
+    required this.onPressed,
+  });
+
+  @override
+  State<_HoverableCompleteButton> createState() => _HoverableCompleteButtonState();
+}
+
+class _HoverableCompleteButtonState extends State<_HoverableCompleteButton> {
+  bool _isHovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    // Teal/green theme for complete button
+    final backgroundColor = _isHovered ? Colors.teal[700]! : Colors.teal[600]!;
+    final foregroundColor = Colors.white;
+    final iconColor = Colors.white;
+
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      child: ElevatedButton(
+        onPressed: widget.onPressed,
+        child: Text(
+          'Complete',
+          style: TextStyle(
+            fontSize: 10,
+            fontWeight: FontWeight.w600,
+            color: foregroundColor,
+          ),
+        ),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: backgroundColor,
+          foregroundColor: foregroundColor,
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          fixedSize: const Size(60, 24),
+          elevation: _isHovered ? 3 : 2,
+          shadowColor: Colors.grey[400]!,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(6),
           ),
         ).copyWith(
           overlayColor: WidgetStateProperty.all(Colors.transparent),
