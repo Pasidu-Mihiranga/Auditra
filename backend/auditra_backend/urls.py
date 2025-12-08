@@ -18,6 +18,7 @@ from django.contrib import admin
 from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
+from authentication.views import ClientRegistrationView, EmployeeRegistrationView
 
 # Test imports (removed emojis for Windows compatibility)
 try:
@@ -46,6 +47,8 @@ except Exception as e:
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/auth/', include('authentication.urls')),
+    path('api/clients/register/', ClientRegistrationView.as_view(), name='client-register'),
+    path('api/employees/register/', EmployeeRegistrationView.as_view(), name='employee-register'),
     path('api/attendance/', include('attendance.urls')),
     path('api/projects/', include('projects.urls')),
     path('api/valuations/', include('valuations.urls')),

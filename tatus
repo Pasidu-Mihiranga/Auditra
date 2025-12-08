@@ -1,0 +1,69 @@
+CRITICAL_FIX.md
+DEBUG_BACKEND.md
+DEBUG_MARK_ATTENDANCE.md
+DEBUG_REGISTER_BUTTON.md
+FINAL_FIX_STEPS.md
+FIX_404_ERRORS.md
+FIX_EMULATOR_TOUCH.md
+FIX_ERROR_SUMMARY.md
+QUICK_DIAGNOSIS.md
+QUICK_SETUP_GUIDE.md
+README.md
+REGISTER_BUTTON_FIXED.md
+SIMPLE_FIX.md
+TEST_ENDPOINTS_NOW.md
+TEST_REGISTRATION.md
+URGENT_FIX.md
+auditra web app/API_CONFIGURATION.md
+auditra web app/BACKEND_CONNECTION.md
+auditra web app/HOW_TO_VIEW_FORMS.md
+auditra web app/PROJECT_STRUCTURE.md
+auditra web app/README.md
+auditra web app/client-form.html
+auditra web app/employee-form.html
+auditra web app/index.html
+auditra/android/app/src/main/AndroidManifest.xml
+auditra/ios/Runner/Info.plist
+auditra/lib/models/payment_slip_model.dart
+auditra/lib/models/project_model.dart
+auditra/lib/models/valuation_model.dart
+auditra/lib/screens/admin_dashboard.dart
+auditra/lib/screens/coordinator_dashboard.dart
+auditra/lib/screens/field_officer_dashboard.dart
+auditra/lib/screens/generic_dashboard.dart
+auditra/lib/screens/payment_slips_screen.dart
+auditra/lib/screens/register_screen.dart
+auditra/lib/screens/valuation_form_screen.dart
+auditra/lib/services/api_service.dart
+auditra/linux/flutter/generated_plugin_registrant.cc
+auditra/linux/flutter/generated_plugins.cmake
+auditra/macos/Flutter/GeneratedPluginRegistrant.swift
+auditra/pubspec.yaml
+auditra/windows/flutter/generated_plugin_registrant.cc
+auditra/windows/flutter/generated_plugins.cmake
+backend/attendance/urls.py
+backend/auditra_backend/settings.py
+backend/auditra_backend/urls.py
+backend/authentication/admin.py
+backend/authentication/management/commands/update_payment_slips.py
+backend/authentication/migrations/0002_paymentslip.py
+backend/authentication/migrations/0003_paymentslip_employee_number_and_more.py
+backend/authentication/migrations/0004_paymentslip_allowances_paymentslip_epf_contribution_and_more.py
+backend/authentication/models.py
+backend/authentication/serializers.py
+backend/authentication/urls.py
+backend/authentication/views.py
+backend/projects/serializers.py
+backend/projects/views.py
+backend/requirements.txt
+backend/test_endpoints.py
+backend/valuations/__init__.py
+backend/valuations/admin.py
+backend/valuations/apps.py
+backend/valuations/migrations/0001_initial.py
+backend/valuations/migrations/__init__.py
+backend/valuations/models.py
+backend/valuations/serializers.py
+backend/valuations/tests.py
+backend/valuations/urls.py
+backend/valuations/views.py

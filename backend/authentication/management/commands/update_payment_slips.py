@@ -1,5 +1,5 @@
 from django.core.management.base import BaseCommand
-from authentication.models import PaymentSlip
+from authentication.models import PaymentSlip, UserRole
 from decimal import Decimal
 
 
@@ -38,7 +38,12 @@ class Command(BaseCommand):
         updated_count = 0
         for slip in payment_slips:
             try:
-                basic_salary = Decimal(str(slip.salary))
+                # Get current salary from user's role (not from stored slip)
+                if hasattr(slip.user, 'role') and slip.user.role:
+                    basic_salary = Decimal(str(slip.user.role.salary))
+                else:
+                    # Fallback to stored salary if role doesn't exist
+                    basic_salary = Decimal(str(slip.salary))
                 
                 # Recalculate with new formulas
                 allowances = PaymentSlip.calculate_allowances(basic_salary)
@@ -51,11 +56,16 @@ class Command(BaseCommand):
                 # New net salary formula: Basic - EPF + Allowances
                 net_salary = basic_salary - epf_contribution + allowances
                 
-                # Update the payment slip
+                # Update the payment slip with new salary and recalculated values
+                slip.salary = basic_salary
                 slip.allowances = allowances
                 slip.epf_contribution = epf_contribution
                 slip.overtime_pay = overtime_pay
                 slip.net_salary = net_salary
+                # Update role and role_display from current role
+                if hasattr(slip.user, 'role') and slip.user.role:
+                    slip.role = slip.user.role.role
+                    slip.role_display = slip.user.role.role_display
                 slip.save()
                 
                 updated_count += 1

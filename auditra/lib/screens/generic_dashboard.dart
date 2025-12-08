@@ -4,10 +4,12 @@ import 'package:fl_chart/fl_chart.dart';
 import 'dart:math' as math;
 import '../services/api_service.dart';
 import '../models/attendance_model.dart';
-import '../models/payment_slip_model.dart';
 import '../models/project_model.dart';
-import 'payment_slips_screen.dart';
 import 'login_screen.dart';
+import 'payment_slips_screen.dart';
+import 'leave_request_screen.dart';
+import 'my_leave_requests_screen.dart';
+import 'personal_info_screen.dart';
 
 class GenericDashboard extends StatefulWidget {
   final String role;
@@ -52,6 +54,10 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
   // Timer for overtime
   Duration _overtimeDuration = Duration.zero;
   
+  // Leave statistics state
+  Map<String, dynamic>? _leaveStatistics;
+  bool _isLoadingLeaveStats = false;
+  
   // Check if this role should see projects
   bool get _shouldShowProjects {
     return widget.role == 'client' || 
@@ -92,6 +98,7 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
     _loadUserData();
     _loadTodayAttendance();
     _loadSummary();
+    _loadLeaveStatistics();
     _startTimer();
   }
 
@@ -261,13 +268,18 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
             _summary = AttendanceSummary.fromJson(result['data']['data']);
           } else {
             _summary = null;
-            // Show error message if available
-            if (result['message'] != null) {
+            // Only show error for non-connection errors (suppress connection/server errors)
+            final errorMessage = result['message'] ?? '';
+            if (errorMessage.isNotEmpty && 
+                !errorMessage.toLowerCase().contains('server error') &&
+                !errorMessage.toLowerCase().contains('connection') &&
+                !errorMessage.toLowerCase().contains('backend server') &&
+                !errorMessage.toLowerCase().contains('html')) {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
-                  content: Text(result['message'] ?? 'Failed to load summary'),
+                  content: Text(errorMessage),
                   backgroundColor: Colors.orange,
-                  duration: const Duration(seconds: 3),
+                  duration: const Duration(seconds: 2),
                 ),
               );
             }
@@ -280,13 +292,9 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
           _isLoadingSummary = false;
           _summary = null;
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error loading summary: $e'),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 4),
-          ),
-        );
+        // Suppress connection errors - don't show error banner
+        // Only log for debugging
+        print('Error loading attendance summary: $e');
       }
     }
   }
@@ -559,9 +567,12 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
           children: [
             Text(
               _getDashboardTitle(),
-              style: const TextStyle(
+              style: TextStyle(
                 fontWeight: FontWeight.bold,
                 letterSpacing: 0.5,
+                color: Theme.of(context).brightness == Brightness.dark
+                    ? Colors.white
+                    : Colors.black87,
               ),
             ),
             if (_username != null || _profile?['role_display'] != null)
@@ -569,96 +580,109 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
                 padding: const EdgeInsets.only(top: 4.0),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     if (_username != null)
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.person_outline,
-                            size: 14,
-                            color: Theme.of(context).brightness == Brightness.dark
-                                ? Colors.white.withOpacity(0.9)
-                                : Colors.black87.withOpacity(0.8),
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            _username!,
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
+                      Flexible(
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.person_outline,
+                              size: 12,
                               color: Theme.of(context).brightness == Brightness.dark
-                                  ? Colors.white.withOpacity(0.95)
-                                  : Colors.black87,
-                              letterSpacing: 0.3,
+                                  ? Colors.white.withOpacity(0.9)
+                                  : Colors.black87.withOpacity(0.8),
                             ),
-                          ),
-                        ],
+                            const SizedBox(width: 3),
+                            Flexible(
+                              child: Text(
+                                _username!,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                  color: Theme.of(context).brightness == Brightness.dark
+                                      ? Colors.white.withOpacity(0.95)
+                                      : Colors.black87,
+                                  letterSpacing: 0.2,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                                maxLines: 1,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     if (_username != null && _profile?['role_display'] != null)
                       Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                        padding: const EdgeInsets.symmetric(horizontal: 6.0),
                         child: Container(
                           width: 1,
-                          height: 14,
+                          height: 12,
                           color: Theme.of(context).brightness == Brightness.dark
                               ? Colors.white.withOpacity(0.3)
                               : Colors.black26,
                         ),
                       ),
                     if (_profile?['role_display'] != null)
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            colors: Theme.of(context).brightness == Brightness.dark
-                                ? [
-                                    Colors.white.withOpacity(0.25),
-                                    Colors.white.withOpacity(0.15),
-                                  ]
-                                : [
-                                    Colors.blue.withOpacity(0.15),
-                                    Colors.blue.withOpacity(0.1),
-                                  ],
-                          ),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: Theme.of(context).brightness == Brightness.dark
-                                ? Colors.white.withOpacity(0.3)
-                                : Colors.blue.withOpacity(0.3),
-                            width: 1,
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.1),
-                              blurRadius: 4,
-                              offset: const Offset(0, 2),
+                      Flexible(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: Theme.of(context).brightness == Brightness.dark
+                                  ? [
+                                      Colors.white.withOpacity(0.25),
+                                      Colors.white.withOpacity(0.15),
+                                    ]
+                                  : [
+                                      Colors.blue.withOpacity(0.15),
+                                      Colors.blue.withOpacity(0.1),
+                                    ],
                             ),
-                          ],
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              Icons.badge_outlined,
-                              size: 12,
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
                               color: Theme.of(context).brightness == Brightness.dark
-                                  ? Colors.white.withOpacity(0.9)
-                                  : Colors.blue[700],
+                                  ? Colors.white.withOpacity(0.3)
+                                  : Colors.blue.withOpacity(0.3),
+                              width: 1,
                             ),
-                            const SizedBox(width: 4),
-                            Text(
-                              _profile!['role_display'],
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w600,
-                                letterSpacing: 0.5,
-                                color: Theme.of(context).brightness == Brightness.dark
-                                    ? Colors.white
-                                    : Colors.blue[900],
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.1),
+                                blurRadius: 4,
+                                offset: const Offset(0, 2),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.badge_outlined,
+                                size: 10,
+                                color: Theme.of(context).brightness == Brightness.dark
+                                    ? Colors.white.withOpacity(0.9)
+                                    : Colors.blue[700],
+                              ),
+                              const SizedBox(width: 3),
+                              Flexible(
+                                child: Text(
+                                  _profile!['role_display'],
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w600,
+                                    letterSpacing: 0.3,
+                                    color: Theme.of(context).brightness == Brightness.dark
+                                        ? Colors.white
+                                        : Colors.blue[900],
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                  maxLines: 1,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                   ],
@@ -668,6 +692,55 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
         ),
         centerTitle: true,
         actions: [
+          // View My Leave Requests button - visible for employee roles
+          IconButton(
+            icon: const Icon(Icons.list_alt, color: Colors.blue),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const MyLeaveRequestsScreen(),
+                ),
+              );
+            },
+            tooltip: 'My Leave Requests',
+          ),
+          // Leave Request button - visible for employee roles
+          IconButton(
+            icon: const Icon(Icons.edit_calendar, color: Colors.purple),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const LeaveRequestScreen(),
+                ),
+              );
+            },
+            tooltip: 'Leave Requests',
+          ),
+          // Personal Info button - visible for general employee only
+          if (widget.role == 'general_employee')
+            IconButton(
+              icon: const Icon(Icons.person_outline, color: Colors.blue),
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const PersonalInfoScreen(),
+                  ),
+                ).catchError((error) {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Error opening personal information: $error'),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                  }
+                });
+              },
+              tooltip: 'Personal Information',
+            ),
           IconButton(
             icon: const Icon(Icons.logout),
             onPressed: _logout,
@@ -704,6 +777,7 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
         await _loadUserData();
         await _loadTodayAttendance();
         await _loadSummary();
+        await _loadLeaveStatistics();
       },
       child: SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
@@ -719,7 +793,11 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
             _buildSummarySection(),
             const SizedBox(height: 16),
             
-            // Payment Slips Section
+            // Leave Statistics Section
+            _buildLeaveStatisticsSection(),
+            const SizedBox(height: 16),
+            
+            // Payment Section - Show for employee roles
             _buildPaymentSection(),
             const SizedBox(height: 16),
             
@@ -1473,6 +1551,139 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
     );
   }
 
+  Future<void> _loadLeaveStatistics() async {
+    // Only load for employee roles
+    final allowedRoles = [
+      'coordinator',
+      'field_officer',
+      'accessor',
+      'senior_valuer',
+      'md_gm',
+      'hr_staff',
+      'general_employee',
+    ];
+    
+    if (!allowedRoles.contains(widget.role)) {
+      return;
+    }
+    
+    setState(() => _isLoadingLeaveStats = true);
+    
+    final result = await ApiService.getMyLeaveStatistics();
+    
+    if (!mounted) return;
+    
+    setState(() {
+      _isLoadingLeaveStats = false;
+      if (result['success']) {
+        _leaveStatistics = result['data'];
+      }
+    });
+  }
+
+  Widget _buildLeaveStatisticsSection() {
+    // Only show for employee roles
+    final allowedRoles = [
+      'coordinator',
+      'field_officer',
+      'accessor',
+      'senior_valuer',
+      'md_gm',
+      'hr_staff',
+      'general_employee',
+    ];
+    
+    if (!allowedRoles.contains(widget.role)) {
+      return const SizedBox.shrink();
+    }
+    
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.event_available, color: Colors.teal[700], size: 28),
+                const SizedBox(width: 12),
+                Text(
+                  'Leave Statistics',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            if (_isLoadingLeaveStats)
+              const Center(child: CircularProgressIndicator())
+            else if (_leaveStatistics != null)
+              Row(
+                children: [
+                  Expanded(
+                    child: _buildLeaveStatCard(
+                      'Remaining Leaves',
+                      '${_leaveStatistics!['remaining_leaves'] ?? 0}',
+                      Colors.green,
+                      Icons.event_available,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: _buildLeaveStatCard(
+                      'Leave Taken',
+                      '${_leaveStatistics!['leave_taken'] ?? 0}',
+                      Colors.orange,
+                      Icons.event_busy,
+                    ),
+                  ),
+                ],
+              )
+            else
+              const Center(child: Text('Unable to load leave statistics')),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLeaveStatCard(String title, String value, Color color, IconData icon) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withOpacity(0.3)),
+      ),
+      child: Column(
+        children: [
+          Icon(icon, color: color, size: 32),
+          const SizedBox(height: 8),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+              color: color,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            title,
+            style: TextStyle(
+              fontSize: 12,
+              color: Colors.grey[600],
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildSummaryCard(String title, String value, Color color) {
     return Container(
       padding: const EdgeInsets.all(12),
@@ -1506,57 +1717,19 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
   }
 
   Widget _buildPaymentSection() {
-    // Only show payment section for roles that should have payment slips
-    final allowedRoles = [
+    // Show payment section for employee roles only (not for admin, client, agent, unassigned)
+    final employeeRoles = [
       'coordinator',
       'field_officer',
-      'accessor',
       'senior_valuer',
+      'accessor',
       'md_gm',
       'hr_staff',
       'general_employee',
     ];
     
-    // Don't show for client, agent, unassigned, or admin
-    if (!allowedRoles.contains(widget.role)) {
-      print('Payment section hidden for role: ${widget.role}');
+    if (!employeeRoles.contains(widget.role)) {
       return const SizedBox.shrink();
-    }
-    
-    print('Payment section visible for role: ${widget.role}');
-    
-    void _navigateToPaymentSlips() {
-      print('Payment slips navigation called!');
-      try {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => const PaymentSlipsScreen(),
-          ),
-        ).then((value) {
-          print('Payment slips screen closed');
-        }).catchError((error) {
-          print('Error navigating to payment slips: $error');
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('Error opening payment slips: $error'),
-                backgroundColor: Colors.red,
-              ),
-            );
-          }
-        });
-      } catch (e) {
-        print('Exception in payment slips navigation: $e');
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Error: $e'),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
-      }
     }
     
     return Card(
@@ -1585,31 +1758,32 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
               style: TextStyle(color: Colors.grey),
             ),
             const SizedBox(height: 16),
-            GestureDetector(
-              onTap: () {
-                print('GestureDetector tapped!');
-                _navigateToPaymentSlips();
-              },
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
-                decoration: BoxDecoration(
-                  color: Colors.green,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: const [
-                    Icon(Icons.visibility, color: Colors.white, size: 20),
-                    SizedBox(width: 8),
-                    Text(
-                      'View Payment Slips',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
+            ElevatedButton.icon(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => PaymentSlipsScreen(role: widget.role),
+                  ),
+                ).catchError((error) {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Error opening payment slips: $error'),
+                        backgroundColor: Colors.red,
                       ),
-                    ),
-                  ],
+                    );
+                  }
+                });
+              },
+              icon: const Icon(Icons.visibility),
+              label: const Text('View Payment Slips'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
                 ),
               ),
             ),

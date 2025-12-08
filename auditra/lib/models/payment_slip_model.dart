@@ -10,6 +10,7 @@ class PaymentSlip {
   final double allowances; // Total allowances
   final double epfContribution; // EPF 8% of basic
   final double overtimeHours; // Total overtime hours for the month
+  final bool overtimeHoursUploaded; // Flag to track if overtime hours were uploaded manually
   final double overtimePay; // Overtime payment
   final double netSalary; // Net salary (basic + allowances + overtime - EPF)
   final String role;
@@ -34,6 +35,7 @@ class PaymentSlip {
     required this.allowances,
     required this.epfContribution,
     required this.overtimeHours,
+    required this.overtimeHoursUploaded,
     required this.overtimePay,
     required this.netSalary,
     required this.role,
@@ -70,6 +72,7 @@ class PaymentSlip {
         allowances: _parseDecimal(json['allowances']),
         epfContribution: _parseDecimal(json['epf_contribution']),
         overtimeHours: _parseDecimal(json['overtime_hours']),
+        overtimeHoursUploaded: json['overtime_hours_uploaded'] as bool? ?? false,
         overtimePay: _parseDecimal(json['overtime_pay']),
         netSalary: _parseDecimal(json['net_salary']),
         role: (json['role'] ?? '') as String,

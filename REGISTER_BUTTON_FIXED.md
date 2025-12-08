@@ -119,3 +119,15 @@ To change, edit: `auditra/lib/services/api_service.dart` line 10
 **The register button should now work properly!** 🎉
 
 
+
+
+
+
+
+
+
+
+
+
+
+

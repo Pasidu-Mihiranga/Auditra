@@ -11,7 +11,11 @@ class Command(BaseCommand):
         users_fixed = 0
         
         for user in User.objects.all():
-            if not hasattr(user, 'role'):
+            # Check if UserRole exists for this user
+            try:
+                user.role
+                # Role exists, skip
+            except UserRole.DoesNotExist:
                 # Create role for this user
                 if user.username == 'admin' and user.is_superuser:
                     # Admin user gets admin role

@@ -383,10 +383,35 @@
                     }),
                 });
 
-                const data = await response.json();
-
                 loader.classList.remove('show');
                 submitBtn.disabled = false;
+
+                // Check if response is JSON
+                const contentType = response.headers.get('content-type');
+                let data = {};
+                
+                if (contentType && contentType.includes('application/json')) {
+                    try {
+                        data = await response.json();
+                    } catch (jsonError) {
+                        console.error('JSON parse error:', jsonError);
+                        showError('emailError', 'Invalid response from server. Please check if the backend is running and the endpoint exists.');
+                        return;
+                    }
+                } else {
+                    // Response is HTML (error page)
+                    const textResponse = await response.text();
+                    console.error('Server returned HTML instead of JSON:', textResponse.substring(0, 200));
+                    
+                    if (response.status === 404) {
+                        showError('emailError', 'API endpoint not found. Please check if the backend is running and the endpoint /api/clients/register/ exists.');
+                    } else if (response.status === 500) {
+                        showError('emailError', 'Server error. Please check the backend logs and ensure the server is running correctly.');
+                    } else {
+                        showError('emailError', `Server error (Status: ${response.status}). Please check if the backend is running at ${apiUrl}`);
+                    }
+                    return;
+                }
 
                 if (response.ok) {
                     // Success
@@ -406,13 +431,30 @@
                         errorMsg = data.message;
                     } else if (data.email) {
                         errorMsg = `Email: ${Array.isArray(data.email) ? data.email[0] : data.email}`;
+                    } else if (data.detail) {
+                        errorMsg = data.detail;
+                    } else if (typeof data === 'object' && Object.keys(data).length > 0) {
+                        // Get first error message from validation errors
+                        const firstKey = Object.keys(data)[0];
+                        const firstError = data[firstKey];
+                        errorMsg = `${firstKey}: ${Array.isArray(firstError) ? firstError[0] : firstError}`;
                     }
                     showError('emailError', errorMsg);
                 }
             } catch (error) {
                 loader.classList.remove('show');
                 submitBtn.disabled = false;
-                showError('emailError', `Connection error: ${error.message}. Make sure the backend is running.`);
+                
+                let errorMessage = 'Connection error. ';
+                if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
+                    errorMessage += 'Cannot connect to the server. Please make sure the backend is running at ' + apiUrl;
+                } else if (error.message.includes('JSON')) {
+                    errorMessage += 'Invalid response from server. Please check if the backend is running.';
+                } else {
+                    errorMessage += error.message;
+                }
+                
+                showError('emailError', errorMessage);
             }
         });
 

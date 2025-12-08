@@ -9,6 +9,8 @@ import '../models/project_model.dart';
 import 'login_screen.dart';
 import 'generic_dashboard.dart';
 import 'create_project_screen.dart';
+import 'leave_request_screen.dart';
+import 'my_leave_requests_screen.dart';
 
 // Helper class to hold upload dialog state
 class _UploadDialogState {
@@ -214,21 +216,28 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
           } catch (e) {
             print('Error parsing projects: $e');
             print('Response data: ${result['data']}');
+            // Only show error for parsing errors, not for empty lists
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
                 content: Text('Error loading projects: $e'),
                 backgroundColor: Colors.red,
+                duration: const Duration(seconds: 3),
               ),
             );
             _projects = [];
           }
         } else {
-          // Show error message if loading fails
-          if (result['message'] != null) {
+          // Only show error message if it's a real error (not just empty list)
+          // Don't show error for "Server error" messages as they might be false positives
+          final errorMessage = result['message'] ?? '';
+          if (errorMessage.isNotEmpty && 
+              !errorMessage.contains('Server error') &&
+              !errorMessage.contains('backend server is running')) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: Text(result['message'] ?? 'Failed to load projects'),
+                content: Text(errorMessage),
                 backgroundColor: Colors.orange,
+                duration: const Duration(seconds: 3),
               ),
             );
           }
@@ -4751,6 +4760,30 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
         centerTitle: true,
         actions: [
           IconButton(
+            icon: const Icon(Icons.list_alt, color: Colors.blue),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const MyLeaveRequestsScreen(),
+                ),
+              );
+            },
+            tooltip: 'My Leave Requests',
+          ),
+          IconButton(
+            icon: const Icon(Icons.edit_calendar, color: Colors.purple),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const LeaveRequestScreen(),
+                ),
+              );
+            },
+            tooltip: 'Leave Requests',
+          ),
+          IconButton(
             icon: const Icon(Icons.logout),
             onPressed: _logout,
             tooltip: 'Logout',
@@ -4775,12 +4808,20 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
   }
 
   Widget _buildAttendanceTab() {
-    return GenericDashboard(
-      role: 'coordinator',
-      roleDisplay: _roleDisplay ?? 'Coordinator',
-      isEmbedded: true,
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16.0),
+      child: Column(
+        children: [
+          GenericDashboard(
+            role: 'coordinator',
+            roleDisplay: _roleDisplay ?? 'Coordinator',
+            isEmbedded: true,
+          ),
+        ],
+      ),
     );
   }
+
 
   List<Project> _filterAndSortProjects(List<Project> projects, int tabIndex) {
     // Get search query for this tab

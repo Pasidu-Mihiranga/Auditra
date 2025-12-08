@@ -115,3 +115,15 @@ After successful registration:
 - Check that the registration endpoint is accessible at `/api/auth/register/`
 
 
+
+
+
+
+
+
+
+
+
+
+
+

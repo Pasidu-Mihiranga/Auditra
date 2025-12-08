@@ -27,7 +27,7 @@ class UserRole(models.Model):
     
     # Salary mapping for each role (in currency units)
     ROLE_SALARIES = {
-        'admin': 200000,
+        'admin': 300000,
         'coordinator': 150000,
         'field_officer': 130000,
         'accessor': 110000,
@@ -105,6 +105,7 @@ class PaymentSlip(models.Model):
     allowances = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)  # Total allowances
     epf_contribution = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)  # EPF 8% of basic
     overtime_hours = models.DecimalField(max_digits=5, decimal_places=2, default=0.00)  # Total overtime hours for the month
+    overtime_hours_uploaded = models.BooleanField(default=False)  # Flag to track if overtime hours were uploaded manually
     overtime_pay = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)  # Overtime payment
     net_salary = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)  # Net salary (basic + allowances + overtime - EPF)
     role = models.CharField(max_length=50)
@@ -112,6 +113,7 @@ class PaymentSlip(models.Model):
     pay_slip_number = models.CharField(max_length=50, unique=True, null=True, blank=True)
     employee_number = models.CharField(max_length=50, null=True, blank=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='generated')
+    is_uploaded = models.BooleanField(default=False)  # Flag to track if payment slips are uploaded/published for employees to view
     generated_by = models.ForeignKey(
         User, 
         on_delete=models.SET_NULL, 
@@ -120,6 +122,7 @@ class PaymentSlip(models.Model):
         related_name='generated_payment_slips'
     )
     generated_at = models.DateTimeField(auto_now_add=True)
+    uploaded_at = models.DateTimeField(null=True, blank=True)  # When payment slips were uploaded/published
     paid_at = models.DateTimeField(null=True, blank=True)
     
     class Meta:
@@ -151,12 +154,12 @@ class PaymentSlip(models.Model):
     
     @staticmethod
     def calculate_overtime_pay(overtime_hours, basic_salary):
-        """Calculate overtime pay (1.5x hourly rate for overtime hours)"""
-        # Hourly rate = basic_salary / (22 working days * 8 hours)
-        hourly_rate = Decimal(str(basic_salary)) / Decimal('176')  # 22 days * 8 hours
-        # Overtime rate is 1.5x hourly rate
-        overtime_rate = hourly_rate * Decimal('1.5')
-        return Decimal(str(overtime_hours)) * overtime_rate
+        """Calculate overtime pay: overtime_hours * (basic_salary * 5/100)"""
+        # Overtime amount = no of overtime hours * (basic salary * 5/100)
+        basic_salary_decimal = Decimal(str(basic_salary))
+        overtime_hours_decimal = Decimal(str(overtime_hours))
+        overtime_rate = basic_salary_decimal * Decimal('0.05')  # 5% of basic salary
+        return overtime_hours_decimal * overtime_rate
     
     @staticmethod
     def get_monthly_overtime_hours(user, month, year):
@@ -191,9 +194,9 @@ class PaymentSlip(models.Model):
         
         generated_count = 0
         updated_count = 0
-        # Only generate for these roles (exclude client, agent, unassigned, admin)
+        # Only generate for these roles (exclude client, agent, unassigned)
         allowed_roles = [
-            'coordinator', 'field_officer', 'accessor', 
+            'admin', 'coordinator', 'field_officer', 'accessor', 
             'senior_valuer', 'md_gm', 'hr_staff', 'general_employee'
         ]
         users_with_roles = User.objects.filter(role__role__in=allowed_roles)
@@ -210,20 +213,29 @@ class PaymentSlip(models.Model):
                         # Recalculate components
                         allowances = cls.calculate_allowances(basic_salary)
                         epf_contribution = cls.calculate_epf(basic_salary)
+                        # Always get overtime hours from attendance system for all employees
                         overtime_hours = Decimal(str(cls.get_monthly_overtime_hours(user, month, year)))
+                        existing_slip.overtime_hours = overtime_hours
+                        existing_slip.overtime_hours_uploaded = False  # Reset flag since we're fetching from attendance
                         overtime_pay = cls.calculate_overtime_pay(float(overtime_hours), float(basic_salary))
-                        # Net salary = Basic salary - EPF + allowances (overtime pay is tracked separately)
-                        net_salary = basic_salary - epf_contribution + allowances
+                        # Net salary = Basic salary - EPF + allowances + overtime pay
+                        net_salary = basic_salary - epf_contribution + allowances + overtime_pay
+                        
+                        # Set employee number to user ID (ensure correct format)
+                        if not existing_slip.employee_number or existing_slip.employee_number != str(user.id):
+                            existing_slip.employee_number = str(user.id)
+                        if not existing_slip.pay_slip_number:
+                            existing_slip.pay_slip_number = f"PS-{year}{month:02d}-{user.id}"
                         
                         # Update existing slip
                         existing_slip.salary = basic_salary
                         existing_slip.allowances = allowances
                         existing_slip.epf_contribution = epf_contribution
-                        existing_slip.overtime_hours = overtime_hours
                         existing_slip.overtime_pay = overtime_pay
                         existing_slip.net_salary = net_salary
                         existing_slip.role = user.role.role
                         existing_slip.role_display = user.role.role_display
+                        existing_slip.is_uploaded = False  # Reset upload flag when regenerating - only admin can see until uploaded
                         if generated_by:
                             existing_slip.generated_by = generated_by
                         existing_slip.save()
@@ -233,15 +245,16 @@ class PaymentSlip(models.Model):
                         # Calculate components
                         allowances = cls.calculate_allowances(basic_salary)
                         epf_contribution = cls.calculate_epf(basic_salary)
+                        # Get overtime hours from attendance system (not uploaded yet)
                         overtime_hours = Decimal(str(cls.get_monthly_overtime_hours(user, month, year)))
                         overtime_pay = cls.calculate_overtime_pay(float(overtime_hours), float(basic_salary))
-                        # Net salary = Basic salary - EPF + allowances (overtime pay is tracked separately)
-                        net_salary = basic_salary - epf_contribution + allowances
+                        # Net salary = Basic salary - EPF + allowances + overtime pay
+                        net_salary = basic_salary - epf_contribution + allowances + overtime_pay
                         
                         # Generate pay slip number: PS-YYYYMM-USERID
                         pay_slip_number = f"PS-{year}{month:02d}-{user.id}"
-                        # Employee number: EMP-USERID
-                        employee_number = f"EMP-{user.id}"
+                        # Employee number: User ID
+                        employee_number = str(user.id)
                         
                         cls.objects.create(
                             user=user,
@@ -251,6 +264,8 @@ class PaymentSlip(models.Model):
                             allowances=allowances,
                             epf_contribution=epf_contribution,
                             overtime_hours=overtime_hours,
+                            overtime_hours_uploaded=False,  # Initially from attendance system
+                            is_uploaded=False,  # Not uploaded/published yet - only admin can see
                             overtime_pay=overtime_pay,
                             net_salary=net_salary,
                             role=user.role.role,
@@ -287,14 +302,23 @@ class PaymentSlip(models.Model):
             # Update existing payment slip
             allowances = cls.calculate_allowances(basic_salary)
             epf_contribution = cls.calculate_epf(basic_salary)
+            # Always get overtime hours from attendance system for all employees
             overtime_hours = Decimal(str(cls.get_monthly_overtime_hours(user, month, year)))
+            existing_slip.overtime_hours = overtime_hours
+            existing_slip.overtime_hours_uploaded = False  # Reset flag since we're fetching from attendance
             overtime_pay = cls.calculate_overtime_pay(float(overtime_hours), float(basic_salary))
-            net_salary = basic_salary - epf_contribution + allowances
+            # Net salary = Basic salary - EPF + allowances + overtime pay
+            net_salary = basic_salary - epf_contribution + allowances + overtime_pay
+            
+            # Set employee number to user ID (ensure correct format)
+            if not existing_slip.employee_number or existing_slip.employee_number != str(user.id):
+                existing_slip.employee_number = str(user.id)
+            if not existing_slip.pay_slip_number:
+                existing_slip.pay_slip_number = f"PS-{year}{month:02d}-{user.id}"
             
             existing_slip.salary = basic_salary
             existing_slip.allowances = allowances
             existing_slip.epf_contribution = epf_contribution
-            existing_slip.overtime_hours = overtime_hours
             existing_slip.overtime_pay = overtime_pay
             existing_slip.net_salary = net_salary
             existing_slip.role = user.role.role
@@ -311,13 +335,13 @@ class PaymentSlip(models.Model):
         epf_contribution = cls.calculate_epf(basic_salary)
         overtime_hours = Decimal(str(cls.get_monthly_overtime_hours(user, month, year)))
         overtime_pay = cls.calculate_overtime_pay(float(overtime_hours), float(basic_salary))
-        # Net salary = Basic salary - EPF + allowances (overtime pay is tracked separately)
-        net_salary = basic_salary - epf_contribution + allowances
+        # Net salary = Basic salary - EPF + allowances + overtime pay
+        net_salary = basic_salary - epf_contribution + allowances + overtime_pay
         
         # Generate pay slip number: PS-YYYYMM-USERID
         pay_slip_number = f"PS-{year}{month:02d}-{user.id}"
-        # Employee number: EMP-USERID
-        employee_number = f"EMP-{user.id}"
+        # Employee number: User ID
+        employee_number = str(user.id)
         
         return cls.objects.create(
             user=user,
@@ -327,6 +351,7 @@ class PaymentSlip(models.Model):
             allowances=allowances,
             epf_contribution=epf_contribution,
             overtime_hours=overtime_hours,
+            overtime_hours_uploaded=False,  # Initially from attendance system
             overtime_pay=overtime_pay,
             net_salary=net_salary,
             role=user.role.role,
@@ -336,3 +361,142 @@ class PaymentSlip(models.Model):
             generated_by=generated_by,
             status='generated'
         )
+
+
+class ClientFormSubmission(models.Model):
+    """Client Registration Form Submission Model"""
+    
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('reviewed', 'Reviewed'),
+        ('approved', 'Approved'),
+        ('rejected', 'Rejected'),
+    ]
+    
+    first_name = models.CharField(max_length=100, blank=True, null=True)
+    last_name = models.CharField(max_length=100, blank=True, null=True)
+    email = models.EmailField()
+    address = models.TextField(blank=True, null=True)
+    phone = models.CharField(max_length=20, blank=True, null=True)
+    nic = models.CharField(max_length=20, blank=True, null=True)
+    company_name = models.CharField(max_length=200, blank=True, null=True)
+    project_title = models.CharField(max_length=200)
+    project_description = models.TextField()
+    agent_name = models.CharField(max_length=200)
+    agent_phone = models.CharField(max_length=20)
+    agent_email = models.EmailField()
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    submitted_at = models.DateTimeField(auto_now_add=True)
+    reviewed_at = models.DateTimeField(blank=True, null=True)
+    notes = models.TextField(blank=True, null=True)
+    reviewed_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='reviewed_client_submissions'
+    )
+    
+    class Meta:
+        db_table = 'client_form_submissions'
+        verbose_name = 'Client Form Submission'
+        verbose_name_plural = 'Client Form Submissions'
+        ordering = ['-submitted_at']
+    
+    def __str__(self):
+        name = f"{self.first_name} {self.last_name}".strip() or "Unknown"
+        return f"{name} - {self.email} - {self.get_status_display()}"
+
+
+class EmployeeFormSubmission(models.Model):
+    """Employee Registration Form Submission Model"""
+    
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('reviewed', 'Reviewed'),
+        ('approved', 'Approved'),
+        ('rejected', 'Rejected'),
+    ]
+    
+    first_name = models.CharField(max_length=100, blank=True, null=True)
+    last_name = models.CharField(max_length=100, blank=True, null=True)
+    email = models.EmailField(blank=True, null=True)
+    address = models.TextField(blank=True, null=True)
+    phone = models.CharField(max_length=20, blank=True, null=True)
+    birthday = models.DateField()
+    nic = models.CharField(max_length=20, blank=True, null=True)
+    cv = models.FileField(upload_to='employee_cvs/', blank=True, null=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    submitted_at = models.DateTimeField(auto_now_add=True)
+    reviewed_at = models.DateTimeField(blank=True, null=True)
+    notes = models.TextField(blank=True, null=True)
+    reviewed_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='reviewed_employee_submissions'
+    )
+    
+    class Meta:
+        db_table = 'employee_form_submissions'
+        verbose_name = 'Employee Form Submission'
+        verbose_name_plural = 'Employee Form Submissions'
+        ordering = ['-submitted_at']
+    
+    def __str__(self):
+        name = f"{self.first_name} {self.last_name}".strip() or "Unknown"
+        return f"{name} - {self.email or 'No email'} - {self.get_status_display()}"
+
+
+class LeaveRequest(models.Model):
+    """Leave Request Model"""
+    
+    LEAVE_TYPE_CHOICES = [
+        ('annual', 'Annual Leave'),
+        ('sick', 'Sick Leave'),
+        ('casual', 'Casual Leave'),
+        ('emergency', 'Emergency Leave'),
+        ('other', 'Other'),
+    ]
+    
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('approved', 'Approved'),
+        ('rejected', 'Rejected'),
+    ]
+    
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='leave_requests'
+    )
+    leave_type = models.CharField(max_length=20, choices=LEAVE_TYPE_CHOICES)
+    start_date = models.DateField()
+    end_date = models.DateField()
+    reason = models.TextField()
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    submitted_at = models.DateTimeField(auto_now_add=True)
+    reviewed_at = models.DateTimeField(blank=True, null=True)
+    reviewed_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='reviewed_leave_requests'
+    )
+    notes = models.TextField(blank=True, null=True)
+    
+    class Meta:
+        db_table = 'leave_requests'
+        verbose_name = 'Leave Request'
+        verbose_name_plural = 'Leave Requests'
+        ordering = ['-submitted_at']
+    
+    def __str__(self):
+        return f"{self.user.username} - {self.get_leave_type_display()} - {self.get_status_display()}"
+    
+    @property
+    def days(self):
+        """Calculate number of leave days"""
+        return (self.end_date - self.start_date).days + 1

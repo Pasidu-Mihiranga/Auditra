@@ -434,3 +434,118 @@ class MyAttendancesView(generics.ListAPIView):
     def get_queryset(self):
         return Attendance.objects.filter(user=self.request.user).order_by('-date')
 
+
+class WeeklyAttendanceSummaryView(APIView):
+    """Get weekly attendance summary for all employees (Admin only)"""
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request):
+        # Check if user is admin
+        from authentication.models import UserRole
+        try:
+            user_role = UserRole.objects.get(user=request.user)
+            if user_role.role != 'admin':
+                return Response({
+                    'error': 'Only admin users can access this endpoint'
+                }, status=status.HTTP_403_FORBIDDEN)
+        except UserRole.DoesNotExist:
+            return Response({
+                'error': 'User role not found'
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        # Get week_start from query params
+        week_start_str = request.query_params.get('week_start')
+        if not week_start_str:
+            return Response({
+                'error': 'week_start parameter is required (format: YYYY-MM-DD)'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            week_start = datetime.strptime(week_start_str, '%Y-%m-%d').date()
+        except ValueError:
+            return Response({
+                'error': 'Invalid date format. Use YYYY-MM-DD'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Calculate week end (6 days after week start)
+        week_end = week_start + timedelta(days=6)
+        
+        # Get all employees with specific roles (excluding Admin)
+        employee_roles = [
+            'coordinator',
+            'field_officer',
+            'senior_valuer',
+            'accessor',
+            'md_gm',
+            'hr_staff',
+            'general_employee'
+        ]
+        
+        employee_users = User.objects.filter(
+            role__role__in=employee_roles
+        ).select_related('role')
+        
+        # Get holidays for the week
+        holidays = set(Holiday.objects.filter(
+            date__range=[week_start, week_end],
+            is_active=True
+        ).values_list('date', flat=True))
+        
+        # Calculate working days in the week
+        working_days = 0
+        current_date = week_start
+        while current_date <= week_end:
+            if current_date.weekday() != 6 and current_date not in holidays:  # Not Sunday and not holiday
+                working_days += 1
+            current_date += timedelta(days=1)
+        
+        # Get attendance data for all employees for this week
+        attendances = Attendance.objects.filter(
+            date__range=[week_start, week_end]
+        ).select_related('user')
+        
+        # Build summary for each employee
+        summary_data = []
+        for user in employee_users:
+            user_attendances = attendances.filter(user=user)
+            
+            # Count present, half_day, and absent
+            present_count = user_attendances.filter(status='present').count()
+            half_day_count = user_attendances.filter(status='half_day').count()
+            absent_count = working_days - present_count - half_day_count
+            
+            # Calculate total overtime hours for the week
+            total_overtime = user_attendances.aggregate(
+                total=Sum('overtime_hours')
+            )['total'] or 0.0
+            
+            # Calculate attendance percentage
+            attendance_percentage = 0.0
+            if working_days > 0:
+                attendance_percentage = ((present_count + half_day_count * 0.5) / working_days) * 100
+            
+            # Get employee name
+            employee_name = user.get_full_name() or user.username
+            
+            # Use User ID as Employee number
+            employee_number = str(user.id)
+            
+            summary_data.append({
+                'employee_name': employee_name,
+                'employee_number': employee_number,
+                'absent_days': absent_count,
+                'half_days': half_day_count,
+                'attendance_percentage': round(float(attendance_percentage), 2),
+                'overtime_hours': round(float(total_overtime), 2),
+            })
+        
+        # Sort by employee name
+        summary_data.sort(key=lambda x: x['employee_name'])
+        
+        return Response({
+            'success': True,
+            'data': summary_data,
+            'week_start': week_start.isoformat(),
+            'week_end': week_end.isoformat(),
+            'working_days': working_days,
+        }, status=status.HTTP_200_OK)

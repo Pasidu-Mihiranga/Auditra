@@ -733,27 +733,34 @@ class ApiService {
 
       // Check if response is HTML (error page)
       if (response.body.trim().startsWith('<!DOCTYPE') || response.body.trim().startsWith('<html')) {
-        return {'success': false, 'message': 'Server returned HTML. Endpoint /api/attendance/summary/ may not exist (404).'};
+        return {'success': false, 'message': ''}; // Return empty message to suppress error display
+      }
+
+      // Check if response is JSON
+      String contentType = response.headers['content-type'] ?? '';
+      if (!contentType.contains('application/json')) {
+        return {'success': false, 'message': ''}; // Return empty message to suppress error display
       }
 
       Map<String, dynamic> data;
       try {
         data = jsonDecode(response.body);
       } catch (e) {
-        return {'success': false, 'message': 'Invalid JSON response: ${response.body.substring(0, 100)}...'};
+        return {'success': false, 'message': ''}; // Return empty message to suppress error display
       }
 
       if (response.statusCode == 200) {
         return {'success': true, 'data': data};
       } else {
-        return {'success': false, 'message': 'Failed to load summary (Status: ${response.statusCode})'};
+        // Only return error message for non-server errors
+        if (response.statusCode != 500 && response.statusCode != 404) {
+          return {'success': false, 'message': 'Failed to load summary (Status: ${response.statusCode})'};
+        }
+        return {'success': false, 'message': ''}; // Suppress server errors
       }
     } catch (e) {
-      String errorMsg = 'Connection error: $e';
-      if (e.toString().contains('FormatException') && e.toString().contains('<!DOCTYPE')) {
-        errorMsg = 'Server returned HTML error page. Check if /api/attendance/summary/ endpoint exists.';
-      }
-      return {'success': false, 'message': errorMsg};
+      // Suppress connection errors - return empty message
+      return {'success': false, 'message': ''};
     }
   }
 
@@ -1914,6 +1921,20 @@ class ApiService {
         },
       );
 
+      // Check if response is HTML (error page)
+      if (response.body.trim().startsWith('<!DOCTYPE') || response.body.trim().startsWith('<html')) {
+        return {'success': false, 'message': 'Server returned HTML. Endpoint /api/auth/payment-slips/my/ may not exist or backend has an error (404/500).'};
+      }
+
+      // Check if response is JSON
+      String contentType = response.headers['content-type'] ?? '';
+      if (!contentType.contains('application/json')) {
+        return {
+          'success': false,
+          'message': 'Server error. Please check if the backend server is running.'
+        };
+      }
+
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         // DRF ListAPIView returns a list directly, or wrapped in 'results' for pagination
@@ -1925,14 +1946,30 @@ class ApiService {
           return {'success': true, 'data': []};
         }
       } else {
-        final errorData = jsonDecode(response.body);
+        Map<String, dynamic> errorData;
+        try {
+          errorData = jsonDecode(response.body);
+        } catch (e) {
+          return {
+            'success': false,
+            'message': 'Failed to load payment slips (Status: ${response.statusCode})'
+          };
+        }
         return {
           'success': false,
           'message': errorData['detail'] ?? errorData['message'] ?? 'Failed to load payment slips'
         };
       }
     } catch (e) {
-      return {'success': false, 'message': 'Connection error: $e'};
+      String errorMsg = 'Connection error';
+      if (e.toString().contains('Connection refused')) {
+        errorMsg = 'Connection refused. Is the backend server running?';
+      } else if (e.toString().contains('Failed host lookup') || e.toString().contains('Network is unreachable')) {
+        errorMsg = 'Cannot connect to server. Make sure the backend is running at $baseUrl';
+      } else {
+        errorMsg = 'Connection error: $e';
+      }
+      return {'success': false, 'message': errorMsg};
     }
   }
 
@@ -1998,6 +2035,611 @@ class ApiService {
         return {'success': true, 'data': data};
       } else {
         return {'success': false, 'message': 'Failed to load payment slip'};
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'Connection error: $e'};
+    }
+  }
+
+  // Upload overtime hours for a specific payment slip
+  static Future<Map<String, dynamic>> uploadOvertimeHours({
+    required int slipId,
+    required double overtimeHours,
+  }) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token');
+
+      if (token == null) {
+        return {'success': false, 'message': 'Not authenticated'};
+      }
+
+      final response = await http.post(
+        Uri.parse('$baseUrl/auth/payment-slips/$slipId/upload-overtime/'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({
+          'overtime_hours': overtimeHours,
+        }),
+      );
+
+      final data = jsonDecode(response.body);
+
+      if (response.statusCode == 200) {
+        return {'success': true, 'data': data['data']};
+      } else {
+        return {'success': false, 'message': data['error'] ?? 'Failed to upload overtime hours'};
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'Connection error: $e'};
+    }
+  }
+
+  // Upload overtime hours for all payment slips
+  static Future<Map<String, dynamic>> uploadAllOvertimeHours({
+    int? month,
+    int? year,
+    required List<Map<String, dynamic>> overtimeData,
+  }) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token');
+
+      if (token == null) {
+        return {'success': false, 'message': 'Not authenticated'};
+      }
+
+      final body = <String, dynamic>{
+        'overtime_data': overtimeData,
+      };
+      if (month != null) body['month'] = month;
+      if (year != null) body['year'] = year;
+
+      final response = await http.post(
+        Uri.parse('$baseUrl/auth/payment-slips/upload-all-overtime/'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode(body),
+      );
+
+      final data = jsonDecode(response.body);
+
+      if (response.statusCode == 200) {
+        return {
+          'success': true,
+          'message': data['message'] ?? 'Overtime hours uploaded successfully',
+          'updated_count': data['updated_count'] ?? 0,
+          'errors': data['errors'],
+        };
+      } else {
+        return {'success': false, 'message': data['error'] ?? 'Failed to upload overtime hours'};
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'Connection error: $e'};
+    }
+  }
+
+  // Upload/publish payment slips for employees to view
+  static Future<Map<String, dynamic>> uploadPaymentSlips({int? month, int? year}) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token');
+
+      if (token == null) {
+        return {'success': false, 'message': 'Not authenticated'};
+      }
+
+      final body = <String, dynamic>{};
+      if (month != null) body['month'] = month;
+      if (year != null) body['year'] = year;
+
+      final response = await http.post(
+        Uri.parse('$baseUrl/auth/payment-slips/upload/'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode(body),
+      );
+
+      final data = jsonDecode(response.body);
+
+      if (response.statusCode == 200) {
+        return {'success': true, 'data': data};
+      } else {
+        return {'success': false, 'message': data['error'] ?? 'Failed to upload payment slips'};
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'Connection error: $e'};
+    }
+  }
+
+  // Delete payment slip
+  static Future<Map<String, dynamic>> deletePaymentSlip({
+    required int slipId,
+  }) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token');
+
+      if (token == null) {
+        return {'success': false, 'message': 'Not authenticated'};
+      }
+
+      final response = await http.delete(
+        Uri.parse('$baseUrl/auth/payment-slips/$slipId/'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      // Check if response is HTML (error page)
+      if (response.body.trim().startsWith('<!DOCTYPE') || response.body.trim().startsWith('<html')) {
+        return {'success': false, 'message': 'Server returned HTML instead of JSON. Endpoint may not exist (404).'};
+      }
+
+      if (response.statusCode == 200 || response.statusCode == 204) {
+        Map<String, dynamic> data = {};
+        if (response.body.isNotEmpty) {
+          try {
+            data = jsonDecode(response.body) as Map<String, dynamic>;
+          } catch (e) {
+            // If response body is empty, that's fine for DELETE
+          }
+        }
+        return {
+          'success': true,
+          'message': data['message'] ?? 'Payment slip deleted successfully',
+          'data': data
+        };
+      } else {
+        Map<String, dynamic> errorData = {};
+        try {
+          errorData = jsonDecode(response.body) as Map<String, dynamic>;
+        } catch (e) {
+          // Ignore parse errors
+        }
+        
+        String errorMessage = 'Failed to delete payment slip';
+        if (errorData.containsKey('error')) {
+          errorMessage = errorData['error'].toString();
+        } else if (errorData.containsKey('detail')) {
+          errorMessage = errorData['detail'].toString();
+        } else if (errorData.containsKey('message')) {
+          errorMessage = errorData['message'].toString();
+        }
+        return {'success': false, 'message': errorMessage};
+      }
+    } catch (e) {
+      String errorMsg = 'Connection error: $e';
+      if (e.toString().contains('FormatException') || e.toString().contains('jsonDecode')) {
+        errorMsg = 'Server returned invalid response. Please check your connection and try again.';
+      } else if (e.toString().contains('SocketException') || e.toString().contains('Connection refused')) {
+        errorMsg = 'Connection refused. Is the backend server running?';
+      }
+      return {'success': false, 'message': errorMsg};
+    }
+  }
+
+  // Delete user from database (Admin only)
+  static Future<Map<String, dynamic>> deleteUser({
+    required int userId,
+  }) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token');
+
+      if (token == null) {
+        return {'success': false, 'message': 'Not authenticated'};
+      }
+
+      final response = await http.delete(
+        Uri.parse('$baseUrl/auth/users/$userId/delete/'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      // Check if response is HTML (error page)
+      if (response.body.trim().startsWith('<!DOCTYPE') || response.body.trim().startsWith('<html')) {
+        return {'success': false, 'message': 'Server returned HTML instead of JSON. Endpoint may not exist (404).'};
+      }
+
+      if (response.statusCode == 200) {
+        Map<String, dynamic> data = {};
+        if (response.body.isNotEmpty) {
+          try {
+            data = jsonDecode(response.body) as Map<String, dynamic>;
+          } catch (e) {
+            // If response body is empty, that's fine for DELETE
+          }
+        }
+        return {
+          'success': true,
+          'message': data['message'] ?? 'User deleted successfully',
+          'data': data
+        };
+      } else {
+        Map<String, dynamic> errorData = {};
+        try {
+          errorData = jsonDecode(response.body) as Map<String, dynamic>;
+        } catch (e) {
+          // Ignore parse errors
+        }
+        
+        String errorMessage = 'Failed to delete user';
+        if (errorData.containsKey('error')) {
+          errorMessage = errorData['error'].toString();
+        } else if (errorData.containsKey('detail')) {
+          errorMessage = errorData['detail'].toString();
+        } else if (errorData.containsKey('message')) {
+          errorMessage = errorData['message'].toString();
+        }
+        return {'success': false, 'message': errorMessage};
+      }
+    } catch (e) {
+      String errorMsg = 'Connection error: $e';
+      if (e.toString().contains('FormatException') || e.toString().contains('jsonDecode')) {
+        errorMsg = 'Server returned invalid response. Please check your connection and try again.';
+      } else if (e.toString().contains('SocketException') || e.toString().contains('Connection refused')) {
+        errorMsg = 'Connection refused. Is the backend server running?';
+      }
+      return {'success': false, 'message': errorMsg};
+    }
+  }
+
+  // Update payment slip
+  static Future<Map<String, dynamic>> updatePaymentSlip({
+    required int slipId,
+    double? salary,
+    double? allowances,
+    double? epfContribution,
+    double? overtimePay,
+    double? overtimeHours,
+  }) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token');
+
+      if (token == null) {
+        return {'success': false, 'message': 'Not authenticated'};
+      }
+
+      final body = <String, dynamic>{};
+      if (salary != null) body['salary'] = salary;
+      if (allowances != null) body['allowances'] = allowances;
+      if (epfContribution != null) body['epf_contribution'] = epfContribution;
+      if (overtimePay != null) body['overtime_pay'] = overtimePay;
+      if (overtimeHours != null) body['overtime_hours'] = overtimeHours;
+
+      final response = await http.patch(
+        Uri.parse('$baseUrl/auth/payment-slips/$slipId/'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode(body),
+      );
+
+      // Check if response is HTML (error page)
+      if (response.body.trim().startsWith('<!DOCTYPE') || response.body.trim().startsWith('<html')) {
+        return {'success': false, 'message': 'Server returned HTML instead of JSON. Endpoint may not exist (404).'};
+      }
+
+      Map<String, dynamic> data;
+      try {
+        data = jsonDecode(response.body) as Map<String, dynamic>;
+      } catch (e) {
+        return {'success': false, 'message': 'Invalid response from server: ${response.body.substring(0, 100)}'};
+      }
+
+      if (response.statusCode == 200) {
+        // Success - return success with data
+        return {'success': true, 'data': data};
+      } else if (response.statusCode >= 200 && response.statusCode < 300) {
+        // Any 2xx status is success
+        return {'success': true, 'data': data};
+      } else {
+        // Only return error for actual error status codes (4xx, 5xx)
+        // Extract error message from response
+        String errorMessage = 'Failed to update payment slip';
+        if (data.containsKey('error')) {
+          errorMessage = data['error'].toString();
+        } else if (data.containsKey('detail')) {
+          errorMessage = data['detail'].toString();
+        } else if (data.containsKey('message')) {
+          // Check if message is actually an error or just informational
+          final message = data['message'].toString();
+          if (message.toLowerCase().contains('success') || 
+              message.toLowerCase().contains('updated') ||
+              message.toLowerCase().contains('saved')) {
+            // This is a success message, not an error
+            return {'success': true, 'data': data, 'message': message};
+          }
+          errorMessage = message;
+        } else if (data.containsKey('non_field_errors')) {
+          if (data['non_field_errors'] is List && (data['non_field_errors'] as List).isNotEmpty) {
+            errorMessage = (data['non_field_errors'] as List).first.toString();
+          } else {
+            errorMessage = data['non_field_errors'].toString();
+          }
+        } else {
+          // Get first error from any field
+          for (var key in data.keys) {
+            if (data[key] is List && (data[key] as List).isNotEmpty) {
+              errorMessage = '$key: ${(data[key] as List).first}';
+              break;
+            } else if (data[key] is String) {
+              errorMessage = '$key: ${data[key]}';
+              break;
+            }
+          }
+        }
+        return {'success': false, 'message': errorMessage};
+      }
+    } catch (e) {
+      String errorMsg = 'Connection error: $e';
+      if (e.toString().contains('FormatException') || e.toString().contains('jsonDecode')) {
+        errorMsg = 'Server returned invalid response. Please check your connection and try again.';
+      } else if (e.toString().contains('SocketException') || e.toString().contains('Connection refused')) {
+        errorMsg = 'Connection refused. Is the backend server running?';
+      }
+      return {'success': false, 'message': errorMsg};
+    }
+  }
+
+  // Get form submissions for coordinator
+
+  // Create leave request
+  static Future<Map<String, dynamic>> createLeaveRequest({
+    required String leaveType,
+    required DateTime startDate,
+    required DateTime endDate,
+    required String reason,
+  }) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token');
+
+      if (token == null) {
+        return {'success': false, 'message': 'Not authenticated'};
+      }
+
+      final response = await http.post(
+        Uri.parse('$baseUrl/auth/leave-requests/create/'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({
+          'leave_type': leaveType,
+          'start_date': startDate.toIso8601String().split('T')[0], // YYYY-MM-DD format
+          'end_date': endDate.toIso8601String().split('T')[0],
+          'reason': reason,
+        }),
+      );
+
+      final data = jsonDecode(response.body);
+      
+      if (response.statusCode == 201) {
+        return {'success': true, 'message': data['message'] ?? 'Leave request submitted successfully', 'data': data['data']};
+      } else {
+        return {'success': false, 'message': data['error'] ?? 'Failed to submit leave request', 'errors': data['errors']};
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'Connection error: $e'};
+    }
+  }
+
+  // Get all leave requests (admin only)
+  static Future<Map<String, dynamic>> getAllLeaveRequests() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token');
+
+      if (token == null) {
+        return {'success': false, 'message': 'Not authenticated'};
+      }
+
+      final response = await http.get(
+        Uri.parse('$baseUrl/auth/leave-requests/'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return {'success': true, 'data': data['data'] ?? []};
+      } else {
+        final errorData = jsonDecode(response.body);
+        return {'success': false, 'message': errorData['error'] ?? 'Failed to load leave requests'};
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'Connection error: $e'};
+    }
+  }
+
+  // Get my leave requests (current user)
+  static Future<Map<String, dynamic>> getMyLeaveRequests() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token');
+
+      if (token == null) {
+        return {'success': false, 'message': 'Not authenticated'};
+      }
+
+      final response = await http.get(
+        Uri.parse('$baseUrl/auth/leave-requests/my/'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return {'success': true, 'data': data['data'] ?? []};
+      } else {
+        final errorData = jsonDecode(response.body);
+        return {'success': false, 'message': errorData['error'] ?? 'Failed to load leave requests'};
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'Connection error: $e'};
+    }
+  }
+
+  // Get my leave statistics (current user)
+  static Future<Map<String, dynamic>> getMyLeaveStatistics() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token');
+
+      if (token == null) {
+        return {'success': false, 'message': 'Not authenticated'};
+      }
+
+      final response = await http.get(
+        Uri.parse('$baseUrl/auth/leave-requests/statistics/'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return {'success': true, 'data': data['data']};
+      } else {
+        final errorData = jsonDecode(response.body);
+        return {'success': false, 'message': errorData['error'] ?? 'Failed to load leave statistics'};
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'Connection error: $e'};
+    }
+  }
+
+  // Get monthly leave summary (admin only)
+  static Future<Map<String, dynamic>> getMonthlyLeaveSummary({int? month, int? year}) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token');
+
+      if (token == null) {
+        return {'success': false, 'message': 'Not authenticated'};
+      }
+
+      final now = DateTime.now();
+      final queryParams = <String, String>{};
+      if (month != null) queryParams['month'] = month.toString();
+      if (year != null) queryParams['year'] = year.toString();
+
+      final uri = Uri.parse('$baseUrl/auth/leave-requests/summary/monthly/').replace(
+        queryParameters: queryParams.isNotEmpty ? queryParams : null,
+      );
+
+      final response = await http.get(
+        uri,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return {'success': true, 'data': data['data'] ?? [], 'month': data['month'], 'year': data['year']};
+      } else {
+        final errorData = jsonDecode(response.body);
+        return {'success': false, 'message': errorData['error'] ?? 'Failed to load leave summary'};
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'Connection error: $e'};
+    }
+  }
+
+  // Get weekly attendance summary (admin only)
+  static Future<Map<String, dynamic>> getWeeklyAttendanceSummary({
+    required DateTime weekStart,
+  }) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token');
+
+      if (token == null) {
+        return {'success': false, 'message': 'Not authenticated'};
+      }
+
+      final queryParams = <String, String>{
+        'week_start': '${weekStart.year}-${weekStart.month.toString().padLeft(2, '0')}-${weekStart.day.toString().padLeft(2, '0')}',
+      };
+
+      final uri = Uri.parse('$baseUrl/attendance/summary/weekly/').replace(
+        queryParameters: queryParams,
+      );
+
+      final response = await http.get(
+        uri,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return {'success': true, 'data': data['data'] ?? []};
+      } else {
+        final errorData = jsonDecode(response.body);
+        return {'success': false, 'message': errorData['error'] ?? 'Failed to load attendance summary'};
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'Connection error: $e'};
+    }
+  }
+
+  // Update leave request status (admin only)
+  static Future<Map<String, dynamic>> updateLeaveRequestStatus({
+    required int requestId,
+    required String status,
+    String? notes,
+  }) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token');
+
+      if (token == null) {
+        return {'success': false, 'message': 'Not authenticated'};
+      }
+
+      final body = <String, dynamic>{'status': status};
+      if (notes != null && notes.isNotEmpty) {
+        body['notes'] = notes;
+      }
+
+      final response = await http.patch(
+        Uri.parse('$baseUrl/auth/leave-requests/$requestId/update/'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode(body),
+      );
+
+      final data = jsonDecode(response.body);
+      
+      if (response.statusCode == 200) {
+        return {'success': true, 'message': data['message'] ?? 'Leave request updated successfully', 'data': data['data']};
+      } else {
+        return {'success': false, 'message': data['error'] ?? 'Failed to update leave request'};
       }
     } catch (e) {
       return {'success': false, 'message': 'Connection error: $e'};

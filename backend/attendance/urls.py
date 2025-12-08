@@ -14,6 +14,7 @@ try:
         path('overtime/end/', views.EndOvertimeView.as_view(), name='end-overtime'),
         path('today/', views.TodayAttendanceView.as_view(), name='today-attendance'),
         path('summary/', views.AttendanceSummaryView.as_view(), name='attendance-summary'),
+        path('summary/weekly/', views.WeeklyAttendanceSummaryView.as_view(), name='weekly-attendance-summary'),
         path('my-attendances/', views.MyAttendancesView.as_view(), name='my-attendances'),
     ]
 except ImportError as e:

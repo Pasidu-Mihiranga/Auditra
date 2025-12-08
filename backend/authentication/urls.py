@@ -6,12 +6,23 @@ from .views import (
     UserProfileView,
     AssignRoleView,
     AllUsersView,
+    DeleteUserView,
     RoleListView,
     MyRoleView,
     GeneratePaymentSlipsView,
+    UploadPaymentSlipsView,
     MyPaymentSlipsView,
     AllPaymentSlipsView,
-    PaymentSlipDetailView
+    PaymentSlipDetailView,
+    UploadOvertimeHoursView,
+    UploadAllOvertimeHoursView,
+    EmployeeRegistrationView,
+    CreateLeaveRequestView,
+    AllLeaveRequestsView,
+    MyLeaveRequestsView,
+    MyLeaveStatisticsView,
+    MonthlyLeaveSummaryView,
+    UpdateLeaveRequestView
 )
 
 urlpatterns = [
@@ -23,9 +34,19 @@ urlpatterns = [
     path('roles/', RoleListView.as_view(), name='roles'),
     path('assign-role/', AssignRoleView.as_view(), name='assign-role'),
     path('users/', AllUsersView.as_view(), name='all-users'),
+    path('users/<int:user_id>/delete/', DeleteUserView.as_view(), name='delete-user'),
     path('payment-slips/generate/', GeneratePaymentSlipsView.as_view(), name='generate-payment-slips'),
+    path('payment-slips/upload/', UploadPaymentSlipsView.as_view(), name='upload-payment-slips'),
     path('payment-slips/my/', MyPaymentSlipsView.as_view(), name='my-payment-slips'),
     path('payment-slips/', AllPaymentSlipsView.as_view(), name='all-payment-slips'),
     path('payment-slips/<int:pk>/', PaymentSlipDetailView.as_view(), name='payment-slip-detail'),
+    path('payment-slips/<int:slip_id>/upload-overtime/', UploadOvertimeHoursView.as_view(), name='upload-overtime-hours'),
+    path('payment-slips/upload-all-overtime/', UploadAllOvertimeHoursView.as_view(), name='upload-all-overtime-hours'),
+    path('leave-requests/create/', CreateLeaveRequestView.as_view(), name='create-leave-request'),
+    path('leave-requests/my/', MyLeaveRequestsView.as_view(), name='my-leave-requests'),
+    path('leave-requests/statistics/', MyLeaveStatisticsView.as_view(), name='my-leave-statistics'),
+    path('leave-requests/summary/monthly/', MonthlyLeaveSummaryView.as_view(), name='monthly-leave-summary'),
+    path('leave-requests/', AllLeaveRequestsView.as_view(), name='all-leave-requests'),
+    path('leave-requests/<int:pk>/update/', UpdateLeaveRequestView.as_view(), name='update-leave-request'),
 ]
 

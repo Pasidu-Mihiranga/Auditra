@@ -111,3 +111,15 @@ curl -X POST http://127.0.0.1:8000/api/auth/register/ -H "Content-Type: applicat
 If this works, backend is fine. Problem is Flutter connection.
 
 
+
+
+
+
+
+
+
+
+
+
+
+

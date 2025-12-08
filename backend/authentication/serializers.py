@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
 from django.contrib.auth.password_validation import validate_password
-from .models import UserRole, PaymentSlip
+from .models import UserRole, PaymentSlip, ClientFormSubmission, EmployeeFormSubmission, LeaveRequest
 
 
 class UserRoleSerializer(serializers.ModelSerializer):
@@ -40,36 +40,87 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
 
 
 class UserSerializer(serializers.ModelSerializer):
-    role = serializers.CharField(source='role.role', read_only=True)
-    role_display = serializers.CharField(source='role.role_display', read_only=True)
+    role = serializers.SerializerMethodField()
+    role_display = serializers.SerializerMethodField()
     salary = serializers.SerializerMethodField()
     
     class Meta:
         model = User
         fields = ('id', 'username', 'email', 'first_name', 'last_name', 'role', 'role_display', 'salary')
     
+    def get_role(self, obj):
+        """Get role from user's role"""
+        try:
+            if hasattr(obj, 'role') and obj.role:
+                return obj.role.role
+        except Exception:
+            pass
+        return 'unassigned'
+    
+    def get_role_display(self, obj):
+        """Get role display from user's role"""
+        try:
+            if hasattr(obj, 'role') and obj.role:
+                return obj.role.role_display
+        except Exception:
+            pass
+        return 'Unassigned'
+    
     def get_salary(self, obj):
         """Get salary from user's role"""
-        if hasattr(obj, 'role') and obj.role:
-            return obj.role.salary
+        try:
+            if hasattr(obj, 'role') and obj.role:
+                return obj.role.salary
+        except Exception:
+            pass
         return 0
 
 
 class UserDetailSerializer(serializers.ModelSerializer):
-    role = serializers.CharField(source='role.role', read_only=True)
-    role_display = serializers.CharField(source='role.role_display', read_only=True)
+    role = serializers.SerializerMethodField()
+    role_display = serializers.SerializerMethodField()
     salary = serializers.SerializerMethodField()
-    role_info = UserRoleSerializer(source='role', read_only=True)
+    role_info = serializers.SerializerMethodField()
     
     class Meta:
         model = User
         fields = ('id', 'username', 'email', 'first_name', 'last_name', 'role', 'role_display', 'salary', 'role_info', 'date_joined')
     
+    def get_role(self, obj):
+        """Get role from user's role"""
+        try:
+            if hasattr(obj, 'role') and obj.role:
+                return obj.role.role
+        except Exception:
+            pass
+        return 'unassigned'
+    
+    def get_role_display(self, obj):
+        """Get role display from user's role"""
+        try:
+            if hasattr(obj, 'role') and obj.role:
+                return obj.role.role_display
+        except Exception:
+            pass
+        return 'Unassigned'
+    
     def get_salary(self, obj):
         """Get salary from user's role"""
-        if hasattr(obj, 'role') and obj.role:
-            return obj.role.salary
+        try:
+            if hasattr(obj, 'role') and obj.role:
+                return obj.role.salary
+        except Exception:
+            pass
         return 0
+    
+    def get_role_info(self, obj):
+        """Get role info from user's role"""
+        try:
+            if hasattr(obj, 'role') and obj.role:
+                return UserRoleSerializer(obj.role).data
+        except Exception:
+            pass
+        return None
 
 
 class LoginSerializer(serializers.Serializer):
@@ -109,9 +160,9 @@ class PaymentSlipSerializer(serializers.ModelSerializer):
         fields = (
             'id', 'user', 'user_username', 'user_full_name', 'month', 'month_display', 
             'year', 'salary', 'allowances', 'epf_contribution', 'overtime_hours', 
-            'overtime_pay', 'net_salary', 'role', 'role_display', 'pay_slip_number', 
-            'employee_number', 'status', 'generated_by', 'generated_by_username', 
-            'generated_at', 'paid_at'
+            'overtime_hours_uploaded', 'overtime_pay', 'net_salary', 'role', 'role_display', 
+            'pay_slip_number', 'employee_number', 'status', 'is_uploaded', 'uploaded_at',
+            'generated_by', 'generated_by_username', 'generated_at', 'paid_at'
         )
         read_only_fields = ('generated_at', 'paid_at')
     
@@ -144,4 +195,60 @@ class PaymentSlipSerializer(serializers.ModelSerializer):
     def get_net_salary(self, obj):
         """Convert DecimalField to float for JSON serialization"""
         return float(obj.net_salary) if hasattr(obj, 'net_salary') else 0.0
+
+
+class ClientFormSubmissionSerializer(serializers.ModelSerializer):
+    """Serializer for Client Form Submission"""
+    
+    class Meta:
+        model = ClientFormSubmission
+        fields = (
+            'id', 'first_name', 'last_name', 'email', 'address', 
+            'phone', 'nic', 'company_name', 'project_title', 
+            'project_description', 'agent_name', 'agent_phone', 
+            'agent_email', 'status', 'submitted_at', 'reviewed_at', 
+            'notes', 'reviewed_by'
+        )
+        read_only_fields = ('status', 'submitted_at', 'reviewed_at', 'reviewed_by')
+
+
+class EmployeeFormSubmissionSerializer(serializers.ModelSerializer):
+    """Serializer for Employee Form Submission"""
+    
+    class Meta:
+        model = EmployeeFormSubmission
+        fields = (
+            'id', 'first_name', 'last_name', 'email', 'address', 
+            'phone', 'birthday', 'nic', 'cv', 'status', 
+            'submitted_at', 'reviewed_at', 'notes', 'reviewed_by'
+        )
+        read_only_fields = ('status', 'submitted_at', 'reviewed_at', 'reviewed_by')
+
+
+class LeaveRequestSerializer(serializers.ModelSerializer):
+    """Serializer for Leave Request"""
+    employee_name = serializers.SerializerMethodField()
+    employee_id = serializers.SerializerMethodField()
+    leave_type_display = serializers.CharField(source='get_leave_type_display', read_only=True)
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    days = serializers.ReadOnlyField()
+    
+    class Meta:
+        model = LeaveRequest
+        fields = (
+            'id', 'user', 'employee_name', 'employee_id', 'leave_type', 
+            'leave_type_display', 'start_date', 'end_date', 'days', 
+            'reason', 'status', 'status_display', 'submitted_at', 
+            'reviewed_at', 'reviewed_by', 'notes'
+        )
+        read_only_fields = ('user', 'status', 'submitted_at', 'reviewed_at', 'reviewed_by')
+    
+    def get_employee_name(self, obj):
+        """Get employee full name"""
+        name_parts = [obj.user.first_name, obj.user.last_name]
+        return ' '.join(filter(None, name_parts)) or obj.user.username
+    
+    def get_employee_id(self, obj):
+        """Get employee ID (user ID)"""
+        return str(obj.user.id)
 
