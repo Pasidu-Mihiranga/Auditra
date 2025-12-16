@@ -58,7 +58,7 @@ class ApiService {
         await prefs.setString('access_token', data['access'] ?? '');
         await prefs.setString('refresh_token', data['refresh'] ?? '');
         if (data['user'] != null) {
-          await prefs.setString('user_id', data['user']['id'].toString());
+        await prefs.setString('user_id', data['user']['id'].toString());
           await prefs.setString('username', data['user']['username'] ?? '');
         }
         
@@ -795,20 +795,20 @@ class ApiService {
       }
 
       try {
-        final data = jsonDecode(response.body);
+      final data = jsonDecode(response.body);
 
-        if (response.statusCode == 200) {
+      if (response.statusCode == 200) {
           // Backend returns a list directly, so wrap it in data
           return {'success': true, 'data': data is List ? data : (data['results'] ?? data)};
-        } else {
+      } else {
           return {
             'success': false,
             'message': data is Map && data.containsKey('error')
                 ? data['error'].toString()
                 : 'Failed to load projects'
           };
-        }
-      } catch (e) {
+      }
+    } catch (e) {
         return {'success': false, 'message': 'Invalid response from server'};
       }
     } catch (e) {
@@ -902,9 +902,9 @@ class ApiService {
           }
         }
 
-        if (response.statusCode == 201) {
-          return {'success': true, 'data': data};
-        } else {
+      if (response.statusCode == 201) {
+        return {'success': true, 'data': data};
+      } else {
           // Handle validation errors
           if (data is Map<String, dynamic>) {
             String errorMessage = '';
@@ -931,8 +931,8 @@ class ApiService {
             return {'success': false, 'message': errorMessage};
           }
           return {'success': false, 'message': 'Failed to create project'};
-        }
-      } catch (e) {
+      }
+    } catch (e) {
         // If JSON parsing fails, return a user-friendly error
         return {
           'success': false,
