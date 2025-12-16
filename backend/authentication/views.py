@@ -301,7 +301,7 @@ class MyRoleView(APIView):
         try:
             # Check if user has a role
             if hasattr(request.user, 'role') and request.user.role:
-                serializer = UserRoleSerializer(request.user.role)
+            serializer = UserRoleSerializer(request.user.role)
                 return Response(serializer.data, status=status.HTTP_200_OK)
             else:
                 # Create a default role if it doesn't exist
