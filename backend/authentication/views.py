@@ -1104,7 +1104,7 @@ class UpdateLeaveRequestView(APIView):
             return Response({
                 'success': False,
                 'error': 'Leave request not found'
-            }, status=status.HTTP_404_NOT_FOUND)
+        }, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
             return Response({
                 'success': False,

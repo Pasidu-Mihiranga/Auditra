@@ -304,6 +304,17 @@
                 </div>
             </div>
 
+            <!-- API Configuration Section -->
+            <div class="form-section" style="background: #f8f9fa; padding: 15px; border-radius: 10px; margin-top: 20px;">
+                <div class="section-title" style="font-size: 14px; color: #666;">API Configuration</div>
+                <div class="form-group">
+                    <label for="apiUrl" style="font-size: 13px;">Backend API URL <span style="color: #999; font-size: 11px;">(Change if backend is on different server)</span></label>
+                    <input type="text" id="apiUrl" name="apiUrl" placeholder="http://your-backend-server.com:8000/api" style="font-size: 13px;">
+                    <div style="font-size: 11px; color: #666; margin-top: 5px;">
+                        💡 For phone access, use your computer's IP address: <code style="background: #e9ecef; padding: 2px 6px; border-radius: 4px;">http://YOUR_IP:8000/api</code>
+                    </div>
+                </div>
+            </div>
 
             <div class="loader" id="loader">
                 <div class="spinner"></div>
@@ -363,7 +374,27 @@
             const birthday = document.getElementById('birthday').value;
             const nic = document.getElementById('nic').value.trim();
             const cvFile = cvInput.files[0];
-            const apiUrl = 'http://localhost:8000/api';
+            
+            // Get API URL from input or use default
+            let apiUrl = document.getElementById('apiUrl').value.trim();
+            if (!apiUrl) {
+                // Auto-detect: if on Firebase (https), prompt for URL, otherwise use localhost
+                if (window.location.protocol === 'https:') {
+                    apiUrl = 'https://your-backend-domain.com/api'; // User must enter this
+                    alert('Please enter your backend API URL in the API Configuration section below.');
+                    document.getElementById('apiUrl').focus();
+                    loader.classList.remove('show');
+                    submitBtn.disabled = false;
+                    return;
+                } else {
+                    apiUrl = 'http://localhost:8000/api';
+                }
+            }
+            
+            // Ensure API URL ends with /api
+            if (!apiUrl.endsWith('/api')) {
+                apiUrl = apiUrl.replace(/\/$/, '') + '/api';
+            }
 
             // Validation
             let hasError = false;

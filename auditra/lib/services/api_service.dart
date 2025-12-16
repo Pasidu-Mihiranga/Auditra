@@ -7,8 +7,8 @@ class ApiService {
   // For emulator, use 10.0.2.2 (Android) or localhost (iOS)
   // For physical device, use your computer's IP address (e.g., 'http://192.168.1.100:8000/api')
   // For Chrome/web, use localhost
-  // Current IP: 10.114.212.139 (Wi-Fi interface - for physical device testing)
-  static const String baseUrl = 'http://10.114.212.139:8000/api'; // Updated for physical device (Wi-Fi)
+  // Current IP: 10.174.29.139 (Wi-Fi interface - for physical device testing)
+  static const String baseUrl = 'http://10.174.29.139:8000/api'; // Updated for physical device (Wi-Fi)
 
   // Register new user
   static Future<Map<String, dynamic>> register({

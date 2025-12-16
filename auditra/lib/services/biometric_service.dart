@@ -129,9 +129,18 @@ class BiometricService {
 
       print('BiometricService: Authentication result: $authenticated');
       
+      if (!authenticated) {
+        // User likely cancelled or authentication failed
+        return {
+          'success': false,
+          'error': 'Biometric authentication was cancelled or failed. Please try again.',
+          'code': 'UserCancel',
+        };
+      }
+      
       return {
-        'success': authenticated,
-        'error': authenticated ? null : 'Authentication failed or cancelled',
+        'success': true,
+        'error': null,
       };
     } on PlatformException catch (e) {
       String errorMessage = 'Biometric authentication failed';
