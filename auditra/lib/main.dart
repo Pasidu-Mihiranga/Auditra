@@ -2,29 +2,46 @@ import 'package:flutter/material.dart';
 import 'screens/login_screen.dart';
 import 'screens/home_screen.dart';
 import 'services/api_service.dart';
+import 'services/theme_service.dart';
 
 void main() {
   runApp(const MyApp());
 }
 
-class MyApp extends StatelessWidget {
+class MyApp extends StatefulWidget {
   const MyApp({super.key});
+
+  @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> {
+  final ThemeService _themeService = ThemeService.instance;
+
+  @override
+  void initState() {
+    super.initState();
+    _themeService.addListener(_onThemeChanged);
+  }
+
+  void _onThemeChanged() {
+    setState(() {});
+  }
+
+  @override
+  void dispose() {
+    _themeService.removeListener(_onThemeChanged);
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Auditra',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
-        useMaterial3: true,
-        elevatedButtonTheme: ElevatedButtonThemeData(
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.blue,
-            foregroundColor: Colors.white,
-          ),
-        ),
-      ),
+      theme: _themeService.lightTheme,
+      darkTheme: _themeService.darkTheme,
+      themeMode: _themeService.isDarkMode ? ThemeMode.dark : ThemeMode.light,
       home: const SplashScreen(),
     );
   }

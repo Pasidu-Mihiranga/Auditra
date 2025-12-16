@@ -6,6 +6,7 @@ from django.utils import timezone
 from django.db.models import Sum
 from datetime import datetime
 from decimal import Decimal
+import json
 
 
 class UserRole(models.Model):
@@ -449,6 +450,35 @@ class EmployeeFormSubmission(models.Model):
         return f"{name} - {self.email or 'No email'} - {self.get_status_display()}"
 
 
+class UserProfile(models.Model):
+    """User Profile Model for storing user preferences and settings"""
+    
+    user = models.OneToOneField(
+        User,
+        on_delete=models.CASCADE,
+        related_name='profile'
+    )
+    biometric_enabled = models.BooleanField(default=False)
+    biometric_required = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        db_table = 'user_profiles'
+        verbose_name = 'User Profile'
+        verbose_name_plural = 'User Profiles'
+    
+    def __str__(self):
+        return f"{self.user.username} - Biometric: {self.biometric_enabled}"
+
+
+@receiver(post_save, sender=User)
+def create_user_profile(sender, instance, created, **kwargs):
+    """Automatically create UserProfile when User is created"""
+    if created:
+        UserProfile.objects.get_or_create(user=instance)
+
+
 class LeaveRequest(models.Model):
     """Leave Request Model"""
     
@@ -500,3 +530,93 @@ class LeaveRequest(models.Model):
     def days(self):
         """Calculate number of leave days"""
         return (self.end_date - self.start_date).days + 1
+
+
+class SystemLog(models.Model):
+    """System Log Model to track all system events"""
+    
+    ACTION_CHOICES = [
+        ('login', 'User Login'),
+        ('logout', 'User Logout'),
+        ('register', 'User Registration'),
+        ('role_assigned', 'Role Assigned'),
+        ('role_changed', 'Role Changed'),
+        ('attendance_marked', 'Attendance Marked'),
+        ('leave_requested', 'Leave Requested'),
+        ('leave_approved', 'Leave Approved'),
+        ('leave_rejected', 'Leave Rejected'),
+        ('payment_generated', 'Payment Generated'),
+        ('payment_uploaded', 'Payment Uploaded'),
+        ('project_created', 'Project Created'),
+        ('project_updated', 'Project Updated'),
+        ('valuation_created', 'Valuation Created'),
+        ('biometric_enabled', 'Biometric Enabled'),
+        ('biometric_disabled', 'Biometric Disabled'),
+        ('user_updated', 'User Updated'),
+        ('user_deleted', 'User Deleted'),
+        ('other', 'Other'),
+    ]
+    
+    SEVERITY_CHOICES = [
+        ('info', 'Info'),
+        ('warning', 'Warning'),
+        ('error', 'Error'),
+        ('success', 'Success'),
+    ]
+    
+    user = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='system_logs'
+    )
+    action = models.CharField(max_length=50, choices=ACTION_CHOICES)
+    severity = models.CharField(max_length=20, choices=SEVERITY_CHOICES, default='info')
+    message = models.TextField()
+    details = models.JSONField(default=dict, blank=True)  # Additional context data
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    user_agent = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        db_table = 'system_logs'
+        verbose_name = 'System Log'
+        verbose_name_plural = 'System Logs'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['-created_at']),
+            models.Index(fields=['action']),
+            models.Index(fields=['user']),
+        ]
+    
+    def __str__(self):
+        user_str = self.user.username if self.user else 'System'
+        return f"{user_str} - {self.get_action_display()} - {self.created_at}"
+    
+    @classmethod
+    def log_event(cls, action, message, user=None, severity='info', details=None, request=None):
+        """Helper method to create a log entry"""
+        log_data = {
+            'action': action,
+            'message': message,
+            'severity': severity,
+            'user': user,
+            'details': details or {},
+        }
+        
+        if request:
+            log_data['ip_address'] = cls._get_client_ip(request)
+            log_data['user_agent'] = request.META.get('HTTP_USER_AGENT', '')
+        
+        return cls.objects.create(**log_data)
+    
+    @staticmethod
+    def _get_client_ip(request):
+        """Get client IP address from request"""
+        x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+        if x_forwarded_for:
+            ip = x_forwarded_for.split(',')[0]
+        else:
+            ip = request.META.get('REMOTE_ADDR')
+        return ip

@@ -5,6 +5,7 @@ import 'package:file_picker/file_picker.dart';
 import 'dart:io';
 import '../services/api_service.dart';
 import '../models/payment_slip_model.dart';
+import '../widgets/dark_mode_toggle.dart';
 
 class PaymentSlipsScreen extends StatefulWidget {
   final String? role;
@@ -183,6 +184,9 @@ class _PaymentSlipsScreenState extends State<PaymentSlipsScreen> {
       appBar: AppBar(
         title: Text(isAdmin ? 'All Payment Slips' : 'Payment Slips'),
         centerTitle: true,
+        actions: const [
+          DarkModeToggle(),
+        ],
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())

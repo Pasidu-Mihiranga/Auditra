@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
+import '../widgets/dark_mode_toggle.dart';
 
 class PersonalInfoScreen extends StatefulWidget {
   const PersonalInfoScreen({super.key});
@@ -47,6 +48,9 @@ class _PersonalInfoScreenState extends State<PersonalInfoScreen> {
       appBar: AppBar(
         title: const Text('Personal Information'),
         centerTitle: true,
+        actions: const [
+          DarkModeToggle(),
+        ],
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())

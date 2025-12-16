@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../services/api_service.dart';
+import '../widgets/dark_mode_toggle.dart';
 
 class LeaveRequestScreen extends StatefulWidget {
   const LeaveRequestScreen({super.key});
@@ -152,6 +153,9 @@ class _LeaveRequestScreenState extends State<LeaveRequestScreen> {
       appBar: AppBar(
         title: const Text('Leave Request'),
         centerTitle: true,
+        actions: const [
+          DarkModeToggle(),
+        ],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),

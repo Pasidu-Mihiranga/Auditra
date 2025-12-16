@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
+import '../widgets/dark_mode_toggle.dart';
 import 'login_screen.dart';
 import 'admin_dashboard.dart';
 import 'generic_dashboard.dart';
@@ -224,6 +225,7 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         centerTitle: true,
         actions: [
+          const DarkModeToggle(),
           IconButton(
             icon: const Icon(Icons.logout),
             onPressed: _logout,

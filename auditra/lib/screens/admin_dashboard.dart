@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:fl_chart/fl_chart.dart';
 import 'dart:io';
 import '../services/api_service.dart';
 import '../models/user_model.dart';
 import '../models/payment_slip_model.dart';
+import '../widgets/dark_mode_toggle.dart';
 import 'login_screen.dart';
 import 'payment_slips_screen.dart';
 import 'view_leave_requests_screen.dart';
+import 'system_logs_screen.dart';
 
 class AdminDashboard extends StatefulWidget {
   const AdminDashboard({super.key});
@@ -1024,6 +1027,19 @@ class _AdminDashboardState extends State<AdminDashboard> {
         ),
         centerTitle: true,
         actions: [
+          const DarkModeToggle(),
+          IconButton(
+            icon: const Icon(Icons.description, color: Colors.teal),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const SystemLogsScreen(),
+                ),
+              );
+            },
+            tooltip: 'System Logs',
+          ),
           IconButton(
             icon: const Icon(Icons.edit_calendar, color: Colors.purple),
             onPressed: () {
@@ -1446,6 +1462,22 @@ class _AdminDashboardState extends State<AdminDashboard> {
             else
               Column(
                 children: [
+                  // Bar Chart for Leave Days
+                  if (_monthlyLeaveSummary.isNotEmpty) ...[
+                    const Text(
+                      'Leave Days by Employee',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      height: 250,
+                      child: _buildLeaveBarChart(),
+                    ),
+                    const SizedBox(height: 24),
+                  ],
                   // Header row
                   Container(
                     padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
@@ -1646,7 +1678,23 @@ class _AdminDashboardState extends State<AdminDashboard> {
                 ),
               )
             else
-              Builder(
+              Column(
+                children: [
+                  // Line Chart for Attendance Trends
+                  const Text(
+                    'Weekly Attendance Trend',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    height: 250,
+                    child: _buildAttendanceLineChart(),
+                  ),
+                  const SizedBox(height: 24),
+                  Builder(
                 builder: (context) {
                   // Filter employees based on search query
                   final filteredEmployees = _attendanceSearchQuery.isEmpty
@@ -1874,9 +1922,191 @@ class _AdminDashboardState extends State<AdminDashboard> {
                     ),
                   );
                 },
+                  ),
+                ],
               ),
           ],
         ),
+      ),
+    );
+  }
+
+  // Build Bar Chart for Leave Days
+  Widget _buildLeaveBarChart() {
+    if (_monthlyLeaveSummary.isEmpty) {
+      return const Center(child: Text('No data available'));
+    }
+
+    final sortedData = List<Map<String, dynamic>>.from(_monthlyLeaveSummary)
+      ..sort((a, b) => (b['leave_taken'] as int).compareTo(a['leave_taken'] as int));
+    
+    final top10 = sortedData.take(10).toList();
+    
+    return BarChart(
+      BarChartData(
+        alignment: BarChartAlignment.spaceAround,
+        maxY: sortedData.isEmpty 
+            ? 10.0 
+            : (sortedData.first['leave_taken'] as int).toDouble() * 1.2,
+        barTouchData: BarTouchData(
+          enabled: true,
+          touchTooltipData: BarTouchTooltipData(
+            tooltipRoundedRadius: 8,
+            tooltipBgColor: Colors.purple,
+          ),
+        ),
+        titlesData: FlTitlesData(
+          show: true,
+          bottomTitles: AxisTitles(
+            sideTitles: SideTitles(
+              showTitles: true,
+              getTitlesWidget: (value, meta) {
+                if (value.toInt() >= top10.length) return const Text('');
+                final employee = top10[value.toInt()];
+                final name = employee['employee_name'] as String;
+                return Padding(
+                  padding: const EdgeInsets.only(top: 8.0),
+                  child: Text(
+                    name.length > 8 ? '${name.substring(0, 8)}...' : name,
+                    style: const TextStyle(fontSize: 10),
+                  ),
+                );
+              },
+              reservedSize: 40,
+            ),
+          ),
+          leftTitles: AxisTitles(
+            sideTitles: SideTitles(
+              showTitles: true,
+              reservedSize: 40,
+              getTitlesWidget: (value, meta) {
+                return Text(
+                  value.toInt().toString(),
+                  style: const TextStyle(fontSize: 10),
+                );
+              },
+            ),
+          ),
+          topTitles: const AxisTitles(
+            sideTitles: SideTitles(showTitles: false),
+          ),
+          rightTitles: const AxisTitles(
+            sideTitles: SideTitles(showTitles: false),
+          ),
+        ),
+        gridData: FlGridData(
+          show: true,
+          drawVerticalLine: false,
+          horizontalInterval: 1,
+        ),
+        borderData: FlBorderData(show: true),
+        barGroups: top10.asMap().entries.map((entry) {
+          final index = entry.key;
+          final employee = entry.value;
+          final leaveDays = (employee['leave_taken'] as int).toDouble();
+          
+          return BarChartGroupData(
+            x: index,
+            barRods: [
+              BarChartRodData(
+                toY: leaveDays,
+                color: Colors.purple[400],
+                width: 20,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(4)),
+              ),
+            ],
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  // Build Line Chart for Weekly Attendance
+  Widget _buildAttendanceLineChart() {
+    if (_weeklyAttendanceSummary.isEmpty) {
+      return const Center(child: Text('No data available'));
+    }
+
+    final days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    final attendanceData = List.generate(7, (index) {
+      final dayDate = _selectedWeekStart.add(Duration(days: index));
+      // Calculate average attendance percentage for this day
+      double totalPercentage = 0;
+      int count = 0;
+      for (var employee in _weeklyAttendanceSummary) {
+        final attendance = employee['attendance'] as Map<String, dynamic>?;
+        if (attendance != null) {
+          final dayKey = '${dayDate.year}-${dayDate.month.toString().padLeft(2, '0')}-${dayDate.day.toString().padLeft(2, '0')}';
+          final dayData = attendance[dayKey] as Map<String, dynamic>?;
+          if (dayData != null) {
+            final percentage = (dayData['attendance_percentage'] as num?)?.toDouble() ?? 0.0;
+            totalPercentage += percentage;
+            count++;
+          }
+        }
+      }
+      return count > 0 ? totalPercentage / count : 0.0;
+    });
+
+    final maxY = attendanceData.isEmpty 
+        ? 100.0 
+        : (attendanceData.reduce((a, b) => a > b ? a : b) * 1.2).clamp(0.0, 100.0);
+
+    return LineChart(
+      LineChartData(
+        gridData: FlGridData(
+          show: true,
+          drawVerticalLine: false,
+        ),
+        titlesData: FlTitlesData(
+          show: true,
+          bottomTitles: AxisTitles(
+            sideTitles: SideTitles(
+              showTitles: true,
+              getTitlesWidget: (value, meta) {
+                if (value.toInt() >= days.length) return const Text('');
+                return Text(
+                  days[value.toInt()],
+                  style: const TextStyle(fontSize: 10),
+                );
+              },
+              reservedSize: 30,
+            ),
+          ),
+          leftTitles: AxisTitles(
+            sideTitles: SideTitles(
+              showTitles: true,
+              reservedSize: 40,
+              getTitlesWidget: (value, meta) {
+                return Text(
+                  '${value.toInt()}%',
+                  style: const TextStyle(fontSize: 10),
+                );
+              },
+            ),
+          ),
+          topTitles: const AxisTitles(
+            sideTitles: SideTitles(showTitles: false),
+          ),
+          rightTitles: const AxisTitles(
+            sideTitles: SideTitles(showTitles: false),
+          ),
+        ),
+        borderData: FlBorderData(show: true),
+        lineBarsData: [
+          LineChartBarData(
+            spots: attendanceData.asMap().entries.map((entry) {
+              return FlSpot(entry.key.toDouble(), entry.value);
+            }).toList(),
+            isCurved: true,
+            color: Colors.teal,
+            barWidth: 3,
+            dotData: const FlDotData(show: true),
+            belowBarData: BarAreaData(show: false),
+          ),
+        ],
+        minY: 0,
+        maxY: maxY,
       ),
     );
   }

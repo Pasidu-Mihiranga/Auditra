@@ -6,6 +6,7 @@ import 'dart:math' as math;
 import '../services/api_service.dart';
 import '../models/attendance_model.dart';
 import '../models/project_model.dart';
+import '../widgets/dark_mode_toggle.dart';
 import 'login_screen.dart';
 import 'generic_dashboard.dart';
 import 'create_project_screen.dart';
@@ -4759,6 +4760,7 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
         ),
         centerTitle: true,
         actions: [
+          const DarkModeToggle(),
           IconButton(
             icon: const Icon(Icons.list_alt, color: Colors.blue),
             onPressed: () {

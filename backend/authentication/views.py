@@ -7,7 +7,7 @@ from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
 from django.utils import timezone
 from decimal import Decimal, InvalidOperation
-from .models import UserRole, PaymentSlip, ClientFormSubmission, EmployeeFormSubmission, LeaveRequest
+from .models import UserRole, PaymentSlip, ClientFormSubmission, EmployeeFormSubmission, LeaveRequest, UserProfile, SystemLog
 from .serializers import (
     UserRegistrationSerializer, 
     UserSerializer, 
@@ -18,7 +18,8 @@ from .serializers import (
     PaymentSlipSerializer,
     ClientFormSubmissionSerializer,
     EmployeeFormSubmissionSerializer,
-    LeaveRequestSerializer
+    LeaveRequestSerializer,
+    SystemLogSerializer
 )
 
 
@@ -81,6 +82,93 @@ class UserProfileView(generics.RetrieveAPIView):
     
     def get_object(self):
         return self.request.user
+
+
+class EnableBiometricView(APIView):
+    """Enable biometric authentication for the current user"""
+    permission_classes = (IsAuthenticated,)
+    
+    def post(self, request):
+        profile, created = UserProfile.objects.get_or_create(user=request.user)
+        profile.biometric_enabled = True
+        profile.save()
+        
+        return Response({
+            'message': 'Biometric authentication enabled successfully',
+            'biometric_enabled': True
+        }, status=status.HTTP_200_OK)
+
+
+class DisableBiometricView(APIView):
+    """Disable biometric authentication for the current user"""
+    permission_classes = (IsAuthenticated,)
+    
+    def post(self, request):
+        profile, created = UserProfile.objects.get_or_create(user=request.user)
+        profile.biometric_enabled = False
+        profile.biometric_required = False
+        profile.save()
+        
+        return Response({
+            'message': 'Biometric authentication disabled successfully',
+            'biometric_enabled': False
+        }, status=status.HTTP_200_OK)
+
+
+class BiometricLoginView(APIView):
+    """Login using biometric authentication (username only)"""
+    permission_classes = (AllowAny,)
+    
+    def post(self, request):
+        username = request.data.get('username')
+        
+        if not username:
+            return Response({
+                'error': 'Username is required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            user = User.objects.get(username=username)
+        except User.DoesNotExist:
+            return Response({
+                'error': 'User not found'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        # Check if biometric is enabled for this user
+        try:
+            profile = user.profile
+            if not profile.biometric_enabled:
+                return Response({
+                    'error': 'Biometric authentication is not enabled for this user'
+                }, status=status.HTTP_403_FORBIDDEN)
+        except UserProfile.DoesNotExist:
+            return Response({
+                'error': 'Biometric authentication is not enabled for this user'
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        # Generate JWT tokens
+        refresh = RefreshToken.for_user(user)
+        user_data = UserSerializer(user).data
+        
+        return Response({
+            'user': user_data,
+            'refresh': str(refresh),
+            'access': str(refresh.access_token),
+            'message': 'Biometric login successful'
+        }, status=status.HTTP_200_OK)
+
+
+class BiometricStatusView(APIView):
+    """Get biometric authentication status for the current user"""
+    permission_classes = (IsAuthenticated,)
+    
+    def get(self, request):
+        profile, created = UserProfile.objects.get_or_create(user=request.user)
+        
+        return Response({
+            'biometric_enabled': profile.biometric_enabled,
+            'biometric_required': profile.biometric_required
+        }, status=status.HTTP_200_OK)
 
 
 class AssignRoleView(APIView):
@@ -1022,4 +1110,41 @@ class UpdateLeaveRequestView(APIView):
                 'success': False,
                 'error': f'Error updating leave request: {str(e)}'
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class SystemLogsView(generics.ListAPIView):
+    """API endpoint for admin to view all system logs"""
+    permission_classes = [IsAuthenticated]
+    serializer_class = SystemLogSerializer
+    
+    def get_queryset(self):
+        # Check if user is admin
+        try:
+            user_role = UserRole.objects.get(user=self.request.user)
+            if user_role.role != 'admin':
+                return SystemLog.objects.none()
+        except UserRole.DoesNotExist:
+            return SystemLog.objects.none()
+        
+        queryset = SystemLog.objects.all().select_related('user')
+        
+        # Optional filters
+        action = self.request.query_params.get('action', None)
+        severity = self.request.query_params.get('severity', None)
+        user_id = self.request.query_params.get('user_id', None)
+        start_date = self.request.query_params.get('start_date', None)
+        end_date = self.request.query_params.get('end_date', None)
+        
+        if action:
+            queryset = queryset.filter(action=action)
+        if severity:
+            queryset = queryset.filter(severity=severity)
+        if user_id:
+            queryset = queryset.filter(user_id=user_id)
+        if start_date:
+            queryset = queryset.filter(created_at__gte=start_date)
+        if end_date:
+            queryset = queryset.filter(created_at__lte=end_date)
+        
+        return queryset
 

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../services/api_service.dart';
+import '../widgets/dark_mode_toggle.dart';
 
 class ViewLeaveRequestsScreen extends StatefulWidget {
   const ViewLeaveRequestsScreen({super.key});
@@ -128,6 +129,7 @@ class _ViewLeaveRequestsScreenState extends State<ViewLeaveRequestsScreen> {
         title: const Text('View Leave Requests'),
         centerTitle: true,
         actions: [
+          const DarkModeToggle(),
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: _loadLeaveRequests,

@@ -7,7 +7,8 @@ class ApiService {
   // For emulator, use 10.0.2.2 (Android) or localhost (iOS)
   // For physical device, use your computer's IP address (e.g., 'http://192.168.1.100:8000/api')
   // For Chrome/web, use localhost
-  static const String baseUrl = 'http://10.0.2.2:8000/api'; // Using 10.0.2.2 for Android emulator
+  // Current IP: 10.114.212.139 (Wi-Fi interface - for physical device testing)
+  static const String baseUrl = 'http://10.114.212.139:8000/api'; // Updated for physical device (Wi-Fi)
 
   // Register new user
   static Future<Map<String, dynamic>> register({
@@ -2640,6 +2641,198 @@ class ApiService {
         return {'success': true, 'message': data['message'] ?? 'Leave request updated successfully', 'data': data['data']};
       } else {
         return {'success': false, 'message': data['error'] ?? 'Failed to update leave request'};
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'Connection error: $e'};
+    }
+  }
+
+  // ========== BIOMETRIC ENDPOINTS ==========
+
+  // Enable biometric authentication
+  static Future<Map<String, dynamic>> enableBiometric() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token');
+
+      if (token == null) {
+        return {'success': false, 'message': 'Not authenticated'};
+      }
+
+      final response = await http.post(
+        Uri.parse('$baseUrl/auth/biometric/enable/'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      Map<String, dynamic> data;
+      try {
+        data = jsonDecode(response.body);
+      } catch (e) {
+        return {'success': false, 'message': 'Invalid response from server'};
+      }
+
+      if (response.statusCode == 200) {
+        return {'success': true, 'message': data['message'] ?? 'Biometric authentication enabled'};
+      } else {
+        return {'success': false, 'message': data['error'] ?? 'Failed to enable biometric authentication'};
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'Connection error: $e'};
+    }
+  }
+
+  // Disable biometric authentication
+  static Future<Map<String, dynamic>> disableBiometric() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token');
+
+      if (token == null) {
+        return {'success': false, 'message': 'Not authenticated'};
+      }
+
+      final response = await http.post(
+        Uri.parse('$baseUrl/auth/biometric/disable/'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      Map<String, dynamic> data;
+      try {
+        data = jsonDecode(response.body);
+      } catch (e) {
+        return {'success': false, 'message': 'Invalid response from server'};
+      }
+
+      if (response.statusCode == 200) {
+        return {'success': true, 'message': data['message'] ?? 'Biometric authentication disabled'};
+      } else {
+        return {'success': false, 'message': data['error'] ?? 'Failed to disable biometric authentication'};
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'Connection error: $e'};
+    }
+  }
+
+  // Login with biometric (username only)
+  static Future<Map<String, dynamic>> biometricLogin(String username) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/auth/biometric/login/'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'username': username}),
+      );
+
+      Map<String, dynamic> data;
+      try {
+        data = jsonDecode(response.body);
+      } catch (e) {
+        return {'success': false, 'message': 'Invalid response from server'};
+      }
+
+      if (response.statusCode == 200) {
+        // Save tokens
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('access_token', data['access']);
+        await prefs.setString('refresh_token', data['refresh']);
+        await prefs.setString('user_id', data['user']['id'].toString());
+        await prefs.setString('username', data['user']['username']);
+
+        return {'success': true, 'data': data};
+      } else {
+        return {'success': false, 'message': data['error'] ?? 'Biometric login failed'};
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'Connection error: $e'};
+    }
+  }
+
+  // Get biometric status
+  static Future<Map<String, dynamic>> getBiometricStatus() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token');
+
+      if (token == null) {
+        return {'success': false, 'message': 'Not authenticated'};
+      }
+
+      final response = await http.get(
+        Uri.parse('$baseUrl/auth/biometric/status/'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      Map<String, dynamic> data;
+      try {
+        data = jsonDecode(response.body);
+      } catch (e) {
+        return {'success': false, 'message': 'Invalid response from server'};
+      }
+
+      if (response.statusCode == 200) {
+        return {'success': true, 'data': data};
+      } else {
+        return {'success': false, 'message': data['error'] ?? 'Failed to get biometric status'};
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'Connection error: $e'};
+    }
+  }
+
+  // Get system logs (admin only)
+  static Future<Map<String, dynamic>> getSystemLogs({
+    String? action,
+    String? severity,
+    int? userId,
+    String? startDate,
+    String? endDate,
+  }) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token');
+
+      if (token == null) {
+        return {'success': false, 'message': 'Not authenticated'};
+      }
+
+      final queryParams = <String, String>{};
+      if (action != null) queryParams['action'] = action;
+      if (severity != null) queryParams['severity'] = severity;
+      if (userId != null) queryParams['user_id'] = userId.toString();
+      if (startDate != null) queryParams['start_date'] = startDate;
+      if (endDate != null) queryParams['end_date'] = endDate;
+
+      final uri = Uri.parse('$baseUrl/auth/system-logs/').replace(
+        queryParameters: queryParams.isEmpty ? null : queryParams,
+      );
+
+      final response = await http.get(
+        uri,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      Map<String, dynamic> data;
+      try {
+        data = jsonDecode(response.body);
+      } catch (e) {
+        return {'success': false, 'message': 'Invalid response from server'};
+      }
+
+      if (response.statusCode == 200) {
+        return {'success': true, 'data': data};
+      } else {
+        return {'success': false, 'message': data['error'] ?? 'Failed to load system logs'};
       }
     } catch (e) {
       return {'success': false, 'message': 'Connection error: $e'};

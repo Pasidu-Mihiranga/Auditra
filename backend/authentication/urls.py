@@ -22,7 +22,12 @@ from .views import (
     MyLeaveRequestsView,
     MyLeaveStatisticsView,
     MonthlyLeaveSummaryView,
-    UpdateLeaveRequestView
+    UpdateLeaveRequestView,
+    EnableBiometricView,
+    DisableBiometricView,
+    BiometricLoginView,
+    BiometricStatusView,
+    SystemLogsView
 )
 
 urlpatterns = [
@@ -35,6 +40,10 @@ urlpatterns = [
     path('assign-role/', AssignRoleView.as_view(), name='assign-role'),
     path('users/', AllUsersView.as_view(), name='all-users'),
     path('users/<int:user_id>/delete/', DeleteUserView.as_view(), name='delete-user'),
+    path('biometric/enable/', EnableBiometricView.as_view(), name='enable-biometric'),
+    path('biometric/disable/', DisableBiometricView.as_view(), name='disable-biometric'),
+    path('biometric/login/', BiometricLoginView.as_view(), name='biometric-login'),
+    path('biometric/status/', BiometricStatusView.as_view(), name='biometric-status'),
     path('payment-slips/generate/', GeneratePaymentSlipsView.as_view(), name='generate-payment-slips'),
     path('payment-slips/upload/', UploadPaymentSlipsView.as_view(), name='upload-payment-slips'),
     path('payment-slips/my/', MyPaymentSlipsView.as_view(), name='my-payment-slips'),
@@ -48,5 +57,6 @@ urlpatterns = [
     path('leave-requests/summary/monthly/', MonthlyLeaveSummaryView.as_view(), name='monthly-leave-summary'),
     path('leave-requests/', AllLeaveRequestsView.as_view(), name='all-leave-requests'),
     path('leave-requests/<int:pk>/update/', UpdateLeaveRequestView.as_view(), name='update-leave-request'),
+    path('system-logs/', SystemLogsView.as_view(), name='system-logs'),
 ]
 

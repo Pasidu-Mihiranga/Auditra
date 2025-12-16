@@ -6,6 +6,7 @@ import 'dart:io';
 import '../services/api_service.dart';
 import '../models/project_model.dart';
 import '../models/valuation_model.dart';
+import '../widgets/dark_mode_toggle.dart';
 
 class ValuationFormScreen extends StatefulWidget {
   final Project project;
@@ -669,6 +670,9 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
       return Scaffold(
         appBar: AppBar(
           title: const Text('New Valuation'),
+          actions: const [
+            DarkModeToggle(),
+          ],
         ),
         body: Center(
           child: Padding(
@@ -704,6 +708,9 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.existingValuation != null ? 'Edit Valuation' : 'New Valuation'),
+        actions: const [
+          DarkModeToggle(),
+        ],
       ),
       body: Form(
         key: _formKey,

@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:local_auth_platform_interface/types/biometric_type.dart';
 import '../services/api_service.dart';
+import '../services/biometric_service.dart';
+import '../widgets/dark_mode_toggle.dart';
 import 'home_screen.dart';
 
 class RegisterScreen extends StatefulWidget {
@@ -83,7 +86,71 @@ class _RegisterScreenState extends State<RegisterScreen> {
       
       if (!mounted) return;
       
-      // Navigate directly - role will be fetched later if needed
+      // Check if biometric is available and prompt user to enable it
+      final biometricAvailability = await BiometricService.checkBiometricAvailability();
+      final isBiometricAvailable = biometricAvailability['isAvailable'] as bool? ?? false;
+      
+      if (isBiometricAvailable) {
+        // Get available types and cast to BiometricType
+        final availableTypesRaw = biometricAvailability['availableTypes'] as List? ?? [];
+        final availableTypes = availableTypesRaw.cast<BiometricType>();
+        final biometricTypeName = BiometricService.getBiometricTypeName(availableTypes);
+        
+        // Show dialog to enable biometric
+        final shouldEnable = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Enable Fingerprint Login'),
+            content: Text(
+              'Would you like to enable $biometricTypeName login for faster access?',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text('Skip'),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                child: const Text('Enable'),
+              ),
+            ],
+          ),
+        );
+        
+        if (shouldEnable == true && mounted) {
+          // Authenticate with biometric first
+          final authResult = await BiometricService.authenticateWithResult(
+            reason: 'Authenticate to enable $biometricTypeName login',
+          );
+          
+          if (authResult['success'] == true && mounted) {
+            // Enable biometric on backend
+            final enableResult = await ApiService.enableBiometric();
+            if (enableResult['success'] == true && mounted) {
+              // Store username for biometric login
+              await BiometricService.storeUsernameForBiometric(_usernameController.text.trim());
+              
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('$biometricTypeName login enabled successfully!'),
+                  backgroundColor: Colors.green,
+                ),
+              );
+            }
+          } else if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(authResult['error'] ?? 'Failed to enable biometric login'),
+                backgroundColor: Colors.orange,
+              ),
+            );
+          }
+        }
+      }
+      
+      if (!mounted) return;
+      
+      // Navigate to home screen
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(builder: (_) => HomeScreen(userRole: 'unassigned')),
       );
@@ -118,6 +185,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
       appBar: AppBar(
         title: const Text('Register'),
         centerTitle: true,
+        actions: const [
+          DarkModeToggle(),
+        ],
       ),
       body: SafeArea(
         child: SingleChildScrollView(

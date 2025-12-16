@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
 from django.contrib.auth.password_validation import validate_password
-from .models import UserRole, PaymentSlip, ClientFormSubmission, EmployeeFormSubmission, LeaveRequest
+from .models import UserRole, PaymentSlip, ClientFormSubmission, EmployeeFormSubmission, LeaveRequest, SystemLog
 
 
 class UserRoleSerializer(serializers.ModelSerializer):
@@ -251,4 +251,26 @@ class LeaveRequestSerializer(serializers.ModelSerializer):
     def get_employee_id(self, obj):
         """Get employee ID (user ID)"""
         return str(obj.user.id)
+
+
+class SystemLogSerializer(serializers.ModelSerializer):
+    user_username = serializers.CharField(source='user.username', read_only=True)
+    user_full_name = serializers.SerializerMethodField()
+    action_display = serializers.CharField(source='get_action_display', read_only=True)
+    severity_display = serializers.CharField(source='get_severity_display', read_only=True)
+    
+    class Meta:
+        model = SystemLog
+        fields = (
+            'id', 'user', 'user_username', 'user_full_name',
+            'action', 'action_display', 'severity', 'severity_display',
+            'message', 'details', 'ip_address', 'user_agent', 'created_at'
+        )
+        read_only_fields = ('created_at',)
+    
+    def get_user_full_name(self, obj):
+        if obj.user:
+            full_name = f"{obj.user.first_name} {obj.user.last_name}".strip()
+            return full_name if full_name else obj.user.username
+        return 'System'
 

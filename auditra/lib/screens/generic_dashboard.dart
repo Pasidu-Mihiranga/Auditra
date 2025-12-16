@@ -5,6 +5,7 @@ import 'dart:math' as math;
 import '../services/api_service.dart';
 import '../models/attendance_model.dart';
 import '../models/project_model.dart';
+import '../widgets/dark_mode_toggle.dart';
 import 'login_screen.dart';
 import 'payment_slips_screen.dart';
 import 'leave_request_screen.dart';
@@ -692,6 +693,7 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
         ),
         centerTitle: true,
         actions: [
+          const DarkModeToggle(),
           // View My Leave Requests button - visible for employee roles
           IconButton(
             icon: const Icon(Icons.list_alt, color: Colors.blue),
