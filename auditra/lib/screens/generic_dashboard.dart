@@ -9,6 +9,7 @@ import 'login_screen.dart';
 import 'payment_slips_screen.dart';
 import 'leave_request_screen.dart';
 import 'my_leave_requests_screen.dart';
+import 'view_leave_requests_screen.dart';
 import 'personal_info_screen.dart';
 
 class GenericDashboard extends StatefulWidget {
@@ -41,7 +42,8 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
   bool _isMarkingAttendance = false;
   
   late TabController _periodTabController;
-  TabController? _mainTabController; // For Attendance/Projects tabs
+  TabController? _mainTabController; // For Attendance/Projects tabs (client/agent/accessor/senior_valuer)
+  TabController? _hrTabController; // For HR staff: Attendance / Leave / Payments tabs
   
   // Project state (for roles that can view projects)
   List<Project> _projects = [];
@@ -57,6 +59,24 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
   // Leave statistics state
   Map<String, dynamic>? _leaveStatistics;
   bool _isLoadingLeaveStats = false;
+  
+  // HR Staff - Monthly leave summary state (like admin dashboard)
+  List<Map<String, dynamic>> _monthlyLeaveSummary = [];
+  bool _isLoadingLeaveSummary = false;
+  int _selectedMonth = DateTime.now().month;
+  int _selectedYear = DateTime.now().year;
+  
+  // HR Staff - Attendance summary weekly state
+  List<Map<String, dynamic>> _weeklyAttendanceSummary = [];
+  bool _isLoadingAttendanceSummary = false;
+  DateTime _selectedWeekStart = _getWeekStart(DateTime.now());
+  String _attendanceSearchQuery = '';
+  
+  // Helper function to get the start of the week (Monday)
+  static DateTime _getWeekStart(DateTime date) {
+    final daysFromMonday = date.weekday - 1;
+    return DateTime(date.year, date.month, date.day - daysFromMonday);
+  }
   
   // Check if this role should see projects
   bool get _shouldShowProjects {
@@ -94,18 +114,43 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
       });
       _loadProjects();
     }
+
+    // Initialize HR staff tab controller (Attendance / Leave / Payments)
+    if (widget.role == 'hr_staff') {
+      _hrTabController = TabController(length: 3, vsync: this);
+      _hrTabController!.addListener(() {
+        if (!_hrTabController!.indexIsChanging && mounted) {
+          setState(() {});
+          // Load weekly attendance summary when switching to attendance tab (index 0)
+          if (_hrTabController!.index == 0) {
+            _loadWeeklyAttendanceSummary();
+          }
+        }
+      });
+    }
     
     _loadUserData();
     _loadTodayAttendance();
     _loadSummary();
     _loadLeaveStatistics();
     _startTimer();
+    
+    // Load weekly attendance summary for HR staff and admin
+    if (widget.role == 'hr_staff' || widget.role == 'admin') {
+      _loadWeeklyAttendanceSummary();
+    }
+    
+    // Load monthly leave summary for HR staff
+    if (widget.role == 'hr_staff') {
+      _loadMonthlyLeaveSummary();
+    }
   }
 
   @override
   void dispose() {
     _periodTabController.dispose();
     _mainTabController?.dispose();
+    _hrTabController?.dispose();
     super.dispose();
   }
   
@@ -499,19 +544,137 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
   Future<void> _logout() async {
     final confirm = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Logout'),
-        content: const Text('Are you sure you want to logout?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
+      barrierDismissible: false,
+      builder: (context) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        child: Container(
+          width: MediaQuery.of(context).size.width * 0.85,
+          constraints: const BoxConstraints(maxHeight: 400),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Header with gradient
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [Colors.orange[600]!, Colors.orange[400]!],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(20),
+                    topRight: Radius.circular(20),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(Icons.logout, color: Colors.white, size: 24),
+                    ),
+                    const SizedBox(width: 16),
+                    const Expanded(
+                      child: Text(
+                        'Logout',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              // Content
+              Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  children: [
+                    Icon(
+                      Icons.exit_to_app_rounded,
+                      size: 64,
+                      color: Colors.orange[300],
+                    ),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'Are you sure?',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      'You are about to logout from your account.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.grey[700],
+                        height: 1.5,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              // Action Buttons
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: Colors.grey[50],
+                  borderRadius: const BorderRadius.only(
+                    bottomLeft: Radius.circular(20),
+                    bottomRight: Radius.circular(20),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.of(context).pop(false),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        child: const Text('Cancel', style: TextStyle(fontSize: 16)),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: () => Navigator.of(context).pop(true),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.orange[600],
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          elevation: 2,
+                        ),
+                        child: const Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.logout, size: 20),
+                            SizedBox(width: 8),
+                            Text('Logout', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Logout'),
-          ),
-        ],
+        ),
       ),
     );
 
@@ -740,34 +903,52 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
                 });
               },
               tooltip: 'Personal Information',
-            ),
+      ),
           IconButton(
             icon: const Icon(Icons.logout),
             onPressed: _logout,
             tooltip: 'Logout',
           ),
         ],
-        bottom: _shouldShowProjects && _mainTabController != null
+        bottom: widget.role == 'hr_staff' && _hrTabController != null
             ? TabBar(
-                controller: _mainTabController,
+                controller: _hrTabController!,
                 tabs: const [
-                  Tab(icon: Icon(Icons.access_time), text: 'Attendance'),
-                  Tab(icon: Icon(Icons.folder), text: 'Projects'),
+                  Tab(icon: Icon(Icons.calendar_today), text: 'Attendance'),
+                  Tab(icon: Icon(Icons.event_note), text: 'Leave'),
+                  Tab(icon: Icon(Icons.payment), text: 'Payments'),
                 ],
               )
-            : null,
+            : _shouldShowProjects && _mainTabController != null
+                ? TabBar(
+                    controller: _mainTabController!,
+                    tabs: const [
+                      Tab(icon: Icon(Icons.access_time), text: 'Attendance'),
+                      Tab(icon: Icon(Icons.folder), text: 'Projects'),
+                    ],
+                  )
+                : null,
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : _shouldShowProjects && _mainTabController != null
+          : widget.role == 'hr_staff' && _hrTabController != null
               ? TabBarView(
-                  controller: _mainTabController,
+                  controller: _hrTabController!,
                   children: [
-                    _buildDashboardBody(),
-                    _buildProjectsTab(),
+                    _buildHRAttendanceTabBody(),
+                    _buildHRLeaveTabBody(),
+                    _buildHRPaymentsTabBody(),
                   ],
                 )
-              : _buildDashboardBody(),
+              : _shouldShowProjects && _mainTabController != null
+                  ? TabBarView(
+                      controller: _mainTabController!,
+                      children: [
+                        _buildDashboardBody(),
+                        _buildProjectsTab(),
+                      ],
+                    )
+                  : _buildDashboardBody(),
     );
   }
 
@@ -778,6 +959,10 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
         await _loadTodayAttendance();
         await _loadSummary();
         await _loadLeaveStatistics();
+        // Load weekly attendance summary for admin
+        if (widget.role == 'admin') {
+          await _loadWeeklyAttendanceSummary();
+        }
       },
       child: SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
@@ -797,6 +982,12 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
             _buildLeaveStatisticsSection(),
             const SizedBox(height: 16),
             
+            // Weekly Attendance Summary - Show for admin
+            if (widget.role == 'admin') ...[
+              const SizedBox(height: 24),
+              _buildWeeklyAttendanceSummarySection(),
+            ],
+            
             // Payment Section - Show for employee roles
             _buildPaymentSection(),
             const SizedBox(height: 16),
@@ -807,6 +998,1420 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
         ),
       ),
     );
+  }
+
+  /// HR Staff - Attendance tab body (like admin "Attendance" navigation)
+  Widget _buildHRAttendanceTabBody() {
+    return RefreshIndicator(
+      onRefresh: () async {
+        await _loadUserData();
+        await _loadTodayAttendance();
+        await _loadSummary();
+        await _loadLeaveStatistics();
+        await _loadWeeklyAttendanceSummary();
+      },
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _buildTodayAttendanceCard(),
+            const SizedBox(height: 16),
+            _buildSummarySection(),
+            const SizedBox(height: 16),
+            if (_summary != null) _buildChartsSection(),
+            const SizedBox(height: 24),
+            // Weekly Attendance Summary
+            _buildWeeklyAttendanceSummarySection(),
+          ],
+        ),
+      ),
+    );
+  }
+  
+  Future<void> _loadWeeklyAttendanceSummary() async {
+    // Allow both admin and HR staff to view weekly attendance summary
+    if (widget.role != 'hr_staff' && widget.role != 'admin') return;
+    
+    setState(() => _isLoadingAttendanceSummary = true);
+    
+    try {
+      final result = await ApiService.getWeeklyAttendanceSummary(
+        weekStart: _selectedWeekStart,
+      );
+      
+      if (!mounted) return;
+      
+      setState(() {
+        _isLoadingAttendanceSummary = false;
+        if (result['success']) {
+          _weeklyAttendanceSummary = (result['data'] as List<dynamic>)
+              .map((item) => item as Map<String, dynamic>)
+              .toList();
+        } else {
+          // Show error message if API call failed
+          final errorMessage = result['message'] ?? 'Failed to load attendance summary';
+          if (mounted && errorMessage.isNotEmpty) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(errorMessage),
+                backgroundColor: Colors.red,
+                duration: const Duration(seconds: 3),
+              ),
+            );
+          }
+          _weeklyAttendanceSummary = [];
+        }
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isLoadingAttendanceSummary = false;
+        _weeklyAttendanceSummary = [];
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error loading attendance summary: $e'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _selectWeek() async {
+    final now = DateTime.now();
+    final initialDate = _selectedWeekStart;
+    
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: initialDate,
+      firstDate: DateTime(now.year - 1),
+      lastDate: DateTime(now.year + 1),
+      helpText: 'Select Week Start (Monday)',
+    );
+    
+    if (picked != null) {
+      setState(() {
+        _selectedWeekStart = _getWeekStart(picked);
+      });
+      await _loadWeeklyAttendanceSummary();
+    }
+  }
+  
+  Future<void> _loadMonthlyLeaveSummary() async {
+    if (widget.role != 'hr_staff') return;
+    
+    setState(() => _isLoadingLeaveSummary = true);
+    
+    try {
+      final result = await ApiService.getMonthlyLeaveSummary(
+        month: _selectedMonth,
+        year: _selectedYear,
+      );
+      
+      if (!mounted) return;
+      
+      setState(() {
+        _isLoadingLeaveSummary = false;
+        if (result['success']) {
+          _monthlyLeaveSummary = (result['data'] as List<dynamic>)
+              .map((item) => item as Map<String, dynamic>)
+              .toList();
+        } else {
+          // Show error message if API call failed
+          final errorMessage = result['message'] ?? 'Failed to load leave summary';
+          if (mounted && errorMessage.isNotEmpty) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(errorMessage),
+                backgroundColor: Colors.red,
+                duration: const Duration(seconds: 3),
+              ),
+            );
+          }
+          _monthlyLeaveSummary = [];
+        }
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isLoadingLeaveSummary = false;
+        _monthlyLeaveSummary = [];
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error loading leave summary: $e'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _selectMonthYear() async {
+    final now = DateTime.now();
+    final monthNames = [
+      'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'
+    ];
+    
+    int? selectedMonth = _selectedMonth;
+    int? selectedYear = _selectedYear;
+    
+    final result = await showDialog<Map<String, int>>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Select Month & Year'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              DropdownButtonFormField<int>(
+                value: selectedMonth,
+                decoration: const InputDecoration(
+                  labelText: 'Month',
+                  border: OutlineInputBorder(),
+                ),
+                items: List.generate(12, (index) {
+                  final month = index + 1;
+                  return DropdownMenuItem(
+                    value: month,
+                    child: Text(monthNames[index]),
+                  );
+                }),
+                onChanged: (value) {
+                  setDialogState(() => selectedMonth = value!);
+                },
+              ),
+              const SizedBox(height: 16),
+              DropdownButtonFormField<int>(
+                value: selectedYear,
+                decoration: const InputDecoration(
+                  labelText: 'Year',
+                  border: OutlineInputBorder(),
+                ),
+                items: List.generate(5, (index) {
+                  final year = now.year - 2 + index;
+                  return DropdownMenuItem(
+                    value: year,
+                    child: Text(year.toString()),
+                  );
+                }),
+                onChanged: (value) {
+                  setDialogState(() => selectedYear = value!);
+                },
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, null),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context, {
+                'month': selectedMonth!,
+                'year': selectedYear!,
+              }),
+              child: const Text('View'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (result != null) {
+      setState(() {
+        _selectedMonth = result['month']!;
+        _selectedYear = result['year']!;
+      });
+      await _loadMonthlyLeaveSummary();
+    }
+  }
+  
+  Widget _buildWeeklyAttendanceSummarySection() {
+    final weekEnd = _selectedWeekStart.add(const Duration(days: 6));
+    final weekRange = '${_selectedWeekStart.day}/${_selectedWeekStart.month}/${_selectedWeekStart.year} - ${weekEnd.day}/${weekEnd.month}/${weekEnd.year}';
+    
+    return Card(
+      elevation: 4,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(20.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.calendar_today, color: Colors.teal[700], size: 28),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Text(
+                    'Attendance Summary Weekly',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.calendar_month),
+                  onPressed: _selectWeek,
+                  tooltip: 'Select Week',
+                ),
+                IconButton(
+                  icon: const Icon(Icons.refresh),
+                  onPressed: _loadWeeklyAttendanceSummary,
+                  tooltip: 'Refresh',
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Week: $weekRange',
+              style: TextStyle(
+                fontSize: 14,
+                color: Colors.grey[600],
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            const SizedBox(height: 16),
+            // Search bar
+            TextField(
+              decoration: InputDecoration(
+                hintText: 'Search by Employee ID...',
+                prefixIcon: const Icon(Icons.search),
+                suffixIcon: _attendanceSearchQuery.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear),
+                        onPressed: () {
+                          setState(() {
+                            _attendanceSearchQuery = '';
+                          });
+                        },
+                      )
+                    : null,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                filled: true,
+                fillColor: Colors.grey[100],
+              ),
+              onChanged: (value) {
+                setState(() {
+                  _attendanceSearchQuery = value;
+                });
+              },
+            ),
+            const SizedBox(height: 16),
+            if (_isLoadingAttendanceSummary)
+              const Center(
+                child: Padding(
+                  padding: EdgeInsets.all(20.0),
+                  child: CircularProgressIndicator(),
+                ),
+              )
+            else if (_weeklyAttendanceSummary.isEmpty)
+              Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(20.0),
+                  child: Column(
+                    children: [
+                      Icon(Icons.event_busy, size: 48, color: Colors.grey[400]),
+                      const SizedBox(height: 8),
+                      Text(
+                        'No attendance records for this week',
+                        style: TextStyle(color: Colors.grey[600]),
+                      ),
+                    ],
+                  ),
+                ),
+              )
+            else
+              Builder(
+                builder: (context) {
+                  // Filter employees based on search query
+                  final filteredEmployees = _attendanceSearchQuery.isEmpty
+                      ? _weeklyAttendanceSummary
+                      : _weeklyAttendanceSummary.where((employee) {
+                          final employeeNumber = (employee['employee_number'] as String? ?? '').toString();
+                          return employeeNumber.toLowerCase().contains(_attendanceSearchQuery.toLowerCase());
+                        }).toList();
+                  
+                  if (filteredEmployees.isEmpty) {
+                    return Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(20.0),
+                        child: Column(
+                          children: [
+                            Icon(Icons.search_off, size: 48, color: Colors.grey[400]),
+                            const SizedBox(height: 8),
+                            Text(
+                              'No employees found with employee ID: $_attendanceSearchQuery',
+                              style: TextStyle(color: Colors.grey[600]),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }
+                  
+                  return SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Header row
+                        Container(
+                          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                          decoration: BoxDecoration(
+                            color: Colors.teal[50],
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Row(
+                            children: [
+                              SizedBox(
+                                width: 120,
+                                child: Text(
+                                  'Employee Name',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.teal[900],
+                                    fontSize: 13,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              SizedBox(
+                                width: 100,
+                                child: Text(
+                                  'Employee ID',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.teal[900],
+                                    fontSize: 13,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              SizedBox(
+                                width: 80,
+                                child: Text(
+                                  'Absent Days',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.teal[900],
+                                    fontSize: 13,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              SizedBox(
+                                width: 80,
+                                child: Text(
+                                  'Half Days',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.teal[900],
+                                    fontSize: 13,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              SizedBox(
+                                width: 100,
+                                child: Text(
+                                  'Attendance %',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.teal[900],
+                                    fontSize: 13,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              SizedBox(
+                                width: 100,
+                                child: Text(
+                                  'Overtime Hours',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.teal[900],
+                                    fontSize: 13,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        // Employee rows - Interactive
+                        ...filteredEmployees.map((employee) {
+                          final attendancePercentage = (employee['attendance_percentage'] as num?)?.toDouble() ?? 0.0;
+                          final absentDays = employee['absent_days'] ?? 0;
+                          final halfDays = employee['half_days'] ?? 0;
+                          final overtimeHours = (employee['overtime_hours'] as num?)?.toDouble() ?? 0.0;
+                          
+                          Color percentageColor;
+                          if (attendancePercentage >= 90) {
+                            percentageColor = Colors.green[700]!;
+                          } else if (attendancePercentage >= 80) {
+                            percentageColor = Colors.orange[700]!;
+                          } else {
+                            percentageColor = Colors.red[700]!;
+                          }
+                          
+                          return InkWell(
+                            onTap: () {
+                              showDialog(
+                                context: context,
+                                builder: (context) => AlertDialog(
+                                  title: Text(employee['employee_name'] as String? ?? 'N/A'),
+                                  content: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text('Employee ID: ${employee['employee_number'] ?? 'N/A'}'),
+                                      const SizedBox(height: 12),
+                                      Row(
+                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                'Attendance',
+                                                style: TextStyle(
+                                                  fontSize: 12,
+                                                  color: Colors.grey[600],
+                                                ),
+                                              ),
+                                              Text(
+                                                '${attendancePercentage.toStringAsFixed(1)}%',
+                                                style: TextStyle(
+                                                  fontSize: 18,
+                                                  fontWeight: FontWeight.bold,
+                                                  color: percentageColor,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                          Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                'Absent Days',
+                                                style: TextStyle(
+                                                  fontSize: 12,
+                                                  color: Colors.grey[600],
+                                                ),
+                                              ),
+                                              Text(
+                                                '$absentDays',
+                                                style: TextStyle(
+                                                  fontSize: 18,
+                                                  fontWeight: FontWeight.bold,
+                                                  color: Colors.red[700],
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                          Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                'Half Days',
+                                                style: TextStyle(
+                                                  fontSize: 12,
+                                                  color: Colors.grey[600],
+                                                ),
+                                              ),
+                                              Text(
+                                                '$halfDays',
+                                                style: TextStyle(
+                                                  fontSize: 18,
+                                                  fontWeight: FontWeight.bold,
+                                                  color: Colors.orange[700],
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 12),
+                                      Text(
+                                        'Overtime Hours: ${overtimeHours.toStringAsFixed(1)} hrs',
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          color: Colors.teal[700],
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  actions: [
+                                    TextButton(
+                                      onPressed: () => Navigator.pop(context),
+                                      child: const Text('Close'),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            },
+                            child: Material(
+                              color: Colors.transparent,
+                              child: Container(
+                                margin: const EdgeInsets.only(bottom: 8),
+                                padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                                decoration: BoxDecoration(
+                                  color: Colors.grey[50],
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(color: Colors.grey[200]!),
+                                ),
+                                child: Row(
+                                  children: [
+                                    SizedBox(
+                                      width: 120,
+                                      child: Text(
+                                        employee['employee_name'] as String? ?? 'N/A',
+                                        style: const TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    SizedBox(
+                                      width: 100,
+                                      child: Text(
+                                        employee['employee_number'] as String? ?? 'N/A',
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w500,
+                                          color: Colors.grey[700],
+                                          fontFamily: 'monospace',
+                                        ),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    SizedBox(
+                                      width: 80,
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                                        decoration: BoxDecoration(
+                                          color: Colors.red[50],
+                                          borderRadius: BorderRadius.circular(6),
+                                        ),
+                                        child: Text(
+                                          '$absentDays',
+                                          textAlign: TextAlign.center,
+                                          style: TextStyle(
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.bold,
+                                            color: Colors.red[700],
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    SizedBox(
+                                      width: 80,
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                                        decoration: BoxDecoration(
+                                          color: Colors.orange[50],
+                                          borderRadius: BorderRadius.circular(6),
+                                        ),
+                                        child: Text(
+                                          '$halfDays',
+                                          textAlign: TextAlign.center,
+                                          style: TextStyle(
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.bold,
+                                            color: Colors.orange[700],
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    SizedBox(
+                                      width: 100,
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                                        decoration: BoxDecoration(
+                                          color: percentageColor.withOpacity(0.1),
+                                          borderRadius: BorderRadius.circular(6),
+                                        ),
+                                        child: Text(
+                                          '${attendancePercentage.toStringAsFixed(1)}%',
+                                          textAlign: TextAlign.center,
+                                          style: TextStyle(
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.bold,
+                                            color: percentageColor,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    SizedBox(
+                                      width: 100,
+                                      child: Text(
+                                        '${overtimeHours.toStringAsFixed(1)} hrs',
+                                        textAlign: TextAlign.center,
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.teal[700],
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Icon(
+                                      Icons.visibility,
+                                      color: Colors.teal[600],
+                                      size: 16,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          );
+                        }).toList(),
+                      ],
+                    ),
+                  );
+                },
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+  
+  // Project viewing methods (for client, agent, accessor, senior valuer)
+  
+  /// HR Staff - Leave tab body (like admin "Leave" navigation)
+  Widget _buildHRLeaveTabBody() {
+    return RefreshIndicator(
+      onRefresh: () async {
+        await _loadUserData();
+        await _loadLeaveStatistics();
+        await _loadMonthlyLeaveSummary();
+      },
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Welcome Card with Quick Actions
+            Card(
+              elevation: 4,
+              child: Padding(
+                padding: const EdgeInsets.all(20.0),
+                child: Column(
+                  children: [
+                    Row(
+                      children: [
+                        const CircleAvatar(
+                          radius: 30,
+                          backgroundColor: Colors.purple,
+                          child: Icon(Icons.event_note,
+                              size: 30, color: Colors.white),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Leave Management',
+                                style: TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              Text(
+                                'Welcome, $_username!',
+                                style: const TextStyle(
+                                  color: Colors.grey,
+                                  fontSize: 14,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+                    // Quick Action Buttons
+                    Row(
+                      children: [
+                        Expanded(
+                          child: InkWell(
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => const ViewLeaveRequestsScreen(),
+                                ),
+                              );
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
+                              decoration: BoxDecoration(
+                                color: Colors.purple[50],
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: Colors.purple[200]!),
+                              ),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.edit_calendar, color: Colors.purple[700], size: 18),
+                                  const SizedBox(height: 4),
+                                  const Text(
+                                    'View',
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: InkWell(
+                            onTap: _selectMonthYear,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
+                              decoration: BoxDecoration(
+                                color: Colors.blue[50],
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: Colors.blue[200]!),
+                              ),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.calendar_today, color: Colors.blue[700], size: 18),
+                                  const SizedBox(height: 4),
+                                  const Text(
+                                    'Month',
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 24),
+            // Monthly Leave Summary
+            _buildMonthlyLeaveSummarySection(),
+          ],
+        ),
+      ),
+    );
+  }
+  
+  Widget _buildMonthlyLeaveSummarySection() {
+    final monthNames = [
+      'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'
+    ];
+    
+    return Card(
+      elevation: 4,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(20.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.event_note, color: Colors.purple[700], size: 28),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Text(
+                    'Monthly Leave Summary',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.calendar_today),
+                  onPressed: _selectMonthYear,
+                  tooltip: 'Select Month & Year',
+                ),
+                IconButton(
+                  icon: const Icon(Icons.refresh),
+                  onPressed: _loadMonthlyLeaveSummary,
+                  tooltip: 'Refresh',
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '${monthNames[_selectedMonth - 1]} $_selectedYear',
+              style: TextStyle(
+                fontSize: 14,
+                color: Colors.grey[600],
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            const SizedBox(height: 16),
+            if (_isLoadingLeaveSummary)
+              const Center(
+                child: Padding(
+                  padding: EdgeInsets.all(20.0),
+                  child: CircularProgressIndicator(),
+                ),
+              )
+            else if (_monthlyLeaveSummary.isEmpty)
+              Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(20.0),
+                  child: Column(
+                    children: [
+                      Icon(Icons.event_busy, size: 48, color: Colors.grey[400]),
+                      const SizedBox(height: 8),
+                      Text(
+                        'No leave records for this month',
+                        style: TextStyle(color: Colors.grey[600]),
+                      ),
+                    ],
+                  ),
+                ),
+              )
+            else
+              Column(
+                children: [
+                  // Header row
+                  Container(
+                    padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                    decoration: BoxDecoration(
+                      color: Colors.purple[50],
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          flex: 1,
+                          child: Text(
+                            'Emp ID',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: Colors.purple[900],
+                              fontSize: 12,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        Expanded(
+                          flex: 2,
+                          child: Text(
+                            'Employee Name',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: Colors.purple[900],
+                              fontSize: 12,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        Expanded(
+                          child: Text(
+                            'Leave Taken',
+                            textAlign: TextAlign.right,
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: Colors.purple[900],
+                              fontSize: 12,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  // Employee rows - Interactive
+                  ..._monthlyLeaveSummary.map((employee) {
+                    final leaveDays = employee['leave_taken'] as int;
+                    return InkWell(
+                      onTap: () {
+                        showDialog(
+                          context: context,
+                          builder: (context) => AlertDialog(
+                            title: Text(employee['employee_name'] as String),
+                            content: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('Employee ID: ${employee['employee_id']}'),
+                                const SizedBox(height: 8),
+                                Text('Leave Taken: $leaveDays day(s)'),
+                                const SizedBox(height: 8),
+                                Text(
+                                  'Month: ${monthNames[_selectedMonth - 1]} $_selectedYear',
+                                  style: TextStyle(color: Colors.grey[600]),
+                                ),
+                              ],
+                            ),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(context),
+                                child: const Text('Close'),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                      child: Material(
+                        color: Colors.transparent,
+                        child: Container(
+                          margin: const EdgeInsets.only(bottom: 8),
+                          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                          decoration: BoxDecoration(
+                            color: Colors.grey[50],
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.grey[200]!),
+                          ),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                flex: 1,
+                                child: Text(
+                                  employee['employee_id'] as String,
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.grey[700],
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              Expanded(
+                                flex: 2,
+                                child: Text(
+                                  employee['employee_name'] as String,
+                                  style: const TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              Expanded(
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.end,
+                                  children: [
+                                    Flexible(
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                        decoration: BoxDecoration(
+                                          color: leaveDays > 5 
+                                              ? Colors.red[100] 
+                                              : leaveDays > 2 
+                                                  ? Colors.orange[100] 
+                                                  : Colors.green[100],
+                                          borderRadius: BorderRadius.circular(12),
+                                        ),
+                                        child: Text(
+                                          '$leaveDays day(s)',
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.bold,
+                                            color: leaveDays > 5 
+                                                ? Colors.red[700] 
+                                                : leaveDays > 2 
+                                                    ? Colors.orange[700] 
+                                                    : Colors.green[700],
+                                          ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Icon(
+                                      Icons.chevron_right,
+                                      color: Colors.grey[400],
+                                      size: 18,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                ],
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// HR Staff - Payments tab body (like admin "Payments" navigation)
+  Widget _buildHRPaymentsTabBody() {
+    return RefreshIndicator(
+      onRefresh: () async {
+        await _loadUserData();
+        await _loadSummary();
+      },
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Welcome Card with Quick Stats
+            Card(
+              elevation: 4,
+              child: Padding(
+                padding: const EdgeInsets.all(20.0),
+                child: Column(
+                  children: [
+                    Row(
+                      children: [
+                        const CircleAvatar(
+                          radius: 30,
+                          backgroundColor: Colors.green,
+                          child: Icon(Icons.payment,
+                              size: 30, color: Colors.white),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Payments',
+                                style: TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              Text(
+                                'Welcome, $_username!',
+                                style: const TextStyle(
+                                  color: Colors.grey,
+                                  fontSize: 14,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+                    // Quick Stats Row
+                    Row(
+                      children: [
+                        Expanded(
+                          child: InkWell(
+                            onTap: () {
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (context) => const PaymentSlipsScreen(role: 'hr_staff'),
+                                ),
+                              );
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: Colors.blue[50],
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: Colors.blue[200]!),
+                              ),
+                              child: Column(
+                                children: [
+                                  Icon(Icons.receipt_long, color: Colors.blue[700], size: 24),
+                                  const SizedBox(height: 4),
+                                  const Text(
+                                    'View All',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: InkWell(
+                            onTap: _createPaymentSlips,
+                            child: Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: Colors.green[50],
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: Colors.green[200]!),
+                              ),
+                              child: Column(
+                                children: [
+                                  Icon(Icons.add_circle, color: Colors.green[700], size: 24),
+                                  const SizedBox(height: 4),
+                                  const Text(
+                                    'Create',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: InkWell(
+                            onTap: _uploadPaymentSlips,
+                            child: Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: Colors.orange[50],
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: Colors.orange[200]!),
+                              ),
+                              child: Column(
+                                children: [
+                                  Icon(Icons.upload_file, color: Colors.orange[700], size: 24),
+                                  const SizedBox(height: 4),
+                                  const Text(
+                                    'Upload',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+  
+  Future<void> _createPaymentSlips() async {
+    // Automatically generate payment slips for current month/year for all employees
+    final now = DateTime.now();
+    final currentMonth = now.month;
+    final currentYear = now.year;
+    
+    // Show confirmation dialog
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Create Payment Slips'),
+        content: Text(
+          'Generate payment slips for all employees for ${_getMonthName(currentMonth)} $currentYear.\n\nExisting payment slips for this month will be updated.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Create'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green,
+              foregroundColor: Colors.white,
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    // Show loading
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(child: CircularProgressIndicator()),
+    );
+
+    final generateResult = await ApiService.generatePaymentSlips(
+      month: currentMonth,
+      year: currentYear,
+    );
+
+    if (!mounted) return;
+    Navigator.pop(context); // Close loading dialog
+
+    if (generateResult['success']) {
+      final data = generateResult['data'];
+      final generated = data['generated_count'] ?? 0;
+      final updated = data['updated_count'] ?? 0;
+      final total = data['total_count'] ?? 0;
+      
+      String message;
+      if (total > 0) {
+        if (generated > 0 && updated > 0) {
+          message = 'Payment slips created successfully!\n$generated created, $updated updated\n(Total: $total employees)';
+        } else if (updated > 0) {
+          message = 'Payment slips updated successfully for $updated employees';
+        } else {
+          message = 'Payment slips created successfully for $generated employees';
+        }
+      } else {
+        message = data['message'] ?? 'No payment slips generated. All eligible employees may already have payment slips for this month/year.';
+      }
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: total > 0 ? Colors.green : Colors.orange,
+          duration: Duration(seconds: total > 0 ? 4 : 5),
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(generateResult['message'] ?? 'Failed to create payment slips'),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    }
+  }
+
+  String _getMonthName(int month) {
+    const monthNames = [
+      'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'
+    ];
+    return monthNames[month - 1];
+  }
+
+  Future<void> _uploadPaymentSlips() async {
+    // Upload/publish payment slips for employees to view
+    final now = DateTime.now();
+    final currentMonth = now.month;
+    final currentYear = now.year;
+    
+    // Show confirmation dialog
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Upload Payment Slips'),
+        content: Text(
+          'This will make payment slips visible to all employees for ${_getMonthName(currentMonth)} $currentYear.\n\nEmployees will be able to view their own payment slips after this action.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Upload'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.orange,
+              foregroundColor: Colors.white,
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    // Show loading
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(child: CircularProgressIndicator()),
+    );
+
+    final uploadResult = await ApiService.uploadPaymentSlips(
+      month: currentMonth,
+      year: currentYear,
+    );
+
+    if (!mounted) return;
+    Navigator.pop(context); // Close loading dialog
+
+    if (uploadResult['success']) {
+      final data = uploadResult['data'];
+      final uploaded = data['uploaded_count'] ?? 0;
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Payment slips uploaded successfully for $uploaded employees!'),
+          backgroundColor: Colors.green,
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(uploadResult['message'] ?? 'Failed to upload payment slips'),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    }
   }
   
   // Project viewing methods (for client, agent, accessor, senior valuer)

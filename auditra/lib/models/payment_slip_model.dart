@@ -22,6 +22,7 @@ class PaymentSlip {
   final String? generatedByUsername;
   final DateTime generatedAt;
   final DateTime? paidAt;
+  final String? companyLogoUrl;
 
   PaymentSlip({
     required this.id,
@@ -47,6 +48,7 @@ class PaymentSlip {
     this.generatedByUsername,
     required this.generatedAt,
     this.paidAt,
+    this.companyLogoUrl,
   });
 
   factory PaymentSlip.fromJson(Map<String, dynamic> json) {
@@ -84,6 +86,7 @@ class PaymentSlip {
         generatedByUsername: json['generated_by_username'] as String?,
         generatedAt: DateTime.parse(json['generated_at'] as String),
         paidAt: json['paid_at'] != null ? DateTime.parse(json['paid_at'] as String) : null,
+        companyLogoUrl: json['company_logo_url'] as String?,
       );
     } catch (e, stackTrace) {
       print('Error parsing PaymentSlip: $e');

@@ -2645,5 +2645,236 @@ class ApiService {
       return {'success': false, 'message': 'Connection error: $e'};
     }
   }
+
+  // Create employee removal request (HR staff only)
+  static Future<Map<String, dynamic>> createRemovalRequest({
+    required int userId,
+    String? reason,
+  }) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token');
+
+      if (token == null) {
+        return {'success': false, 'message': 'Not authenticated'};
+      }
+
+      final response = await http.post(
+        Uri.parse('$baseUrl/auth/removal-requests/create/'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({
+          'user_id': userId,
+          'reason': reason ?? '',
+        }),
+      );
+
+      // Check if response is HTML (error page)
+      if (response.body.trim().startsWith('<!DOCTYPE') || response.body.trim().startsWith('<html')) {
+        return {'success': false, 'message': 'Server returned HTML instead of JSON. Endpoint may not exist (404).'};
+      }
+
+      Map<String, dynamic> data;
+      try {
+        data = jsonDecode(response.body) as Map<String, dynamic>;
+      } catch (e) {
+        return {'success': false, 'message': 'Invalid JSON response from server'};
+      }
+
+      if (response.statusCode == 201) {
+        return {
+          'success': true,
+          'message': data['message'] ?? 'Removal request created successfully',
+          'data': data['data']
+        };
+      } else {
+        String errorMessage = data['error'] ?? 'Failed to create removal request';
+        return {'success': false, 'message': errorMessage};
+      }
+    } catch (e) {
+      String errorMsg = 'Connection error';
+      if (e.toString().contains('FormatException') && e.toString().contains('<!DOCTYPE')) {
+        errorMsg = 'Server returned HTML error page. Check if the API endpoint exists and backend is running correctly.';
+      } else if (e.toString().contains('Connection refused')) {
+        errorMsg = 'Connection refused. Is the backend server running?';
+      } else {
+        errorMsg = 'Connection error: ${e.toString()}';
+      }
+      return {'success': false, 'message': errorMsg};
+    }
+  }
+
+  // Get all removal requests (Admin only)
+  static Future<Map<String, dynamic>> getAllRemovalRequests() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token');
+
+      if (token == null) {
+        return {'success': false, 'message': 'Not authenticated'};
+      }
+
+      final response = await http.get(
+        Uri.parse('$baseUrl/auth/removal-requests/'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      // Check if response is HTML (error page)
+      if (response.body.trim().startsWith('<!DOCTYPE') || response.body.trim().startsWith('<html')) {
+        return {'success': false, 'message': 'Server returned HTML instead of JSON. Endpoint may not exist (404).'};
+      }
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body) as List<dynamic>;
+        return {
+          'success': true,
+          'data': data
+        };
+      } else {
+        Map<String, dynamic> errorData = {};
+        try {
+          errorData = jsonDecode(response.body) as Map<String, dynamic>;
+        } catch (e) {
+          // Ignore parse errors
+        }
+        
+        String errorMessage = errorData['error'] ?? 'Failed to fetch removal requests';
+        return {'success': false, 'message': errorMessage};
+      }
+    } catch (e) {
+      String errorMsg = 'Connection error';
+      if (e.toString().contains('FormatException') && e.toString().contains('<!DOCTYPE')) {
+        errorMsg = 'Server returned HTML error page. Check if the API endpoint exists and backend is running correctly.';
+      } else if (e.toString().contains('Connection refused')) {
+        errorMsg = 'Connection refused. Is the backend server running?';
+      } else {
+        errorMsg = 'Connection error: ${e.toString()}';
+      }
+      return {'success': false, 'message': errorMsg};
+    }
+  }
+
+  // Approve removal request (Admin only)
+  static Future<Map<String, dynamic>> approveRemovalRequest({
+    required int requestId,
+    String? adminNotes,
+  }) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token');
+
+      if (token == null) {
+        return {'success': false, 'message': 'Not authenticated'};
+      }
+
+      final response = await http.post(
+        Uri.parse('$baseUrl/auth/removal-requests/$requestId/approve/'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({
+          'admin_notes': adminNotes ?? '',
+        }),
+      );
+
+      // Check if response is HTML (error page)
+      if (response.body.trim().startsWith('<!DOCTYPE') || response.body.trim().startsWith('<html')) {
+        return {'success': false, 'message': 'Server returned HTML instead of JSON. Endpoint may not exist (404).'};
+      }
+
+      Map<String, dynamic> data;
+      try {
+        data = jsonDecode(response.body) as Map<String, dynamic>;
+      } catch (e) {
+        return {'success': false, 'message': 'Invalid JSON response from server'};
+      }
+
+      if (response.statusCode == 200) {
+        return {
+          'success': true,
+          'message': data['message'] ?? 'Removal request approved successfully',
+          'data': data['data']
+        };
+      } else {
+        String errorMessage = data['error'] ?? 'Failed to approve removal request';
+        return {'success': false, 'message': errorMessage};
+      }
+    } catch (e) {
+      String errorMsg = 'Connection error';
+      if (e.toString().contains('FormatException') && e.toString().contains('<!DOCTYPE')) {
+        errorMsg = 'Server returned HTML error page. Check if the API endpoint exists and backend is running correctly.';
+      } else if (e.toString().contains('Connection refused')) {
+        errorMsg = 'Connection refused. Is the backend server running?';
+      } else {
+        errorMsg = 'Connection error: ${e.toString()}';
+      }
+      return {'success': false, 'message': errorMsg};
+    }
+  }
+
+  // Reject removal request (Admin only)
+  static Future<Map<String, dynamic>> rejectRemovalRequest({
+    required int requestId,
+    String? adminNotes,
+  }) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token');
+
+      if (token == null) {
+        return {'success': false, 'message': 'Not authenticated'};
+      }
+
+      final response = await http.post(
+        Uri.parse('$baseUrl/auth/removal-requests/$requestId/reject/'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({
+          'admin_notes': adminNotes ?? '',
+        }),
+      );
+
+      // Check if response is HTML (error page)
+      if (response.body.trim().startsWith('<!DOCTYPE') || response.body.trim().startsWith('<html')) {
+        return {'success': false, 'message': 'Server returned HTML instead of JSON. Endpoint may not exist (404).'};
+      }
+
+      Map<String, dynamic> data;
+      try {
+        data = jsonDecode(response.body) as Map<String, dynamic>;
+      } catch (e) {
+        return {'success': false, 'message': 'Invalid JSON response from server'};
+      }
+
+      if (response.statusCode == 200) {
+        return {
+          'success': true,
+          'message': data['message'] ?? 'Removal request rejected successfully',
+          'data': data['data']
+        };
+      } else {
+        String errorMessage = data['error'] ?? 'Failed to reject removal request';
+        return {'success': false, 'message': errorMessage};
+      }
+    } catch (e) {
+      String errorMsg = 'Connection error';
+      if (e.toString().contains('FormatException') && e.toString().contains('<!DOCTYPE')) {
+        errorMsg = 'Server returned HTML error page. Check if the API endpoint exists and backend is running correctly.';
+      } else if (e.toString().contains('Connection refused')) {
+        errorMsg = 'Connection refused. Is the backend server running?';
+      } else {
+        errorMsg = 'Connection error: ${e.toString()}';
+      }
+      return {'success': false, 'message': errorMsg};
+    }
+  }
 }
 

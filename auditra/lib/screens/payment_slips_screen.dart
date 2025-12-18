@@ -3,6 +3,14 @@ import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:file_picker/file_picker.dart';
 import 'dart:io';
+import 'dart:typed_data';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:cross_file/cross_file.dart';
+import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
+import 'package:http/http.dart' as http;
 import '../services/api_service.dart';
 import '../models/payment_slip_model.dart';
 
@@ -72,11 +80,11 @@ class _PaymentSlipsScreenState extends State<PaymentSlipsScreen> {
     setState(() => _isLoading = true);
 
     try {
-      // Check if user is admin - if so, load all payment slips and separate them
+      // Check if user is admin or HR staff - if so, load all payment slips and separate them
       final role = _userRole ?? widget.role;
-      final isAdmin = role == 'admin';
+      final isAdminOrHR = role == 'admin' || role == 'hr_staff';
       
-      if (isAdmin) {
+      if (isAdminOrHR) {
         // Load all payment slips (excluding admin's own)
         final allResult = await ApiService.getAllPaymentSlips();
         
@@ -177,16 +185,16 @@ class _PaymentSlipsScreenState extends State<PaymentSlipsScreen> {
   @override
   Widget build(BuildContext context) {
     final role = _userRole ?? widget.role;
-    final isAdmin = role == 'admin';
+    final isAdminOrHR = role == 'admin' || role == 'hr_staff';
     
     return Scaffold(
       appBar: AppBar(
-        title: Text(isAdmin ? 'All Payment Slips' : 'Payment Slips'),
+        title: Text(isAdminOrHR ? 'All Payment Slips' : 'Payment Slips'),
         centerTitle: true,
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : (isAdmin 
+          : (isAdminOrHR 
               ? _othersPaymentSlips.isEmpty 
               : _paymentSlips.isEmpty)
               ? Center(
@@ -216,14 +224,14 @@ class _PaymentSlipsScreenState extends State<PaymentSlipsScreen> {
                 )
               : RefreshIndicator(
                   onRefresh: _loadPaymentSlips,
-                  child: isAdmin
+                  child: isAdminOrHR
                       ? _buildAdminView()
                       : ListView.builder(
                           padding: const EdgeInsets.all(16.0),
                           itemCount: _paymentSlips.length,
                           itemBuilder: (context, index) {
                             final slip = _paymentSlips[index];
-                            return _buildPaymentSlipCard(slip, isAdmin);
+                            return _buildPaymentSlipCard(slip, isAdminOrHR);
                           },
                         ),
                 ),
@@ -434,39 +442,63 @@ class _PaymentSlipsScreenState extends State<PaymentSlipsScreen> {
 
   Widget _buildActionButtons(PaymentSlip slip) {
     final role = _userRole ?? widget.role;
-    final isAdmin = role == 'admin';
+    final isAdminOrHR = role == 'admin' || role == 'hr_staff';
+    final isAdmin = role == 'admin'; // Keep separate for edit/delete permissions
     
-    return Row(
+    return Column(
       children: [
-        if (isAdmin) ...[
-          Expanded(
+        // Download PDF button - Available for Admin and HR staff
+        if (isAdminOrHR)
+          SizedBox(
+            width: double.infinity,
             child: ElevatedButton.icon(
-              onPressed: () => _editPaymentSlip(slip),
-              icon: const Icon(Icons.edit, size: 20),
-              label: const Text('Edit', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+              onPressed: () => _downloadPaymentSlipPDF(slip),
+              icon: const Icon(Icons.download, size: 20),
+              label: const Text('Download PDF', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
               style: ElevatedButton.styleFrom(
                 padding: const EdgeInsets.symmetric(vertical: 14),
-                backgroundColor: Colors.blue,
+                backgroundColor: Colors.green,
                 foregroundColor: Colors.white,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
               ),
             ),
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: ElevatedButton.icon(
-              onPressed: () => _removeEmployeePaymentSlip(slip),
-              icon: const Icon(Icons.delete, size: 20),
-              label: const Text('Remove Employee', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
-              style: ElevatedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                backgroundColor: Colors.red,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        if (isAdminOrHR) const SizedBox(height: 12),
+        Row(
+          children: [
+            if (isAdminOrHR) ...[
+              // Edit button - Admin and HR staff can edit
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: () => _editPaymentSlip(slip),
+                  icon: const Icon(Icons.edit, size: 20),
+                  label: const Text('Edit', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    backgroundColor: Colors.blue,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                ),
               ),
-            ),
-          ),
-        ],
+              const SizedBox(width: 12),
+              // Remove/Delete button - Admin and HR staff can delete
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: () => _removeEmployeePaymentSlip(slip),
+                  icon: const Icon(Icons.delete, size: 20),
+                  label: const Text('Remove Employee', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    backgroundColor: Colors.red,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
       ],
     );
   }
@@ -622,7 +654,22 @@ class _PaymentSlipsScreenState extends State<PaymentSlipsScreen> {
                   final overtimePay = double.tryParse(overtimePayController.text.replaceAll(',', ''));
                   
                   if (salary == null || salary < 0) {
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please enter a valid basic salary'), backgroundColor: Colors.red));
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: const Row(
+                          children: [
+                            Icon(Icons.error, color: Colors.white),
+                            SizedBox(width: 8),
+                            Expanded(child: Text('Please enter a valid basic salary')),
+                          ],
+                        ),
+                        backgroundColor: Colors.red,
+                        behavior: SnackBarBehavior.floating,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                    );
                     return;
                   }
                   
@@ -631,7 +678,22 @@ class _PaymentSlipsScreenState extends State<PaymentSlipsScreen> {
                   if (isAdminSlip) {
                     final overtimeHours = double.tryParse(overtimeHoursController.text.replaceAll(',', ''));
                     if (overtimeHours == null || overtimeHours < 0) {
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please enter a valid overtime hours value'), backgroundColor: Colors.red));
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: const Row(
+                            children: [
+                              Icon(Icons.error, color: Colors.white),
+                              SizedBox(width: 8),
+                              Expanded(child: Text('Please enter a valid overtime hours value')),
+                            ],
+                          ),
+                          backgroundColor: Colors.red,
+                          behavior: SnackBarBehavior.floating,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                      );
                       return;
                     }
                     resultMap['overtime_hours'] = overtimeHours;
@@ -672,12 +734,44 @@ class _PaymentSlipsScreenState extends State<PaymentSlipsScreen> {
         if (updateResult['success'] == true || updateResult['success'] != false) {
           await _loadPaymentSlips();
           if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Payment slip updated successfully!'), backgroundColor: Colors.green, duration: Duration(seconds: 2)));
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: const Row(
+                  children: [
+                    Icon(Icons.check_circle, color: Colors.white),
+                    SizedBox(width: 8),
+                    Expanded(child: Text('Payment slip updated successfully!')),
+                  ],
+                ),
+                backgroundColor: Colors.green,
+                behavior: SnackBarBehavior.floating,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                duration: const Duration(seconds: 2),
+              ),
+            );
           }
         } else {
           final errorMessage = updateResult['message'] ?? updateResult['error'] ?? 'Failed to update payment slip';
           if (mounted && errorMessage.isNotEmpty && !errorMessage.toLowerCase().contains('warning') && !errorMessage.toLowerCase().contains('info') && !errorMessage.toLowerCase().contains('success')) {
-            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(errorMessage), backgroundColor: Colors.red, duration: const Duration(seconds: 3)));
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Row(
+                  children: [
+                    const Icon(Icons.error, color: Colors.white),
+                    const SizedBox(width: 8),
+                    Expanded(child: Text(errorMessage)),
+                  ],
+                ),
+                backgroundColor: Colors.red,
+                behavior: SnackBarBehavior.floating,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                duration: const Duration(seconds: 3),
+              ),
+            );
           } else if (mounted) {
             await _loadPaymentSlips();
           }
@@ -686,7 +780,23 @@ class _PaymentSlipsScreenState extends State<PaymentSlipsScreen> {
         if (mounted && Navigator.canPop(context)) Navigator.pop(context);
         final errorString = updateError.toString();
         if (mounted && !errorString.contains('TextEditingController') && !errorString.contains('disposed')) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error updating payment slip: $updateError'), backgroundColor: Colors.red, duration: const Duration(seconds: 3)));
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Row(
+                children: [
+                  const Icon(Icons.error, color: Colors.white),
+                  const SizedBox(width: 8),
+                  Expanded(child: Text('Error updating payment slip: $updateError')),
+                ],
+              ),
+              backgroundColor: Colors.red,
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+              duration: const Duration(seconds: 3),
+            ),
+          );
         } else if (mounted) {
           await _loadPaymentSlips();
         }
@@ -697,53 +807,1158 @@ class _PaymentSlipsScreenState extends State<PaymentSlipsScreen> {
       Future.delayed(const Duration(seconds: 2), disposeControllers);
       final errorString = e.toString();
       if (mounted && !errorString.contains('TextEditingController') && !errorString.contains('disposed')) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error editing payment slip: $e'), backgroundColor: Colors.red, duration: const Duration(seconds: 3)));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.error, color: Colors.white),
+                const SizedBox(width: 8),
+                Expanded(child: Text('Error editing payment slip: $e')),
+              ],
+            ),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+            duration: const Duration(seconds: 3),
+          ),
+        );
       }
     }
   }
 
   Future<void> _removeEmployeePaymentSlip(PaymentSlip slip) async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Remove Employee'),
-        content: Text('Are you sure you want to remove ${slip.userFullName} (Employee #${slip.employeeNumber ?? slip.userId}) from the database?\n\nThis will permanently delete:\n• The employee account\n• All payment slips\n• All related data\n\nThis action cannot be undone.', style: const TextStyle(fontSize: 14)),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-          ElevatedButton(onPressed: () => Navigator.pop(context, true), child: const Text('Remove Employee'), style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white)),
-        ],
-      ),
-    );
+    final role = _userRole ?? widget.role;
+    final isHRStaff = role == 'hr_staff';
+    final isAdmin = role == 'admin';
     
-    if (confirm != true) return;
-    
-    showDialog(context: context, barrierDismissible: false, builder: (context) => const Center(child: CircularProgressIndicator()));
-    
-    try {
-      final deleteResult = await ApiService.deleteUser(userId: slip.userId);
-      if (!mounted) return;
-      if (Navigator.canPop(context)) Navigator.pop(context);
+    // For HR staff, create a removal request instead of directly deleting
+    if (isHRStaff) {
+      final reasonController = TextEditingController();
       
-      if (deleteResult['success']) {
-        await _loadPaymentSlips();
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(deleteResult['message'] ?? 'Employee removed successfully from database!'), backgroundColor: Colors.green, duration: const Duration(seconds: 3)));
+      final confirm = await showDialog<bool>(
+        context: context,
+        builder: (context) => StatefulBuilder(
+          builder: (context, setDialogState) => AlertDialog(
+            title: const Text('Request Employee Removal'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'You are requesting the removal of ${slip.userFullName} (Employee #${slip.employeeNumber ?? slip.userId}).\n\nThis request will be sent to the admin for approval. The admin will review and decide whether to approve or reject the removal.',
+                    style: const TextStyle(fontSize: 14),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: reasonController,
+                    decoration: const InputDecoration(
+                      labelText: 'Reason for removal (optional)',
+                      border: OutlineInputBorder(),
+                      hintText: 'Enter reason for removal request...',
+                    ),
+                    maxLines: 3,
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Submit Request'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.orange,
+                  foregroundColor: Colors.white,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+      
+      if (confirm != true) return;
+      
+      showDialog(context: context, barrierDismissible: false, builder: (context) => const Center(child: CircularProgressIndicator()));
+      
+      try {
+        final requestResult = await ApiService.createRemovalRequest(
+          userId: slip.userId,
+          reason: reasonController.text.trim().isEmpty ? null : reasonController.text.trim(),
+        );
+        if (!mounted) return;
+        if (Navigator.canPop(context)) Navigator.pop(context);
+        reasonController.dispose();
+        
+        if (requestResult['success']) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Row(
+                  children: [
+                    const Icon(Icons.check_circle, color: Colors.white),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(requestResult['message'] ?? 'Removal request submitted successfully!'),
+                    ),
+                  ],
+                ),
+                backgroundColor: Colors.green,
+                behavior: SnackBarBehavior.floating,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                duration: const Duration(seconds: 3),
+              ),
+            );
+          }
+        } else {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Row(
+                  children: [
+                    const Icon(Icons.error, color: Colors.white),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(requestResult['message'] ?? 'Failed to submit removal request'),
+                    ),
+                  ],
+                ),
+                backgroundColor: Colors.red,
+                behavior: SnackBarBehavior.floating,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                duration: const Duration(seconds: 3),
+              ),
+            );
+          }
         }
-      } else {
+      } catch (requestError) {
+        if (mounted && Navigator.canPop(context)) Navigator.pop(context);
+        reasonController.dispose();
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(deleteResult['message'] ?? 'Failed to remove employee'), backgroundColor: Colors.red, duration: const Duration(seconds: 3)));
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Row(
+                children: [
+                  const Icon(Icons.error, color: Colors.white),
+                  const SizedBox(width: 8),
+                  Expanded(child: Text('Error submitting removal request: $requestError')),
+                ],
+              ),
+              backgroundColor: Colors.red,
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+              duration: const Duration(seconds: 3),
+            ),
+          );
         }
       }
-    } catch (deleteError) {
-      if (mounted && Navigator.canPop(context)) Navigator.pop(context);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error removing employee: $deleteError'), backgroundColor: Colors.red, duration: const Duration(seconds: 3)));
+      return;
+    }
+    
+    // For admin, directly delete (existing behavior)
+    if (isAdmin) {
+      final confirm = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Remove Employee'),
+          content: Text('Are you sure you want to remove ${slip.userFullName} (Employee #${slip.employeeNumber ?? slip.userId}) from the database?\n\nThis will permanently delete:\n• The employee account\n• All payment slips\n• All related data\n\nThis action cannot be undone.', style: const TextStyle(fontSize: 14)),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+            ElevatedButton(onPressed: () => Navigator.pop(context, true), child: const Text('Remove Employee'), style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white)),
+          ],
+        ),
+      );
+      
+      if (confirm != true) return;
+      
+      showDialog(context: context, barrierDismissible: false, builder: (context) => const Center(child: CircularProgressIndicator()));
+      
+      try {
+        final deleteResult = await ApiService.deleteUser(userId: slip.userId);
+        if (!mounted) return;
+        if (Navigator.canPop(context)) Navigator.pop(context);
+        
+        if (deleteResult['success']) {
+          await _loadPaymentSlips();
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Row(
+                  children: [
+                    const Icon(Icons.check_circle, color: Colors.white),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(deleteResult['message'] ?? 'Employee removed successfully from database!'),
+                    ),
+                  ],
+                ),
+                backgroundColor: Colors.green,
+                behavior: SnackBarBehavior.floating,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                duration: const Duration(seconds: 3),
+              ),
+            );
+          }
+        } else {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Row(
+                  children: [
+                    const Icon(Icons.error, color: Colors.white),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(deleteResult['message'] ?? 'Failed to remove employee'),
+                    ),
+                  ],
+                ),
+                backgroundColor: Colors.red,
+                behavior: SnackBarBehavior.floating,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                duration: const Duration(seconds: 3),
+              ),
+            );
+          }
+        }
+      } catch (deleteError) {
+        if (mounted && Navigator.canPop(context)) Navigator.pop(context);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Row(
+                children: [
+                  const Icon(Icons.error, color: Colors.white),
+                  const SizedBox(width: 8),
+                  Expanded(child: Text('Error removing employee: $deleteError')),
+                ],
+              ),
+              backgroundColor: Colors.red,
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+              duration: const Duration(seconds: 3),
+            ),
+          );
+        }
       }
     }
   }
 
   double _calculateNetSalary(double salary, double allowances, double epf, double overtimePay) {
     return salary - epf + allowances + overtimePay;
+  }
+
+  Future<void> _downloadPaymentSlipPDF(PaymentSlip slip) async {
+    try {
+      // Show loading indicator
+      if (mounted) {
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => const Center(child: CircularProgressIndicator()),
+        );
+      }
+
+      // Generate PDF
+      final pdfBytes = await _generatePaymentSlipPDF(slip);
+
+      if (!mounted) return;
+      if (Navigator.canPop(context)) Navigator.pop(context);
+
+      // Get the directory for saving the file
+      Directory? directory;
+      if (Platform.isAndroid) {
+        // For Android, use the Downloads directory
+        directory = Directory('/storage/emulated/0/Download');
+        if (!await directory.exists()) {
+          // Fallback to app documents directory
+          directory = await getApplicationDocumentsDirectory();
+        }
+      } else if (Platform.isIOS) {
+        // For iOS, use the app documents directory
+        directory = await getApplicationDocumentsDirectory();
+      } else {
+        // For other platforms (web, desktop)
+        directory = await getApplicationDocumentsDirectory();
+      }
+
+      // Create filename
+      final monthNames = [
+        '', 'January', 'February', 'March', 'April', 'May', 'June',
+        'July', 'August', 'September', 'October', 'November', 'December'
+      ];
+      final monthName = monthNames[slip.month] ?? 'Unknown';
+      final fileName = 'PaymentSlip_${slip.userFullName.replaceAll(' ', '_')}_${monthName}_${slip.year}.pdf';
+      final filePath = '${directory.path}/$fileName';
+
+      // Save PDF to file
+      final file = File(filePath);
+      await file.writeAsBytes(pdfBytes);
+
+      // Verify file was saved
+      if (!await file.exists()) {
+        if (mounted && Navigator.canPop(context)) Navigator.pop(context);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Row(
+                children: [
+                  Icon(Icons.error, color: Colors.white),
+                  SizedBox(width: 8),
+                  Expanded(child: Text('Error: PDF file was not saved correctly')),
+                ],
+              ),
+              backgroundColor: Colors.red,
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+          );
+        }
+        return;
+      }
+
+      if (mounted) {
+        // Show success dialog with options
+        await showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            content: const Text('What would you like to do?'),
+            actions: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  Expanded(
+                    child: SizedBox(
+                      height: 40,
+                      child: ElevatedButton(
+                        onPressed: () => Navigator.pop(context),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.grey[300],
+                          foregroundColor: Colors.black87,
+                          padding: EdgeInsets.zero,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                        child: const Text(
+                          'Close',
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: SizedBox(
+                      height: 40,
+                      child: ElevatedButton(
+                        onPressed: () async {
+                          Navigator.pop(context);
+                          // Show PDF viewer
+                          _showPDFViewer(context, filePath, fileName);
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.green,
+                          foregroundColor: Colors.white,
+                          padding: EdgeInsets.zero,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          mainAxisSize: MainAxisSize.min,
+                          children: const [
+                            Icon(Icons.picture_as_pdf, size: 18),
+                            SizedBox(width: 4),
+                            Text(
+                              'View PDF',
+                              textAlign: TextAlign.center,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: SizedBox(
+                      height: 40,
+                      child: ElevatedButton(
+                        onPressed: () async {
+                          Navigator.pop(context);
+                          try {
+                            final xFile = XFile(filePath);
+                            await Share.shareXFiles(
+                              [xFile],
+                              text: 'Payment Slip - ${slip.userFullName} - $monthName ${slip.year}',
+                              subject: 'Payment Slip - ${slip.userFullName}',
+                            );
+                          } catch (e) {
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Row(
+                                    children: [
+                                      const Icon(Icons.warning, color: Colors.white),
+                                      const SizedBox(width: 8),
+                                      Expanded(child: Text('Could not share file: $e')),
+                                    ],
+                                  ),
+                                  backgroundColor: Colors.orange,
+                                  behavior: SnackBarBehavior.floating,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  duration: const Duration(seconds: 3),
+                                ),
+                              );
+                            }
+                          }
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.blue,
+                          foregroundColor: Colors.white,
+                          padding: EdgeInsets.zero,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          mainAxisSize: MainAxisSize.min,
+                          children: const [
+                            Icon(Icons.share, size: 18),
+                            SizedBox(width: 4),
+                            Text(
+                              'Share',
+                              textAlign: TextAlign.center,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted && Navigator.canPop(context)) Navigator.pop(context);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.error, color: Colors.white),
+                const SizedBox(width: 8),
+                Expanded(child: Text('Error generating PDF: $e')),
+              ],
+            ),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    }
+  }
+
+  Future<Uint8List> _generatePaymentSlipPDF(PaymentSlip slip) async {
+    final pdf = pw.Document();
+    final monthNames = [
+      '', 'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'
+    ];
+    
+    final monthName = monthNames[slip.month] ?? 'Unknown';
+    final dateFormat = DateFormat('dd MMM yyyy');
+    final generatedDate = dateFormat.format(slip.generatedAt);
+    
+    // Debug: Print payment slip data
+    print('📄 Generating PDF for payment slip:');
+    print('   - Employee: ${slip.userFullName}');
+    print('   - Logo URL: ${slip.companyLogoUrl ?? "Not provided"}');
+    
+    // Try to load company logo from URL if available
+    pw.ImageProvider? logoImage;
+    if (slip.companyLogoUrl != null && slip.companyLogoUrl!.isNotEmpty) {
+      try {
+        print('🖼️ Attempting to load logo from: ${slip.companyLogoUrl}');
+        
+        // Get authentication token for the request
+        final prefs = await SharedPreferences.getInstance();
+        final token = prefs.getString('access_token');
+        
+        // Prepare headers
+        final headers = <String, String>{
+          'Content-Type': 'application/json',
+        };
+        if (token != null) {
+          headers['Authorization'] = 'Bearer $token';
+        }
+        
+        final response = await http.get(
+          Uri.parse(slip.companyLogoUrl!),
+          headers: headers,
+        ).timeout(
+          const Duration(seconds: 10),
+          onTimeout: () {
+            throw Exception('Logo loading timeout');
+          },
+        );
+        
+        print('🖼️ Logo response status: ${response.statusCode}');
+        print('🖼️ Logo response headers: ${response.headers}');
+        
+        if (response.statusCode == 200) {
+          final logoBytes = response.bodyBytes;
+          print('🖼️ Logo loaded successfully, size: ${logoBytes.length} bytes');
+          
+          // Verify it's a valid image by checking content type or file signature
+          if (logoBytes.isNotEmpty) {
+            // Check if it's a PNG (starts with PNG signature) or JPEG
+            final isPng = logoBytes.length >= 8 && 
+                          logoBytes[0] == 0x89 && 
+                          logoBytes[1] == 0x50 && 
+                          logoBytes[2] == 0x4E && 
+                          logoBytes[3] == 0x47;
+            final isJpeg = logoBytes.length >= 3 && 
+                           logoBytes[0] == 0xFF && 
+                           logoBytes[1] == 0xD8 && 
+                           logoBytes[2] == 0xFF;
+            
+            if (isPng || isJpeg) {
+              logoImage = pw.MemoryImage(logoBytes);
+              print('🖼️ Logo image provider created successfully');
+            } else {
+              print('⚠️ Logo file is not a valid PNG or JPEG image');
+            }
+          } else {
+            print('⚠️ Logo response is empty');
+          }
+        } else {
+          print('⚠️ Failed to load logo: HTTP ${response.statusCode}');
+          print('⚠️ Response body: ${response.body.substring(0, response.body.length > 200 ? 200 : response.body.length)}');
+        }
+      } catch (e, stackTrace) {
+        // Logo loading failed, will continue without logo
+        print('❌ Failed to load company logo: $e');
+        print('❌ Stack trace: $stackTrace');
+      }
+    } else {
+      print('ℹ️ No company logo URL provided in payment slip');
+    }
+    
+    pdf.addPage(
+      pw.Page(
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.all(50),
+        build: (pw.Context context) {
+          return pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              // Formal Letterhead
+              pw.Container(
+                padding: const pw.EdgeInsets.only(bottom: 20),
+                decoration: pw.BoxDecoration(
+                  border: pw.Border(
+                    bottom: pw.BorderSide(color: PdfColors.blue700, width: 2),
+                  ),
+                ),
+                child: pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    // Company Header with Logo
+                    pw.Row(
+                      mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                      crossAxisAlignment: pw.CrossAxisAlignment.start,
+                      children: [
+                        pw.Row(
+                          crossAxisAlignment: pw.CrossAxisAlignment.start,
+                          children: [
+                            // Company Logo
+                            if (logoImage != null)
+                              pw.Container(
+                                width: 60,
+                                height: 60,
+                                child: pw.Image(
+                                  logoImage!,
+                                  fit: pw.BoxFit.contain,
+                                ),
+                              ),
+                            if (logoImage != null) pw.SizedBox(width: 12),
+                            pw.Column(
+                              crossAxisAlignment: pw.CrossAxisAlignment.start,
+                              mainAxisAlignment: pw.MainAxisAlignment.start,
+                              children: [
+                                pw.Text(
+                                  'AUDITRA',
+                                  style: pw.TextStyle(
+                                    fontSize: 32,
+                                    fontWeight: pw.FontWeight.bold,
+                                    color: PdfColors.grey900,
+                                    letterSpacing: 2,
+                                  ),
+                                ),
+                                pw.SizedBox(height: 4),
+                                pw.Text(
+                                  'Human Resources Department',
+                                  style: pw.TextStyle(
+                                    fontSize: 11,
+                                    color: PdfColors.grey700,
+                                    letterSpacing: 0.5,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                        pw.Column(
+                          crossAxisAlignment: pw.CrossAxisAlignment.end,
+                          children: [
+                            pw.Text(
+                              'PAYMENT SLIP',
+                              style: pw.TextStyle(
+                                fontSize: 18,
+                                fontWeight: pw.FontWeight.bold,
+                                color: PdfColors.grey900,
+                                letterSpacing: 1,
+                              ),
+                            ),
+                            pw.SizedBox(height: 4),
+                            if (slip.paySlipNumber != null)
+                              pw.Text(
+                                'Document No: ${slip.paySlipNumber}',
+                                style: pw.TextStyle(
+                                  fontSize: 10,
+                                  color: PdfColors.grey600,
+                                ),
+                              ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              pw.SizedBox(height: 25),
+              
+              // Document Details
+              pw.Row(
+                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                children: [
+                  pw.Text(
+                    'Payment Period: $monthName $slip.year',
+                    style: pw.TextStyle(
+                      fontSize: 12,
+                      fontWeight: pw.FontWeight.bold,
+                      color: PdfColors.grey800,
+                    ),
+                  ),
+                  pw.Text(
+                    'Date Generated: $generatedDate',
+                    style: pw.TextStyle(
+                      fontSize: 11,
+                      color: PdfColors.grey600,
+                    ),
+                  ),
+                ],
+              ),
+              pw.SizedBox(height: 25),
+              
+              // Employee Information Section
+              pw.Anchor(
+                name: 'employee-info',
+                child: pw.Container(
+                  padding: const pw.EdgeInsets.all(16),
+                  decoration: pw.BoxDecoration(
+                    border: pw.Border.all(color: PdfColors.blue400, width: 1),
+                  ),
+                  child: pw.Column(
+                    crossAxisAlignment: pw.CrossAxisAlignment.start,
+                    children: [
+                      pw.Text(
+                        'EMPLOYEE INFORMATION',
+                        style: pw.TextStyle(
+                          fontSize: 13,
+                          fontWeight: pw.FontWeight.bold,
+                          color: PdfColors.grey900,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                      pw.SizedBox(height: 12),
+                      pw.Row(
+                        children: [
+                          pw.Expanded(
+                            child: pw.Column(
+                              crossAxisAlignment: pw.CrossAxisAlignment.start,
+                              children: [
+                                _buildFormalPDFRow('Full Name', slip.userFullName),
+                                pw.SizedBox(height: 8),
+                                _buildFormalPDFRow('Employee ID', slip.employeeNumber ?? slip.userId.toString()),
+                              ],
+                            ),
+                          ),
+                          pw.Expanded(
+                            child: pw.Column(
+                              crossAxisAlignment: pw.CrossAxisAlignment.start,
+                              children: [
+                                _buildFormalPDFRow('Designation', slip.roleDisplay),
+                                pw.SizedBox(height: 8),
+                                _buildFormalPDFRow('Employment Status', slip.statusDisplay),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              pw.SizedBox(height: 20),
+              
+              pw.SizedBox(height: 20),
+              
+              // Earnings Section
+              pw.Anchor(
+                name: 'salary-details',
+                child: pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Text(
+                      'EARNINGS',
+                      style: pw.TextStyle(
+                        fontSize: 13,
+                        fontWeight: pw.FontWeight.bold,
+                        color: PdfColors.grey900,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                    pw.SizedBox(height: 12),
+                    pw.Container(
+                      decoration: pw.BoxDecoration(
+                        border: pw.Border.all(color: PdfColors.blue400, width: 1),
+                      ),
+                      child: pw.Table(
+                        border: pw.TableBorder(
+                          horizontalInside: pw.BorderSide(color: PdfColors.blue300, width: 0.5),
+                        ),
+                        children: [
+                          _buildFormalTableRow('Basic Salary', _formatCurrency(slip.salary)),
+                          _buildFormalTableRow('Allowances', _formatCurrency(slip.allowances)),
+                          _buildFormalTableRow('Overtime Hours', '${slip.overtimeHours.toStringAsFixed(2)} hours'),
+                          _buildFormalTableRow('Overtime Pay', _formatCurrency(slip.overtimePay)),
+                          pw.TableRow(
+                            decoration: pw.BoxDecoration(
+                              color: PdfColors.grey100,
+                            ),
+                            children: [
+                              pw.Padding(
+                                padding: const pw.EdgeInsets.all(10),
+                                child: pw.Text(
+                                  'Total Gross Earnings',
+                                  style: pw.TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: pw.FontWeight.bold,
+                                    color: PdfColors.grey900,
+                                  ),
+                                ),
+                              ),
+                              pw.Padding(
+                                padding: const pw.EdgeInsets.all(10),
+                                child: pw.Text(
+                                  _formatCurrency(slip.salary + slip.allowances + slip.overtimePay),
+                                  style: pw.TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: pw.FontWeight.bold,
+                                    color: PdfColors.grey900,
+                                  ),
+                                  textAlign: pw.TextAlign.right,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              pw.SizedBox(height: 20),
+              
+              pw.SizedBox(height: 20),
+              
+              // Deductions Section
+              pw.Anchor(
+                name: 'deductions',
+                child: pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Text(
+                      'DEDUCTIONS',
+                      style: pw.TextStyle(
+                        fontSize: 13,
+                        fontWeight: pw.FontWeight.bold,
+                        color: PdfColors.grey900,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                    pw.SizedBox(height: 12),
+                    pw.Container(
+                      decoration: pw.BoxDecoration(
+                        border: pw.Border.all(color: PdfColors.blue400, width: 1),
+                      ),
+                      child: pw.Table(
+                        border: pw.TableBorder(
+                          horizontalInside: pw.BorderSide(color: PdfColors.blue300, width: 0.5),
+                        ),
+                        children: [
+                          _buildFormalTableRow('EPF Contribution (8%)', _formatCurrency(slip.epfContribution)),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              pw.SizedBox(height: 20),
+              
+              pw.SizedBox(height: 25),
+              
+              // Net Salary Section
+              pw.Anchor(
+                name: 'net-salary',
+                child: pw.Container(
+                  padding: const pw.EdgeInsets.all(16),
+                  decoration: pw.BoxDecoration(
+                    color: PdfColors.grey200,
+                    border: pw.Border.all(color: PdfColors.blue700, width: 2),
+                  ),
+                  child: pw.Row(
+                    mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                    children: [
+                      pw.Text(
+                        'NET SALARY PAYABLE',
+                        style: pw.TextStyle(
+                          fontSize: 14,
+                          fontWeight: pw.FontWeight.bold,
+                          color: PdfColors.grey900,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                      pw.Text(
+                        _formatCurrency(slip.netSalary),
+                        style: pw.TextStyle(
+                          fontSize: 18,
+                          fontWeight: pw.FontWeight.bold,
+                          color: PdfColors.grey900,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              pw.Spacer(),
+              
+              // Formal Footer
+              pw.Container(
+                padding: const pw.EdgeInsets.only(top: 20),
+                decoration: pw.BoxDecoration(
+                  border: pw.Border(
+                    top: pw.BorderSide(color: PdfColors.blue700, width: 1),
+                  ),
+                ),
+                child: pw.Column(
+                  children: [
+                    pw.SizedBox(height: 15),
+                    pw.Text(
+                      'This is a computer-generated document and does not require a signature.',
+                      style: pw.TextStyle(
+                        fontSize: 9,
+                        color: PdfColors.grey600,
+                        fontStyle: pw.FontStyle.italic,
+                      ),
+                      textAlign: pw.TextAlign.center,
+                    ),
+                    pw.SizedBox(height: 12),
+                    pw.Row(
+                      mainAxisAlignment: pw.MainAxisAlignment.center,
+                      children: [
+                        pw.UrlLink(
+                          destination: 'mailto:hr@auditra.com',
+                          child: pw.Text(
+                            'hr@auditra.com',
+                            style: pw.TextStyle(
+                              fontSize: 9,
+                              color: PdfColors.blue700,
+                              decoration: pw.TextDecoration.underline,
+                            ),
+                          ),
+                        ),
+                        pw.Text(
+                          ' | ',
+                          style: pw.TextStyle(
+                            fontSize: 9,
+                            color: PdfColors.grey500,
+                          ),
+                        ),
+                        pw.UrlLink(
+                          destination: 'https://www.auditra.com',
+                          child: pw.Text(
+                            'www.auditra.com',
+                            style: pw.TextStyle(
+                              fontSize: 9,
+                              color: PdfColors.blue700,
+                              decoration: pw.TextDecoration.underline,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    pw.SizedBox(height: 10),
+                    pw.Text(
+                      'Document Reference: ${slip.paySlipNumber ?? 'PS-${slip.id}-${slip.year}-${slip.month}'}',
+                      style: pw.TextStyle(
+                        fontSize: 8,
+                        color: PdfColors.grey500,
+                      ),
+                      textAlign: pw.TextAlign.center,
+                    ),
+                    pw.SizedBox(height: 8),
+                    pw.Text(
+                      '© ${DateTime.now().year} Auditra. All rights reserved.',
+                      style: pw.TextStyle(
+                        fontSize: 8,
+                        color: PdfColors.grey500,
+                      ),
+                      textAlign: pw.TextAlign.center,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+
+    return pdf.save();
+  }
+
+  pw.Widget _buildPDFRow(String label, String value, {bool isBold = false}) {
+    return pw.Padding(
+      padding: const pw.EdgeInsets.symmetric(vertical: 4),
+      child: pw.Row(
+        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+        children: [
+          pw.Text(
+            label,
+            style: pw.TextStyle(
+              fontSize: 12,
+              fontWeight: isBold ? pw.FontWeight.bold : pw.FontWeight.normal,
+            ),
+          ),
+          pw.Text(
+            value,
+            style: pw.TextStyle(
+              fontSize: 12,
+              fontWeight: isBold ? pw.FontWeight.bold : pw.FontWeight.normal,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  pw.Widget _buildFormalPDFRow(String label, String value) {
+    return pw.Row(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+        pw.SizedBox(
+          width: 120,
+          child: pw.Text(
+            '$label:',
+            style: pw.TextStyle(
+              fontSize: 11,
+              fontWeight: pw.FontWeight.bold,
+              color: PdfColors.grey700,
+            ),
+          ),
+        ),
+        pw.Expanded(
+          child: pw.Text(
+            value,
+            style: pw.TextStyle(
+              fontSize: 11,
+              color: PdfColors.grey900,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  pw.TableRow _buildFormalTableRow(String label, String value) {
+    return pw.TableRow(
+      children: [
+        pw.Padding(
+          padding: const pw.EdgeInsets.all(10),
+          child: pw.Text(
+            label,
+            style: pw.TextStyle(
+              fontSize: 11,
+              color: PdfColors.grey800,
+            ),
+          ),
+        ),
+        pw.Padding(
+          padding: const pw.EdgeInsets.all(10),
+          child: pw.Text(
+            value,
+            style: pw.TextStyle(
+              fontSize: 11,
+              color: PdfColors.grey800,
+            ),
+            textAlign: pw.TextAlign.right,
+          ),
+        ),
+      ],
+    );
+  }
+
+  String _formatCurrency(double amount) {
+    return 'Rs. ${amount.toStringAsFixed(2)}';
+  }
+
+  void _showPDFViewer(BuildContext context, String filePath, String fileName) async {
+    // Check if file exists
+    final file = File(filePath);
+    if (!await file.exists()) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Row(
+              children: [
+                Icon(Icons.error, color: Colors.white),
+                SizedBox(width: 8),
+                Expanded(child: Text('PDF file not found. Please generate it again.')),
+              ],
+            ),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+          ),
+        );
+      }
+      return;
+    }
+
+    // Read file bytes
+    Uint8List? pdfBytes;
+    try {
+      pdfBytes = await file.readAsBytes();
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.error, color: Colors.white),
+                const SizedBox(width: 8),
+                Expanded(child: Text('Error reading PDF file: $e')),
+              ],
+            ),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+          ),
+        );
+      }
+      return;
+    }
+
+    if (context.mounted) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => Scaffold(
+            appBar: AppBar(
+              title: Text(fileName),
+              actions: [
+                IconButton(
+                  icon: const Icon(Icons.share),
+                  onPressed: () async {
+                    try {
+                      final xFile = XFile(filePath);
+                      await Share.shareXFiles(
+                        [xFile],
+                        text: 'Payment Slip PDF',
+                      );
+                    } catch (e) {
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Row(
+                              children: [
+                                const Icon(Icons.warning, color: Colors.white),
+                                const SizedBox(width: 8),
+                                Expanded(child: Text('Could not share file: $e')),
+                              ],
+                            ),
+                            backgroundColor: Colors.orange,
+                            behavior: SnackBarBehavior.floating,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                          ),
+                        );
+                      }
+                    }
+                  },
+                  tooltip: 'Share PDF',
+                ),
+              ],
+            ),
+            body: pdfBytes != null
+                ? SfPdfViewer.memory(
+                    pdfBytes,
+                    canShowScrollHead: true,
+                    canShowScrollStatus: true,
+                  )
+                : const Center(
+                    child: Text('Error loading PDF'),
+                  ),
+          ),
+        ),
+      );
+    }
   }
 
   Future<void> _uploadPaymentSlip(PaymentSlip slip) async {
@@ -786,7 +2001,22 @@ class _PaymentSlipsScreenState extends State<PaymentSlipsScreen> {
                 onPressed: () {
                   final overtimeHours = double.tryParse(overtimeHoursController.text.replaceAll(',', ''));
                   if (overtimeHours == null || overtimeHours < 0) {
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please enter a valid overtime hours value'), backgroundColor: Colors.red));
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: const Row(
+                          children: [
+                            Icon(Icons.error, color: Colors.white),
+                            SizedBox(width: 8),
+                            Expanded(child: Text('Please enter a valid overtime hours value')),
+                          ],
+                        ),
+                        backgroundColor: Colors.red,
+                        behavior: SnackBarBehavior.floating,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                    );
                     return;
                   }
                   Navigator.pop(context, {'overtime_hours': overtimeHours});
@@ -809,14 +2039,64 @@ class _PaymentSlipsScreenState extends State<PaymentSlipsScreen> {
       
       if (uploadResult['success']) {
         await _loadPaymentSlips();
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Overtime hours uploaded successfully!'), backgroundColor: Colors.green, duration: Duration(seconds: 2)));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Row(
+              children: [
+                Icon(Icons.check_circle, color: Colors.white),
+                SizedBox(width: 8),
+                Expanded(child: Text('Overtime hours uploaded successfully!')),
+              ],
+            ),
+            backgroundColor: Colors.green,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+            duration: const Duration(seconds: 2),
+          ),
+        );
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(uploadResult['message'] ?? 'Failed to upload overtime hours'), backgroundColor: Colors.red, duration: const Duration(seconds: 3)));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.error, color: Colors.white),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(uploadResult['message'] ?? 'Failed to upload overtime hours'),
+                ),
+              ],
+            ),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+            duration: const Duration(seconds: 3),
+          ),
+        );
       }
     } catch (e) {
       Future.microtask(() => overtimeHoursController.dispose());
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error uploading overtime hours: $e'), backgroundColor: Colors.red, duration: const Duration(seconds: 3)));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.error, color: Colors.white),
+                const SizedBox(width: 8),
+                Expanded(child: Text('Error uploading overtime hours: $e')),
+              ],
+            ),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+            duration: const Duration(seconds: 3),
+          ),
+        );
       }
     }
   }
