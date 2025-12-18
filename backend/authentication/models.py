@@ -213,10 +213,18 @@ class PaymentSlip(models.Model):
                         # Recalculate components
                         allowances = cls.calculate_allowances(basic_salary)
                         epf_contribution = cls.calculate_epf(basic_salary)
-                        # Always get overtime hours from attendance system for all employees
-                        overtime_hours = Decimal(str(cls.get_monthly_overtime_hours(user, month, year)))
-                        existing_slip.overtime_hours = overtime_hours
-                        existing_slip.overtime_hours_uploaded = False  # Reset flag since we're fetching from attendance
+                        # For admin: overtime hours should be manually entered (not from attendance system)
+                        # For other roles: get overtime hours from attendance system
+                        if user.role.role == 'admin':
+                            # Admin: Set to 0 and mark as not uploaded (admin will manually enter)
+                            overtime_hours = Decimal('0.00')
+                            existing_slip.overtime_hours = overtime_hours
+                            existing_slip.overtime_hours_uploaded = False
+                        else:
+                            # Other roles: Get from attendance system
+                            overtime_hours = Decimal(str(cls.get_monthly_overtime_hours(user, month, year)))
+                            existing_slip.overtime_hours = overtime_hours
+                            existing_slip.overtime_hours_uploaded = False  # Reset flag since we're fetching from attendance
                         overtime_pay = cls.calculate_overtime_pay(float(overtime_hours), float(basic_salary))
                         # Net salary = Basic salary - EPF + allowances + overtime pay
                         net_salary = basic_salary - epf_contribution + allowances + overtime_pay
@@ -245,8 +253,14 @@ class PaymentSlip(models.Model):
                         # Calculate components
                         allowances = cls.calculate_allowances(basic_salary)
                         epf_contribution = cls.calculate_epf(basic_salary)
-                        # Get overtime hours from attendance system (not uploaded yet)
-                        overtime_hours = Decimal(str(cls.get_monthly_overtime_hours(user, month, year)))
+                        # For admin: overtime hours should be manually entered (not from attendance system)
+                        # For other roles: get overtime hours from attendance system
+                        if user.role.role == 'admin':
+                            # Admin: Set to 0 and mark as not uploaded (admin will manually enter)
+                            overtime_hours = Decimal('0.00')
+                        else:
+                            # Other roles: Get from attendance system
+                            overtime_hours = Decimal(str(cls.get_monthly_overtime_hours(user, month, year)))
                         overtime_pay = cls.calculate_overtime_pay(float(overtime_hours), float(basic_salary))
                         # Net salary = Basic salary - EPF + allowances + overtime pay
                         net_salary = basic_salary - epf_contribution + allowances + overtime_pay
@@ -264,7 +278,7 @@ class PaymentSlip(models.Model):
                             allowances=allowances,
                             epf_contribution=epf_contribution,
                             overtime_hours=overtime_hours,
-                            overtime_hours_uploaded=False,  # Initially from attendance system
+                            overtime_hours_uploaded=False,  # For admin: will be manually entered. For others: from attendance system
                             is_uploaded=False,  # Not uploaded/published yet - only admin can see
                             overtime_pay=overtime_pay,
                             net_salary=net_salary,
@@ -302,10 +316,18 @@ class PaymentSlip(models.Model):
             # Update existing payment slip
             allowances = cls.calculate_allowances(basic_salary)
             epf_contribution = cls.calculate_epf(basic_salary)
-            # Always get overtime hours from attendance system for all employees
-            overtime_hours = Decimal(str(cls.get_monthly_overtime_hours(user, month, year)))
-            existing_slip.overtime_hours = overtime_hours
-            existing_slip.overtime_hours_uploaded = False  # Reset flag since we're fetching from attendance
+            # For admin: overtime hours should be manually entered (not from attendance system)
+            # For other roles: get overtime hours from attendance system
+            if user.role.role == 'admin':
+                # Admin: Set to 0 and mark as not uploaded (admin will manually enter)
+                overtime_hours = Decimal('0.00')
+                existing_slip.overtime_hours = overtime_hours
+                existing_slip.overtime_hours_uploaded = False
+            else:
+                # Other roles: Get from attendance system
+                overtime_hours = Decimal(str(cls.get_monthly_overtime_hours(user, month, year)))
+                existing_slip.overtime_hours = overtime_hours
+                existing_slip.overtime_hours_uploaded = False  # Reset flag since we're fetching from attendance
             overtime_pay = cls.calculate_overtime_pay(float(overtime_hours), float(basic_salary))
             # Net salary = Basic salary - EPF + allowances + overtime pay
             net_salary = basic_salary - epf_contribution + allowances + overtime_pay
@@ -333,7 +355,14 @@ class PaymentSlip(models.Model):
         # Create new payment slip
         allowances = cls.calculate_allowances(basic_salary)
         epf_contribution = cls.calculate_epf(basic_salary)
-        overtime_hours = Decimal(str(cls.get_monthly_overtime_hours(user, month, year)))
+        # For admin: overtime hours should be manually entered (not from attendance system)
+        # For other roles: get overtime hours from attendance system
+        if user.role.role == 'admin':
+            # Admin: Set to 0 and mark as not uploaded (admin will manually enter)
+            overtime_hours = Decimal('0.00')
+        else:
+            # Other roles: Get from attendance system
+            overtime_hours = Decimal(str(cls.get_monthly_overtime_hours(user, month, year)))
         overtime_pay = cls.calculate_overtime_pay(float(overtime_hours), float(basic_salary))
         # Net salary = Basic salary - EPF + allowances + overtime pay
         net_salary = basic_salary - epf_contribution + allowances + overtime_pay
@@ -351,7 +380,7 @@ class PaymentSlip(models.Model):
             allowances=allowances,
             epf_contribution=epf_contribution,
             overtime_hours=overtime_hours,
-            overtime_hours_uploaded=False,  # Initially from attendance system
+            overtime_hours_uploaded=False,  # For admin: will be manually entered. For others: from attendance system
             overtime_pay=overtime_pay,
             net_salary=net_salary,
             role=user.role.role,
@@ -500,3 +529,44 @@ class LeaveRequest(models.Model):
     def days(self):
         """Calculate number of leave days"""
         return (self.end_date - self.start_date).days + 1
+
+
+class EmployeeRemovalRequest(models.Model):
+    """Model for HR staff to request employee removal (admin approval required)"""
+    
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('approved', 'Approved'),
+        ('rejected', 'Rejected'),
+    ]
+    
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='removal_requests')
+    requested_by = models.ForeignKey(
+        User, 
+        on_delete=models.CASCADE, 
+        related_name='removal_requests_made',
+        help_text='HR staff who requested the removal'
+    )
+    reason = models.TextField(blank=True, null=True, help_text='Reason for removal request')
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    reviewed_by = models.ForeignKey(
+        User, 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True,
+        related_name='removal_requests_reviewed',
+        help_text='Admin who reviewed the request'
+    )
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    admin_notes = models.TextField(blank=True, null=True, help_text='Admin notes on approval/rejection')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        db_table = 'employee_removal_requests'
+        verbose_name = 'Employee Removal Request'
+        verbose_name_plural = 'Employee Removal Requests'
+        ordering = ['-created_at']
+    
+    def __str__(self):
+        return f"Removal request for {self.user.username} by {self.requested_by.username} - {self.get_status_display()}"

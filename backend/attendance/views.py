@@ -436,17 +436,17 @@ class MyAttendancesView(generics.ListAPIView):
 
 
 class WeeklyAttendanceSummaryView(APIView):
-    """Get weekly attendance summary for all employees (Admin only)"""
+    """Get weekly attendance summary for all employees (Admin and HR Staff only)"""
     permission_classes = [IsAuthenticated]
     
     def get(self, request):
-        # Check if user is admin
+        # Check if user is admin or HR staff
         from authentication.models import UserRole
         try:
             user_role = UserRole.objects.get(user=request.user)
-            if user_role.role != 'admin':
+            if user_role.role not in ['admin', 'hr_staff']:
                 return Response({
-                    'error': 'Only admin users can access this endpoint'
+                    'error': 'Only admin and HR staff users can access this endpoint'
                 }, status=status.HTTP_403_FORBIDDEN)
         except UserRole.DoesNotExist:
             return Response({

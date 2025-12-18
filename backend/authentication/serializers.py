@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
 from django.contrib.auth.password_validation import validate_password
-from .models import UserRole, PaymentSlip, ClientFormSubmission, EmployeeFormSubmission, LeaveRequest
+from .models import UserRole, PaymentSlip, ClientFormSubmission, EmployeeFormSubmission, LeaveRequest, EmployeeRemovalRequest
 
 
 class UserRoleSerializer(serializers.ModelSerializer):
@@ -154,6 +154,7 @@ class PaymentSlipSerializer(serializers.ModelSerializer):
     overtime_hours = serializers.SerializerMethodField()
     overtime_pay = serializers.SerializerMethodField()
     net_salary = serializers.SerializerMethodField()
+    company_logo_url = serializers.SerializerMethodField()
     
     class Meta:
         model = PaymentSlip
@@ -162,7 +163,7 @@ class PaymentSlipSerializer(serializers.ModelSerializer):
             'year', 'salary', 'allowances', 'epf_contribution', 'overtime_hours', 
             'overtime_hours_uploaded', 'overtime_pay', 'net_salary', 'role', 'role_display', 
             'pay_slip_number', 'employee_number', 'status', 'is_uploaded', 'uploaded_at',
-            'generated_by', 'generated_by_username', 'generated_at', 'paid_at'
+            'generated_by', 'generated_by_username', 'generated_at', 'paid_at', 'company_logo_url'
         )
         read_only_fields = ('generated_at', 'paid_at')
     
@@ -195,6 +196,24 @@ class PaymentSlipSerializer(serializers.ModelSerializer):
     def get_net_salary(self, obj):
         """Convert DecimalField to float for JSON serialization"""
         return float(obj.net_salary) if hasattr(obj, 'net_salary') else 0.0
+    
+    def get_company_logo_url(self, obj):
+        """Get company logo URL - can be from settings or default location"""
+        from django.conf import settings
+        import os
+        
+        # Try to get logo from media directory
+        logo_path = os.path.join(settings.MEDIA_ROOT, 'company_logo.png')
+        if os.path.exists(logo_path):
+            # Return full URL to the logo
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(settings.MEDIA_URL + 'company_logo.png')
+            # Fallback to relative URL
+            return settings.MEDIA_URL + 'company_logo.png'
+        
+        # Return None if logo doesn't exist
+        return None
 
 
 class ClientFormSubmissionSerializer(serializers.ModelSerializer):
@@ -251,4 +270,53 @@ class LeaveRequestSerializer(serializers.ModelSerializer):
     def get_employee_id(self, obj):
         """Get employee ID (user ID)"""
         return str(obj.user.id)
+
+
+class EmployeeRemovalRequestSerializer(serializers.ModelSerializer):
+    """Serializer for Employee Removal Request"""
+    employee_name = serializers.SerializerMethodField()
+    employee_username = serializers.CharField(source='user.username', read_only=True)
+    employee_email = serializers.CharField(source='user.email', read_only=True)
+    employee_role = serializers.SerializerMethodField()
+    requested_by_name = serializers.SerializerMethodField()
+    requested_by_username = serializers.CharField(source='requested_by.username', read_only=True)
+    reviewed_by_name = serializers.SerializerMethodField()
+    reviewed_by_username = serializers.CharField(source='reviewed_by.username', read_only=True, allow_null=True)
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    
+    class Meta:
+        model = EmployeeRemovalRequest
+        fields = (
+            'id', 'user', 'employee_name', 'employee_username', 'employee_email', 
+            'employee_role', 'requested_by', 'requested_by_name', 'requested_by_username',
+            'reason', 'status', 'status_display', 'reviewed_by', 'reviewed_by_name', 
+            'reviewed_by_username', 'reviewed_at', 'admin_notes', 'created_at', 'updated_at'
+        )
+        read_only_fields = ('user', 'requested_by', 'status', 'reviewed_by', 'reviewed_at', 'created_at', 'updated_at')
+    
+    def get_employee_name(self, obj):
+        """Get employee full name"""
+        name_parts = [obj.user.first_name, obj.user.last_name]
+        return ' '.join(filter(None, name_parts)) or obj.user.username
+    
+    def get_employee_role(self, obj):
+        """Get employee role"""
+        try:
+            if hasattr(obj.user, 'role') and obj.user.role:
+                return obj.user.role.get_role_display()
+        except Exception:
+            pass
+        return 'Unassigned'
+    
+    def get_requested_by_name(self, obj):
+        """Get requester full name"""
+        name_parts = [obj.requested_by.first_name, obj.requested_by.last_name]
+        return ' '.join(filter(None, name_parts)) or obj.requested_by.username
+    
+    def get_reviewed_by_name(self, obj):
+        """Get reviewer full name"""
+        if obj.reviewed_by:
+            name_parts = [obj.reviewed_by.first_name, obj.reviewed_by.last_name]
+            return ' '.join(filter(None, name_parts)) or obj.reviewed_by.username
+        return None
 

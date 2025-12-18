@@ -7,7 +7,7 @@ from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
 from django.utils import timezone
 from decimal import Decimal, InvalidOperation
-from .models import UserRole, PaymentSlip, ClientFormSubmission, EmployeeFormSubmission, LeaveRequest
+from .models import UserRole, PaymentSlip, ClientFormSubmission, EmployeeFormSubmission, LeaveRequest, EmployeeRemovalRequest
 from .serializers import (
     UserRegistrationSerializer, 
     UserSerializer, 
@@ -18,7 +18,8 @@ from .serializers import (
     PaymentSlipSerializer,
     ClientFormSubmissionSerializer,
     EmployeeFormSubmissionSerializer,
-    LeaveRequestSerializer
+    LeaveRequestSerializer,
+    EmployeeRemovalRequestSerializer
 )
 
 
@@ -242,14 +243,14 @@ class MyRoleView(APIView):
 
 
 class GeneratePaymentSlipsView(APIView):
-    """Admin endpoint to generate payment slips for all users"""
+    """Admin and HR staff endpoint to generate payment slips for all users"""
     permission_classes = (IsAuthenticated,)
     
     def post(self, request):
-        # Check if user is admin
-        if not hasattr(request.user, 'role') or request.user.role.role != 'admin':
+        # Check if user is admin or HR staff
+        if not hasattr(request.user, 'role') or request.user.role.role not in ['admin', 'hr_staff']:
             return Response({
-                'error': 'Only admins can generate payment slips'
+                'error': 'Only admins and HR staff can generate payment slips'
             }, status=status.HTTP_403_FORBIDDEN)
         
         # Get month and year from request, or use current month/year
@@ -302,14 +303,14 @@ class GeneratePaymentSlipsView(APIView):
 
 
 class UploadPaymentSlipsView(APIView):
-    """Admin endpoint to upload/publish payment slips for employees to view"""
+    """Admin and HR staff endpoint to upload/publish payment slips for employees to view"""
     permission_classes = (IsAuthenticated,)
     
     def post(self, request):
-        # Check if user is admin
-        if not hasattr(request.user, 'role') or request.user.role.role != 'admin':
+        # Check if user is admin or HR staff
+        if not hasattr(request.user, 'role') or request.user.role.role not in ['admin', 'hr_staff']:
             return Response({
-                'error': 'Only admins can upload payment slips'
+                'error': 'Only admins and HR staff can upload payment slips'
             }, status=status.HTTP_403_FORBIDDEN)
         
         # Get month and year from request, or use current month/year
@@ -354,67 +355,16 @@ class UploadPaymentSlipsView(APIView):
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-class UploadPaymentSlipsView(APIView):
-    """Admin endpoint to upload/publish payment slips for employees to view"""
-    permission_classes = (IsAuthenticated,)
-    
-    def post(self, request):
-        # Check if user is admin
-        if not hasattr(request.user, 'role') or request.user.role.role != 'admin':
-            return Response({
-                'error': 'Only admins can upload payment slips'
-            }, status=status.HTTP_403_FORBIDDEN)
-        
-        # Get month and year from request, or use current month/year
-        month = request.data.get('month', timezone.now().month)
-        year = request.data.get('year', timezone.now().year)
-        
-        # Validate month and year
-        if not (1 <= month <= 12):
-            return Response({
-                'error': 'Invalid month. Must be between 1 and 12.'
-            }, status=status.HTTP_400_BAD_REQUEST)
-        
-        if year < 2000 or year > 2100:
-            return Response({
-                'error': 'Invalid year.'
-            }, status=status.HTTP_400_BAD_REQUEST)
-        
-        try:
-            # Update all payment slips for the specified month/year to be uploaded/published
-            updated_count = PaymentSlip.objects.filter(
-                month=month,
-                year=year,
-                is_uploaded=False
-            ).update(
-                is_uploaded=True,
-                uploaded_at=timezone.now()
-            )
-            
-            if updated_count == 0:
-                return Response({
-                    'message': f'No payment slips found for {month}/{year} to upload, or they are already uploaded.',
-                    'month': month,
-                    'year': year,
-                    'uploaded_count': 0
-                }, status=status.HTTP_200_OK)
-            
-            return Response({
-                'message': f'Payment slips uploaded successfully for {updated_count} employees',
-                'month': month,
-                'year': year,
-                'uploaded_count': updated_count
-            }, status=status.HTTP_200_OK)
-        except Exception as e:
-            return Response({
-                'error': f'Error uploading payment slips: {str(e)}'
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-
 class MyPaymentSlipsView(generics.ListAPIView):
     """Get current user's payment slips."""
     permission_classes = (IsAuthenticated,)
     serializer_class = PaymentSlipSerializer
+    
+    def get_serializer_context(self):
+        """Add request to serializer context for building absolute URLs"""
+        context = super().get_serializer_context()
+        context['request'] = self.request
+        return context
     
     def get_queryset(self):
         try:
@@ -451,13 +401,19 @@ class MyPaymentSlipsView(generics.ListAPIView):
 
 
 class AllPaymentSlipsView(generics.ListAPIView):
-    """Admin endpoint to view all payment slips"""
+    """Admin and HR staff endpoint to view all payment slips"""
     permission_classes = (IsAuthenticated,)
     serializer_class = PaymentSlipSerializer
     
+    def get_serializer_context(self):
+        """Add request to serializer context for building absolute URLs"""
+        context = super().get_serializer_context()
+        context['request'] = self.request
+        return context
+    
     def get_queryset(self):
-        # Check if user is admin
-        if not hasattr(self.request.user, 'role') or self.request.user.role.role != 'admin':
+        # Check if user is admin or HR staff
+        if not hasattr(self.request.user, 'role') or self.request.user.role.role not in ['admin', 'hr_staff']:
             return PaymentSlip.objects.none()
         
         queryset = PaymentSlip.objects.all().order_by('-year', '-month', 'user__username')
@@ -478,24 +434,30 @@ class AllPaymentSlipsView(generics.ListAPIView):
 
 
 class PaymentSlipDetailView(generics.RetrieveUpdateDestroyAPIView):
-    """Get, update, and delete payment slip details (Admin only)"""
+    """Get, update, and delete payment slip details (Admin and HR staff can view, Admin only can update/delete)"""
     permission_classes = (IsAuthenticated,)
     serializer_class = PaymentSlipSerializer
     
+    def get_serializer_context(self):
+        """Add request to serializer context for building absolute URLs"""
+        context = super().get_serializer_context()
+        context['request'] = self.request
+        return context
+    
     def get_queryset(self):
-        # Only admins can access payment slips
-        if hasattr(self.request.user, 'role') and self.request.user.role.role == 'admin':
+        # Admins and HR staff can view payment slips
+        if hasattr(self.request.user, 'role') and self.request.user.role.role in ['admin', 'hr_staff']:
             return PaymentSlip.objects.all()
         
         # Employees cannot see payment slips - return empty queryset
         return PaymentSlip.objects.none()
     
     def update(self, request, *args, **kwargs):
-        """Update payment slip and recalculate net salary (Admin only)"""
-        # Check if user is admin
-        if not hasattr(request.user, 'role') or request.user.role.role != 'admin':
+        """Update payment slip and recalculate net salary (Admin and HR staff only)"""
+        # Check if user is admin or HR staff
+        if not hasattr(request.user, 'role') or request.user.role.role not in ['admin', 'hr_staff']:
             return Response({
-                'error': 'Only admins can update payment slips'
+                'error': 'Only admins and HR staff can update payment slips'
             }, status=status.HTTP_403_FORBIDDEN)
         
         try:
@@ -506,6 +468,7 @@ class PaymentSlipDetailView(generics.RetrieveUpdateDestroyAPIView):
             allowances = request.data.get('allowances', None)
             epf_contribution = request.data.get('epf_contribution', None)
             overtime_pay = request.data.get('overtime_pay', None)
+            overtime_hours = request.data.get('overtime_hours', None)
             
             # Validate and update fields if provided
             if salary is not None:
@@ -547,6 +510,31 @@ class PaymentSlipDetailView(generics.RetrieveUpdateDestroyAPIView):
                         'error': 'Invalid EPF contribution value'
                     }, status=status.HTTP_400_BAD_REQUEST)
             
+            # Handle overtime hours (only editable for admin payment slips)
+            if overtime_hours is not None:
+                # Only allow editing overtime hours for admin payment slips
+                if instance.role == 'admin':
+                    try:
+                        overtime_hours_decimal = Decimal(str(overtime_hours))
+                        if overtime_hours_decimal < 0:
+                            return Response({
+                                'error': 'Overtime hours cannot be negative'
+                            }, status=status.HTTP_400_BAD_REQUEST)
+                        instance.overtime_hours = overtime_hours_decimal
+                        instance.overtime_hours_uploaded = True  # Mark as manually entered
+                        # Recalculate overtime pay based on new overtime hours
+                        from .models import PaymentSlip
+                        instance.overtime_pay = Decimal(str(PaymentSlip.calculate_overtime_pay(float(overtime_hours_decimal), float(instance.salary))))
+                    except (ValueError, InvalidOperation):
+                        return Response({
+                            'error': 'Invalid overtime hours value'
+                        }, status=status.HTTP_400_BAD_REQUEST)
+                else:
+                    # For non-admin roles, overtime hours come from attendance system and cannot be edited here
+                    return Response({
+                        'error': 'Overtime hours for this role are managed by the attendance system and cannot be manually edited'
+                    }, status=status.HTTP_400_BAD_REQUEST)
+            
             if overtime_pay is not None:
                 try:
                     overtime_decimal = Decimal(str(overtime_pay))
@@ -554,7 +542,13 @@ class PaymentSlipDetailView(generics.RetrieveUpdateDestroyAPIView):
                         return Response({
                             'error': 'Overtime pay cannot be negative'
                         }, status=status.HTTP_400_BAD_REQUEST)
-                    instance.overtime_pay = overtime_decimal
+                    # Only allow direct overtime pay editing for admin (for other roles, it's calculated from overtime hours)
+                    if instance.role == 'admin':
+                        instance.overtime_pay = overtime_decimal
+                    else:
+                        # For other roles, overtime pay is calculated from overtime hours (attendance system)
+                        # Don't allow direct editing
+                        pass
                 except (ValueError, InvalidOperation):
                     return Response({
                         'error': 'Invalid overtime pay value'
@@ -579,7 +573,13 @@ class PaymentSlipDetailView(generics.RetrieveUpdateDestroyAPIView):
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
     def destroy(self, request, *args, **kwargs):
-        """Delete payment slip (Admin only)"""
+        """Delete payment slip (Admin and HR staff only)"""
+        # Check if user is admin or HR staff
+        if not hasattr(request.user, 'role') or request.user.role.role not in ['admin', 'hr_staff']:
+            return Response({
+                'error': 'Only admins and HR staff can delete payment slips'
+            }, status=status.HTTP_403_FORBIDDEN)
+        
         try:
             instance = self.get_object()
             employee_name = instance.user.get_full_name() or instance.user.username
@@ -646,7 +646,7 @@ class UploadOvertimeHoursView(APIView):
         
         slip.save()
         
-        serializer = PaymentSlipSerializer(slip)
+        serializer = PaymentSlipSerializer(slip, context={'request': request})
         return Response({
             'success': True,
             'message': 'Overtime hours uploaded successfully',
@@ -826,15 +826,15 @@ class CreateLeaveRequestView(APIView):
 
 
 class AllLeaveRequestsView(generics.ListAPIView):
-    """API endpoint for admin to view all leave requests"""
+    """API endpoint for admin and HR staff to view all leave requests"""
     permission_classes = (IsAuthenticated,)
     serializer_class = LeaveRequestSerializer
     
     def get_queryset(self):
-        # Check if user is admin
+        # Check if user is admin or HR staff
         try:
             user_role = UserRole.objects.get(user=self.request.user)
-            if user_role.role != 'admin':
+            if user_role.role not in ['admin', 'hr_staff']:
                 return LeaveRequest.objects.none()
         except UserRole.DoesNotExist:
             return LeaveRequest.objects.none()
@@ -909,17 +909,17 @@ class MyLeaveStatisticsView(APIView):
 
 
 class MonthlyLeaveSummaryView(APIView):
-    """API endpoint for admin to get monthly leave summary for all employees"""
+    """API endpoint for admin and HR staff to get monthly leave summary for all employees"""
     permission_classes = (IsAuthenticated,)
     
     def get(self, request):
         try:
-            # Check if user is admin
+            # Check if user is admin or HR staff
             user_role = UserRole.objects.get(user=request.user)
-            if user_role.role != 'admin':
+            if user_role.role not in ['admin', 'hr_staff']:
                 return Response({
                     'success': False,
-                    'error': 'Only admin can view leave summary'
+                    'error': 'Only admin and HR staff can view leave summary'
                 }, status=status.HTTP_403_FORBIDDEN)
             
             # Get month and year from query parameters (default to current month/year)
@@ -973,17 +973,17 @@ class MonthlyLeaveSummaryView(APIView):
 
 
 class UpdateLeaveRequestView(APIView):
-    """API endpoint for admin to approve/reject leave requests"""
+    """API endpoint for admin and HR staff to approve/reject leave requests"""
     permission_classes = (IsAuthenticated,)
     
     def patch(self, request, pk):
         try:
-            # Check if user is admin
+            # Check if user is admin or HR staff
             user_role = UserRole.objects.get(user=request.user)
-            if user_role.role != 'admin':
+            if user_role.role not in ['admin', 'hr_staff']:
                 return Response({
                     'success': False,
-                    'error': 'Only admin can update leave requests'
+                    'error': 'Only admin and HR staff can update leave requests'
                 }, status=status.HTTP_403_FORBIDDEN)
             
             leave_request = LeaveRequest.objects.get(pk=pk)
@@ -1021,5 +1021,203 @@ class UpdateLeaveRequestView(APIView):
             return Response({
                 'success': False,
                 'error': f'Error updating leave request: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class CreateEmployeeRemovalRequestView(APIView):
+    """HR staff endpoint to create an employee removal request"""
+    permission_classes = (IsAuthenticated,)
+    
+    def post(self, request):
+        # Check if user is HR staff
+        if not hasattr(request.user, 'role') or request.user.role.role != 'hr_staff':
+            return Response({
+                'error': 'Only HR staff can create removal requests'
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        user_id = request.data.get('user_id')
+        reason = request.data.get('reason', '')
+        
+        if not user_id:
+            return Response({
+                'error': 'user_id is required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            user_to_remove = User.objects.get(id=user_id)
+            
+            # Prevent requesting removal of admin
+            if hasattr(user_to_remove, 'role') and user_to_remove.role.role == 'admin':
+                return Response({
+                    'error': 'Cannot request removal of admin user'
+                }, status=status.HTTP_403_FORBIDDEN)
+            
+            # Prevent requesting removal of yourself
+            if user_to_remove.id == request.user.id:
+                return Response({
+                    'error': 'Cannot request removal of your own account'
+                }, status=status.HTTP_403_FORBIDDEN)
+            
+            # Check if there's already a pending request for this user
+            existing_request = EmployeeRemovalRequest.objects.filter(
+                user=user_to_remove,
+                status='pending'
+            ).first()
+            
+            if existing_request:
+                return Response({
+                    'error': 'A pending removal request already exists for this employee'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Create the removal request
+            removal_request = EmployeeRemovalRequest.objects.create(
+                user=user_to_remove,
+                requested_by=request.user,
+                reason=reason,
+                status='pending'
+            )
+            
+            serializer = EmployeeRemovalRequestSerializer(removal_request)
+            
+            return Response({
+                'success': True,
+                'message': f'Removal request for {user_to_remove.get_full_name() or user_to_remove.username} has been submitted and is pending admin approval',
+                'data': serializer.data
+            }, status=status.HTTP_201_CREATED)
+            
+        except User.DoesNotExist:
+            return Response({
+                'error': 'User not found'
+            }, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return Response({
+                'error': f'Error creating removal request: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class AllRemovalRequestsView(generics.ListAPIView):
+    """Admin endpoint to view all employee removal requests"""
+    permission_classes = (IsAuthenticated,)
+    serializer_class = EmployeeRemovalRequestSerializer
+    
+    def get_queryset(self):
+        # Check if user is admin
+        if not hasattr(self.request.user, 'role') or self.request.user.role.role != 'admin':
+            return EmployeeRemovalRequest.objects.none()
+        
+        return EmployeeRemovalRequest.objects.all()
+    
+    def list(self, request, *args, **kwargs):
+        # Check if user is admin
+        if not hasattr(request.user, 'role') or request.user.role.role != 'admin':
+            return Response({
+                'error': 'Only admins can view removal requests'
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        return super().list(request, *args, **kwargs)
+
+
+class ApproveRemovalRequestView(APIView):
+    """Admin endpoint to approve an employee removal request"""
+    permission_classes = (IsAuthenticated,)
+    
+    def post(self, request, request_id):
+        # Check if user is admin
+        if not hasattr(request.user, 'role') or request.user.role.role != 'admin':
+            return Response({
+                'error': 'Only admins can approve removal requests'
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        admin_notes = request.data.get('admin_notes', '')
+        
+        try:
+            removal_request = EmployeeRemovalRequest.objects.get(id=request_id)
+            
+            if removal_request.status != 'pending':
+                return Response({
+                    'error': f'This request has already been {removal_request.get_status_display().lower()}'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Prevent deleting admin user
+            if hasattr(removal_request.user, 'role') and removal_request.user.role.role == 'admin':
+                return Response({
+                    'error': 'Cannot approve removal of admin user'
+                }, status=status.HTTP_403_FORBIDDEN)
+            
+            # Update request status
+            removal_request.status = 'approved'
+            removal_request.reviewed_by = request.user
+            removal_request.reviewed_at = timezone.now()
+            removal_request.admin_notes = admin_notes
+            removal_request.save()
+            
+            # Delete the user
+            user_to_delete = removal_request.user
+            user_name = user_to_delete.get_full_name() or user_to_delete.username
+            user_to_delete.delete()
+            
+            serializer = EmployeeRemovalRequestSerializer(removal_request)
+            
+            return Response({
+                'success': True,
+                'message': f'Removal request approved. {user_name} has been removed from the database.',
+                'data': serializer.data
+            }, status=status.HTTP_200_OK)
+            
+        except EmployeeRemovalRequest.DoesNotExist:
+            return Response({
+                'error': 'Removal request not found'
+            }, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return Response({
+                'error': f'Error approving removal request: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class RejectRemovalRequestView(APIView):
+    """Admin endpoint to reject an employee removal request"""
+    permission_classes = (IsAuthenticated,)
+    
+    def post(self, request, request_id):
+        # Check if user is admin
+        if not hasattr(request.user, 'role') or request.user.role.role != 'admin':
+            return Response({
+                'error': 'Only admins can reject removal requests'
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        admin_notes = request.data.get('admin_notes', '')
+        
+        try:
+            removal_request = EmployeeRemovalRequest.objects.get(id=request_id)
+            
+            if removal_request.status != 'pending':
+                return Response({
+                    'error': f'This request has already been {removal_request.get_status_display().lower()}'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Update request status
+            removal_request.status = 'rejected'
+            removal_request.reviewed_by = request.user
+            removal_request.reviewed_at = timezone.now()
+            removal_request.admin_notes = admin_notes
+            removal_request.save()
+            
+            serializer = EmployeeRemovalRequestSerializer(removal_request)
+            
+            user_name = removal_request.user.get_full_name() or removal_request.user.username
+            
+            return Response({
+                'success': True,
+                'message': f'Removal request for {user_name} has been rejected.',
+                'data': serializer.data
+            }, status=status.HTTP_200_OK)
+            
+        except EmployeeRemovalRequest.DoesNotExist:
+            return Response({
+                'error': 'Removal request not found'
+            }, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return Response({
+                'error': f'Error rejecting removal request: {str(e)}'
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 

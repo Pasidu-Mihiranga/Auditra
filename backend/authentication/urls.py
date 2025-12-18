@@ -22,7 +22,11 @@ from .views import (
     MyLeaveRequestsView,
     MyLeaveStatisticsView,
     MonthlyLeaveSummaryView,
-    UpdateLeaveRequestView
+    UpdateLeaveRequestView,
+    CreateEmployeeRemovalRequestView,
+    AllRemovalRequestsView,
+    ApproveRemovalRequestView,
+    RejectRemovalRequestView
 )
 
 urlpatterns = [
@@ -48,5 +52,9 @@ urlpatterns = [
     path('leave-requests/summary/monthly/', MonthlyLeaveSummaryView.as_view(), name='monthly-leave-summary'),
     path('leave-requests/', AllLeaveRequestsView.as_view(), name='all-leave-requests'),
     path('leave-requests/<int:pk>/update/', UpdateLeaveRequestView.as_view(), name='update-leave-request'),
+    path('removal-requests/create/', CreateEmployeeRemovalRequestView.as_view(), name='create-removal-request'),
+    path('removal-requests/', AllRemovalRequestsView.as_view(), name='all-removal-requests'),
+    path('removal-requests/<int:request_id>/approve/', ApproveRemovalRequestView.as_view(), name='approve-removal-request'),
+    path('removal-requests/<int:request_id>/reject/', RejectRemovalRequestView.as_view(), name='reject-removal-request'),
 ]
 
