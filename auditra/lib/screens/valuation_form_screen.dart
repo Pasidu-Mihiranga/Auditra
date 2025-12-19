@@ -34,6 +34,13 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
   final _estimatedValueController = TextEditingController();
   final _notesController = TextEditingController();
   
+  // Appreciation/Depreciation calculation fields
+  String? _calculationType; // 'appreciation' or 'depreciation'
+  final _rateController = TextEditingController();
+  final _yearsController = TextEditingController();
+  final _newPriceController = TextEditingController();
+  bool _showNewPriceField = false; // Track if calculation has been done
+  
   // Land fields
   final _landAreaController = TextEditingController();
   final _landTypeController = TextEditingController();
@@ -71,6 +78,13 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
     super.initState();
     if (widget.existingValuation != null) {
       _loadExistingValuation(widget.existingValuation!);
+    } else {
+      // Automatically detect location for new valuations (land and building only)
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_category == 'land' || _category == 'building') {
+          _getCurrentLocation();
+        }
+      });
     }
   }
 
@@ -79,8 +93,93 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
       _valuationId = valuation.id;
       _category = valuation.category;
       _descriptionController.text = valuation.description ?? '';
-      _estimatedValueController.text = valuation.estimatedValue?.toString() ?? '';
-      _notesController.text = valuation.notes ?? '';
+      
+      // Extract calculation information from notes if available
+      String? notes = valuation.notes;
+      String? baseValueStr;
+      String? adjustmentType;
+      String? rateStr;
+      String? yearsStr;
+      String? calculatedValueStr;
+      
+      if (notes != null && notes.isNotEmpty) {
+        // Look for structured calculation block
+        final calculationBlockRegex = RegExp(
+          r'\[VALUATION_CALCULATION\](.*?)\[/VALUATION_CALCULATION\]',
+          dotAll: true,
+          caseSensitive: false,
+        );
+        final calculationMatch = calculationBlockRegex.firstMatch(notes);
+        
+        if (calculationMatch != null) {
+          final calculationData = calculationMatch.group(1) ?? '';
+          
+          // Extract Base Value
+          final baseValueRegex = RegExp(r'Base Value:\s*LKR\s*([\d,]+\.?\d*)', caseSensitive: false);
+          final baseMatch = baseValueRegex.firstMatch(calculationData);
+          if (baseMatch != null) {
+            baseValueStr = baseMatch.group(1)?.replaceAll(',', '');
+          }
+          
+          // Extract Adjustment Type
+          final typeRegex = RegExp(r'Adjustment Type:\s*(Appreciation|Depreciation|None)', caseSensitive: false);
+          final typeMatch = typeRegex.firstMatch(calculationData);
+          if (typeMatch != null) {
+            final type = typeMatch.group(1);
+            if (type != null && type != 'None') {
+              adjustmentType = type.toLowerCase();
+            }
+          }
+          
+          // Extract Rate
+          final rateRegex = RegExp(r'Rate:\s*([\d,]+\.?\d*)\s*%', caseSensitive: false);
+          final rateMatch = rateRegex.firstMatch(calculationData);
+          if (rateMatch != null) {
+            rateStr = rateMatch.group(1)?.replaceAll(',', '');
+          }
+          
+          // Extract Years
+          final yearsRegex = RegExp(r'Years:\s*(\d+)', caseSensitive: false);
+          final yearsMatch = yearsRegex.firstMatch(calculationData);
+          if (yearsMatch != null) {
+            yearsStr = yearsMatch.group(1);
+          }
+          
+          // Extract Calculated Value
+          final calculatedRegex = RegExp(r'Calculated Value:\s*LKR\s*([\d,]+\.?\d*)', caseSensitive: false);
+          final calculatedMatch = calculatedRegex.firstMatch(calculationData);
+          if (calculatedMatch != null) {
+            calculatedValueStr = calculatedMatch.group(1)?.replaceAll(',', '');
+          }
+          
+          // Remove calculation block from notes for display (to avoid duplication)
+          notes = notes.replaceAll(
+            RegExp(r'\[VALUATION_CALCULATION\].*?\[/VALUATION_CALCULATION\]', dotAll: true, caseSensitive: false),
+            '',
+          ).trim();
+        }
+      }
+      
+      // Set base value field (prefer extracted base value, otherwise use estimated value)
+      _estimatedValueController.text = baseValueStr ?? valuation.estimatedValue?.toString() ?? '';
+      
+      // Set notes (without calculation block)
+      _notesController.text = notes ?? '';
+      
+      // Populate calculation fields if available
+      if (adjustmentType != null) {
+        _calculationType = adjustmentType;
+      }
+      if (rateStr != null) {
+        _rateController.text = rateStr;
+      }
+      if (yearsStr != null) {
+        _yearsController.text = yearsStr;
+      }
+      if (calculatedValueStr != null) {
+        _newPriceController.text = calculatedValueStr;
+        _showNewPriceField = true;
+      }
       
       // Land fields
       _landAreaController.text = valuation.landArea?.toString() ?? '';
@@ -153,6 +252,9 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
     _vehicleConditionController.dispose();
     _otherTypeController.dispose();
     _otherSpecificationsController.dispose();
+    _rateController.dispose();
+    _yearsController.dispose();
+    _newPriceController.dispose();
     super.dispose();
   }
 
@@ -242,8 +344,6 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
       final roundedLat = double.parse(position.latitude.toStringAsFixed(6));
       final roundedLng = double.parse(position.longitude.toStringAsFixed(6));
       
-      // Create Google Maps link
-      final googleMapsUrl = 'https://www.google.com/maps?q=$roundedLat,$roundedLng';
       final locationText = '$roundedLat, $roundedLng';
 
       setState(() {
@@ -258,37 +358,14 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
         }
         _isLoading = false;
       });
-
+      
+      // Trigger rebuild to show Google Maps link
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Row(
-              children: [
-                const Icon(Icons.check_circle, color: Colors.white),
-                const SizedBox(width: 8),
-                const Expanded(child: Text('Location captured successfully!')),
-                TextButton(
-                  onPressed: () async {
-                    final url = Uri.parse(googleMapsUrl);
-                    if (await canLaunchUrl(url)) {
-                      await launchUrl(url, mode: LaunchMode.externalApplication);
-                    } else {
-                      if (mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('Could not open: $googleMapsUrl')),
-                        );
-                      }
-                    }
-                  },
-                  child: const Text('View Map', style: TextStyle(color: Colors.white)),
-                ),
-              ],
-            ),
-            backgroundColor: Colors.green,
-            duration: const Duration(seconds: 4),
-          ),
-        );
+        setState(() {});
       }
+
+      // Location captured silently - no snackbar needed for automatic detection
+      // The location field will be updated automatically
     } catch (e) {
       setState(() => _isLoading = false);
       if (mounted) {
@@ -299,7 +376,7 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
     }
   }
 
-  Future<void> _saveValuation({bool submit = false}) async {
+  Future<void> _saveValuation() async {
     if (!_formKey.currentState!.validate()) {
       return;
     }
@@ -322,12 +399,63 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
       final description = cleanString(_descriptionController.text);
       if (description != null) data['description'] = description;
 
+      // Always get base value first (the original value entered by user)
+      String? baseValueStr;
+      double? baseValue;
       if (_estimatedValueController.text.isNotEmpty) {
-        final estimatedValue = double.tryParse(_estimatedValueController.text);
-        if (estimatedValue != null) data['estimated_value'] = estimatedValue;
+        baseValueStr = _estimatedValueController.text;
+        baseValue = double.tryParse(baseValueStr);
       }
 
-      final notes = cleanString(_notesController.text);
+      // Use new price if calculated, otherwise use base value as estimated value
+      if (_showNewPriceField && _newPriceController.text.isNotEmpty) {
+        final newPrice = double.tryParse(_newPriceController.text);
+        if (newPrice != null) {
+          // Save calculated value as estimated_value
+          data['estimated_value'] = newPrice;
+        }
+      } else if (baseValue != null) {
+        // No calculation done, save base value as estimated_value
+        data['estimated_value'] = baseValue;
+      }
+
+      // Build notes with base value and calculation information
+      String? notes = cleanString(_notesController.text);
+      
+      // Always store base value information
+      if (baseValueStr != null) {
+        String calculationInfo = '';
+        
+        // If calculation was performed, include all calculation details
+        if (_showNewPriceField && _calculationType != null && _rateController.text.isNotEmpty && _yearsController.text.isNotEmpty && _newPriceController.text.isNotEmpty) {
+          calculationInfo = '\n\n[VALUATION_CALCULATION]\n'
+              'Base Value: LKR $baseValueStr\n'
+              'Adjustment Type: ${_calculationType == 'appreciation' ? 'Appreciation' : 'Depreciation'}\n'
+              'Rate: ${_rateController.text}%\n'
+              'Years: ${_yearsController.text}\n'
+              'Calculated Value: LKR ${_newPriceController.text}\n'
+              '[/VALUATION_CALCULATION]';
+        } else {
+          // No calculation, but still store base value for reference
+          calculationInfo = '\n\n[VALUATION_CALCULATION]\n'
+              'Base Value: LKR $baseValueStr\n'
+              'Adjustment Type: None\n'
+              'Rate: N/A\n'
+              'Years: N/A\n'
+              'Calculated Value: N/A\n'
+              '[/VALUATION_CALCULATION]';
+        }
+        
+        // Remove existing calculation block if present, then append new one
+        if (notes != null) {
+          notes = notes.replaceAll(
+            RegExp(r'\[VALUATION_CALCULATION\].*?\[/VALUATION_CALCULATION\]', dotAll: true, caseSensitive: false),
+            '',
+          ).trim();
+        }
+        notes = notes != null && notes.isNotEmpty ? '$notes$calculationInfo' : calculationInfo;
+      }
+      
       if (notes != null) data['notes'] = notes;
 
       // Add category-specific fields
@@ -409,6 +537,24 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
 
       if (result['success']) {
         final valuationData = result['data'];
+        final synced = result['synced'] ?? true; // Default to true if not specified
+        
+        // Show offline indicator if saved offline
+        if (!synced && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text('💾 Valuation saved offline. Will sync when connection is restored.'),
+              backgroundColor: Colors.orange,
+              duration: const Duration(seconds: 4),
+            ),
+          );
+          
+          // If saved offline, automatically close the form
+          if (mounted) {
+            Navigator.of(context).pop(true);
+          }
+          return;
+        }
         
         // Debug: Print the response data
         print('Valuation creation response: $valuationData');
@@ -481,7 +627,7 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
             );
           }
           // Don't return - still show success message but warn about photos
-          if (mounted && !submit) {
+          if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
                 content: Text('Valuation saved, but ID not received. Photos may not upload.'),
@@ -505,41 +651,15 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
           }
         }
 
-        // Submit if requested
-        if (submit) {
-          final submitResult = await ApiService.submitValuation(newValuationId);
-          if (submitResult['success']) {
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Valuation submitted successfully!'),
-                  backgroundColor: Colors.green,
-                ),
-              );
-              Navigator.of(context).pop(true);
-            }
-          } else {
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(submitResult['message'] ?? 'Failed to submit valuation'),
-                  backgroundColor: Colors.orange,
-                ),
-              );
-            }
-          }
-        } else {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Valuation saved successfully!'),
-                backgroundColor: Colors.green,
-              ),
-            );
-            if (submit) {
-              Navigator.of(context).pop(true);
-            }
-          }
+        // Show success message and close form
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Valuation saved successfully!'),
+              backgroundColor: Colors.green,
+            ),
+          );
+          Navigator.of(context).pop(true);
         }
       } else {
         if (mounted) {
@@ -701,166 +821,358 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
       );
     }
 
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isSmallScreen = screenWidth < 360;
+    
     return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.existingValuation != null ? 'Edit Valuation' : 'New Valuation'),
-      ),
       body: Form(
         key: _formKey,
-        child: ListView(
-          padding: const EdgeInsets.all(16.0),
+        child: Column(
           children: [
-            // Project Info Card
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Project: ${widget.project.title}',
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    if (widget.project.description != null) ...[
-                      const SizedBox(height: 8),
-                      Text(
-                        widget.project.description!,
-                        style: Theme.of(context).textTheme.bodyMedium,
-                      ),
-                    ],
-                  ],
-                ),
+            // Modern Header
+            Container(
+              padding: EdgeInsets.only(
+                top: MediaQuery.of(context).padding.top + 8,
+                bottom: 16,
+                left: 16,
+                right: 16,
               ),
-            ),
-            // Show edit status banner if editing submitted valuation
-            if (widget.existingValuation != null && widget.existingValuation!.status == 'submitted') ...[
-              const SizedBox(height: 16),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: widget.existingValuation!.canBeEdited 
-                      ? Colors.orange[50] 
-                      : Colors.red[50],
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: widget.existingValuation!.canBeEdited 
-                        ? Colors.orange[300]! 
-                        : Colors.red[300]!,
+              decoration: BoxDecoration(
+                color: Colors.blue[500]!,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.1),
+                    blurRadius: 4,
+                    offset: const Offset(0, 2),
                   ),
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      widget.existingValuation!.canBeEdited 
-                          ? Icons.info_outline 
-                          : Icons.error_outline,
-                      color: widget.existingValuation!.canBeEdited 
-                          ? Colors.orange[900] 
-                          : Colors.red[900],
-                      size: 20,
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        widget.existingValuation!.canBeEdited
-                            ? 'This valuation was submitted. You can edit it within 2 hours of submission. Editing will reset it to draft status.'
-                            : 'This valuation was submitted more than 2 hours ago and cannot be edited.',
-                        style: TextStyle(
-                          color: widget.existingValuation!.canBeEdited 
-                              ? Colors.orange[900] 
-                              : Colors.red[900],
-                          fontSize: 13,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
+                ],
               ),
-            ],
-            const SizedBox(height: 16),
-            
-            // Category Selection
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Category *',
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
+              child: Row(
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.arrow_back, color: Colors.white),
+                    onPressed: () => Navigator.of(context).pop(),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.blue[400]!,
+                      borderRadius: BorderRadius.circular(12),
                     ),
-                    const SizedBox(height: 12),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
+                    child: Icon(
+                      widget.existingValuation != null ? Icons.edit : Icons.add_circle_outline,
+                      color: Colors.white,
+                      size: 24,
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _buildCategoryChip('land', 'Land', Icons.landscape),
-                        _buildCategoryChip('building', 'Building', Icons.business),
-                        _buildCategoryChip('vehicle', 'Vehicle', Icons.directions_car),
-                        _buildCategoryChip('other', 'Other', Icons.category),
+                        Text(
+                          widget.existingValuation != null ? 'Edit Valuation' : 'New Valuation',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          widget.project.title,
+                          style: TextStyle(
+                            color: Colors.white.withOpacity(0.9),
+                            fontSize: 14,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ],
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
-            const SizedBox(height: 16),
-            
-            // Common Fields
-            _buildSectionTitle('Common Information'),
-            _buildTextField(_descriptionController, 'Description', maxLines: 3),
-            _buildTextField(_estimatedValueController, 'Estimated Value', keyboardType: TextInputType.number),
-            _buildTextField(_notesController, 'Notes', maxLines: 3),
-            const SizedBox(height: 16),
-            
-            // Category-specific fields
-            if (_category == 'land') _buildLandFields(),
-            if (_category == 'building') _buildBuildingFields(),
-            if (_category == 'vehicle') _buildVehicleFields(),
-            if (_category == 'other') _buildOtherFields(),
-            
-            const SizedBox(height: 16),
-            
-            // Photos Section
-            _buildSectionTitle('Photos'),
-            _buildPhotosSection(),
-            
-            const SizedBox(height: 24),
-            
-            // Action Buttons
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: _isSubmitting ? null : () => _saveValuation(submit: false),
-                    child: _isSubmitting
-                        ? const SizedBox(
-                            height: 20,
-                            width: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Text('Save Draft'),
+            // Form Content
+            Expanded(
+              child: ListView(
+                padding: EdgeInsets.all(isSmallScreen ? 12 : 16),
+                children: [
+                  // Project Info Card
+                  Card(
+                    elevation: 2,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    child: Padding(
+                      padding: EdgeInsets.all(isSmallScreen ? 12 : 16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  color: Colors.blue[100],
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Icon(Icons.folder_open, color: Colors.blue[700], size: 20),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Project Information',
+                                      style: const TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.black87,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      widget.project.title,
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        color: Colors.grey[700],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                          if (widget.project.description != null) ...[
+                            const SizedBox(height: 12),
+                            Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: Colors.grey[50],
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Text(
+                                widget.project.description!,
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: Colors.grey[800],
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
                   ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: _isSubmitting ? null : () => _saveValuation(submit: true),
-                    child: _isSubmitting
-                        ? const SizedBox(
-                            height: 20,
-                            width: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Text('Submit'),
+                  // Show edit status banner if editing submitted valuation
+                  if (widget.existingValuation != null && widget.existingValuation!.status == 'submitted') ...[
+                    const SizedBox(height: 16),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: widget.existingValuation!.canBeEdited 
+                            ? Colors.orange[50] 
+                            : Colors.red[50],
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: widget.existingValuation!.canBeEdited 
+                              ? Colors.orange[300]! 
+                              : Colors.red[300]!,
+                          width: 1.5,
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: widget.existingValuation!.canBeEdited 
+                                  ? Colors.orange[100] 
+                                  : Colors.red[100],
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Icon(
+                              widget.existingValuation!.canBeEdited 
+                                  ? Icons.info_outline 
+                                  : Icons.error_outline,
+                              color: widget.existingValuation!.canBeEdited 
+                                  ? Colors.orange[900] 
+                                  : Colors.red[900],
+                              size: 20,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              widget.existingValuation!.canBeEdited
+                                  ? 'This valuation was submitted. You can edit it within 2 days of creation. Editing will reset it to draft status.'
+                                  : 'This valuation was submitted more than 2 days ago and cannot be edited.',
+                              style: TextStyle(
+                                color: widget.existingValuation!.canBeEdited 
+                                    ? Colors.orange[900] 
+                                    : Colors.red[900],
+                                fontSize: 13,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 16),
+                  // Category Selection Card
+                  Card(
+                    elevation: 2,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    child: Padding(
+                      padding: EdgeInsets.all(isSmallScreen ? 12 : 16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(Icons.category, color: Colors.blue[700], size: 20),
+                              const SizedBox(width: 8),
+                              const Text(
+                                'Category *',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.black87,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _buildModernCategoryChip('land', 'Land', Icons.landscape),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: _buildModernCategoryChip('building', 'Building', Icons.business),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _buildModernCategoryChip('vehicle', 'Vehicle', Icons.directions_car),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: _buildModernCategoryChip('other', 'Other', Icons.category),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
-                ),
-              ],
+                  const SizedBox(height: 16),
+                  
+                  // Common Information Card
+                  _buildSectionCard(
+                    title: 'Common Information',
+                    icon: Icons.info_outline,
+                    child: Column(
+                      children: [
+                        _buildModernTextField(
+                          _descriptionController,
+                          'Description',
+                          icon: Icons.description,
+                          maxLines: 3,
+                        ),
+                        const SizedBox(height: 16),
+                        _buildModernTextField(
+                          _estimatedValueController,
+                          'Base Value (LKR)',
+                          icon: Icons.account_balance_wallet,
+                          keyboardType: TextInputType.number,
+                        ),
+                        const SizedBox(height: 16),
+                        // Price Calculation Section
+                        _buildPriceCalculationSection(),
+                        // New Price Field (shown after calculation)
+                        if (_showNewPriceField) ...[
+                          const SizedBox(height: 16),
+                          _buildModernTextField(
+                            _newPriceController,
+                            'New Price (LKR)',
+                            icon: Icons.account_balance_wallet,
+                            keyboardType: TextInputType.number,
+                          ),
+                        ],
+                        const SizedBox(height: 16),
+                        _buildModernTextField(
+                          _notesController,
+                          'Notes',
+                          icon: Icons.note,
+                          maxLines: 3,
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+            
+                  // Category-specific fields
+                  if (_category == 'land') _buildLandFields(),
+                  if (_category == 'building') _buildBuildingFields(),
+                  if (_category == 'vehicle') _buildVehicleFields(),
+                  if (_category == 'other') _buildOtherFields(),
+                  
+                  // Google Maps Link (shown once for the active category)
+                  if ((_category == 'land' && _landLatitude != null && _landLongitude != null) ||
+                      (_category == 'building' && _buildingLatitude != null && _buildingLongitude != null)) ...[
+                    const SizedBox(height: 12),
+                    _buildGoogleMapsLink(),
+                  ],
+                  
+                  const SizedBox(height: 16),
+                  
+                  // Photos Section Card
+                  _buildSectionCard(
+                    title: 'Photos',
+                    icon: Icons.photo_library,
+                    child: _buildPhotosSection(),
+                  ),
+                  
+                  SizedBox(height: isSmallScreen ? 16 : 24),
+                  
+                  // Action Button
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton(
+                      onPressed: _isSubmitting ? null : () => _saveValuation(),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        side: BorderSide(color: Colors.blue[400]!, width: 2),
+                      ),
+                      child: _isSubmitting
+                          ? const SizedBox(
+                              height: 20,
+                              width: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Text(
+                              'Save Report',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                    ),
+                  ),
+                  SizedBox(height: MediaQuery.of(context).padding.bottom + 8),
+                ],
+              ),
             ),
           ],
         ),
@@ -886,6 +1198,335 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
     );
   }
 
+  Widget _buildModernCategoryChip(String value, String label, IconData icon) {
+    final isSelected = _category == value;
+    return InkWell(
+      onTap: () {
+        setState(() => _category = value);
+        // Automatically detect location when category changes to land or building
+        if (value == 'land' || value == 'building') {
+          _getCurrentLocation();
+        }
+      },
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+        decoration: BoxDecoration(
+          color: isSelected ? Colors.blue[50] : Colors.grey[50],
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isSelected ? Colors.blue[600]! : Colors.grey[300]!,
+            width: isSelected ? 2 : 1,
+          ),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              icon,
+              size: 20,
+              color: isSelected ? Colors.blue[700] : Colors.grey[600],
+            ),
+            const SizedBox(width: 8),
+            Flexible(
+              child: Text(
+                label,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                  color: isSelected ? Colors.blue[900] : Colors.grey[700],
+                ),
+                textAlign: TextAlign.center,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            if (isSelected) ...[
+              const SizedBox(width: 4),
+              Icon(Icons.check_circle, color: Colors.blue[700], size: 18),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSectionCard({required String title, required IconData icon, required Widget child}) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isSmallScreen = screenWidth < 360;
+    
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Padding(
+        padding: EdgeInsets.all(isSmallScreen ? 12 : 16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(icon, color: Colors.blue[700]!, size: 20),
+                const SizedBox(width: 8),
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black87,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            child,
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildModernTextField(
+    TextEditingController controller,
+    String label, {
+    IconData? icon,
+    int maxLines = 1,
+    TextInputType? keyboardType,
+  }) {
+    return TextFormField(
+      controller: controller,
+      style: const TextStyle(fontSize: 16),
+      decoration: InputDecoration(
+        labelText: label,
+        hintText: 'Enter $label',
+        prefixIcon: icon != null ? Icon(icon, color: Colors.blue[700]) : null,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+        filled: true,
+        fillColor: Colors.grey[50],
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+      ),
+      maxLines: maxLines,
+      keyboardType: keyboardType,
+    );
+  }
+
+  Widget _buildPriceCalculationSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 16),
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Colors.blue[50],
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.blue[200]!, width: 1),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.calculate, color: Colors.blue[700], size: 20),
+                  const SizedBox(width: 8),
+                  const Text(
+                    'Price Calculation',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black87,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              // Calculation Type Selection
+              Row(
+                children: [
+                  Expanded(
+                    child: _buildCalculationTypeButton('appreciation', 'Appreciation', Icons.trending_up, Colors.green),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: _buildCalculationTypeButton('depreciation', 'Depreciation', Icons.trending_down, Colors.red),
+                  ),
+                ],
+              ),
+              // Calculation Input Fields (shown when type is selected)
+              if (_calculationType != null) ...[
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildModernTextField(
+                        _rateController,
+                        'Rate (%)',
+                        icon: Icons.percent,
+                        keyboardType: TextInputType.numberWithOptions(decimal: true),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _buildModernTextField(
+                        _yearsController,
+                        'Number of Years',
+                        icon: Icons.calendar_today,
+                        keyboardType: TextInputType.number,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: _calculateNewPrice,
+                    icon: const Icon(Icons.calculate),
+                    label: const Text('Calculate New Price'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue[700],
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCalculationTypeButton(String value, String label, IconData icon, Color color) {
+    final isSelected = _calculationType == value;
+    return InkWell(
+      onTap: () {
+        setState(() {
+          _calculationType = value;
+          // Clear previous calculation inputs
+          _rateController.clear();
+          _yearsController.clear();
+        });
+      },
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+        decoration: BoxDecoration(
+          color: isSelected ? color.withOpacity(0.2) : Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isSelected ? color : Colors.grey[300]!,
+            width: isSelected ? 2 : 1,
+          ),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              icon,
+              size: 20,
+              color: isSelected ? color : Colors.grey[600],
+            ),
+            const SizedBox(width: 8),
+            Flexible(
+              child: Text(
+                label,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                  color: isSelected ? color : Colors.grey[700],
+                ),
+                textAlign: TextAlign.center,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _calculateNewPrice() {
+    // Get current base value
+    final currentValue = double.tryParse(_estimatedValueController.text);
+    if (currentValue == null || currentValue <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please enter a valid base value first'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    // Get rate
+    final rate = double.tryParse(_rateController.text);
+    if (rate == null || rate <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please enter a valid rate'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    // Get years
+    final years = int.tryParse(_yearsController.text);
+    if (years == null || years <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please enter a valid number of years'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    // Calculate new price using compound interest formula
+    // For appreciation: new_price = old_price * (1 + rate/100)^years
+    // For depreciation: new_price = old_price * (1 - rate/100)^years
+    double newPrice;
+    if (_calculationType == 'appreciation') {
+      newPrice = currentValue * (1 + rate / 100);
+      // Apply compound interest for remaining years
+      for (int i = 1; i < years; i++) {
+        newPrice = newPrice * (1 + rate / 100);
+      }
+    } else {
+      // depreciation
+      newPrice = currentValue * (1 - rate / 100);
+      // Apply compound depreciation for remaining years
+      for (int i = 1; i < years; i++) {
+        newPrice = newPrice * (1 - rate / 100);
+      }
+    }
+
+    // Round to 2 decimal places
+    newPrice = double.parse(newPrice.toStringAsFixed(2));
+
+    // Update the new price field and show it (don't modify base value)
+    setState(() {
+      _newPriceController.text = newPrice.toString();
+      _showNewPriceField = true;
+    });
+
+    // Show success message
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'New price calculated: LKR ${newPrice.toStringAsFixed(2)}',
+        ),
+        backgroundColor: Colors.green,
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+
   Widget _buildSectionTitle(String title) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12.0),
@@ -898,187 +1539,133 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
     );
   }
 
-  Widget _buildTextField(TextEditingController controller, String label, {int maxLines = 1, TextInputType? keyboardType}) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 16.0),
-      child: TextFormField(
-        controller: controller,
-        decoration: InputDecoration(
-          labelText: label,
-          border: const OutlineInputBorder(),
-        ),
-        maxLines: maxLines,
-        keyboardType: keyboardType,
-      ),
-    );
-  }
-
   Widget _buildLandFields() {
-    final hasLocation = _landLatitude != null && _landLongitude != null;
-    final googleMapsUrl = hasLocation 
-        ? 'https://www.google.com/maps?q=$_landLatitude,$_landLongitude'
-        : null;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _buildSectionTitle('Land Details'),
-        _buildTextField(_landAreaController, 'Area (sq meters)', keyboardType: TextInputType.number),
-        _buildTextField(_landTypeController, 'Land Type (e.g., Residential, Commercial)'),
-        Row(
-          children: [
-            Expanded(
-              child: TextFormField(
+        _buildSectionCard(
+          title: 'Land Details',
+          icon: Icons.landscape,
+          child: Column(
+            children: [
+              _buildModernTextField(
+                _landAreaController,
+                'Area (sq meters)',
+                icon: Icons.square_foot,
+                keyboardType: TextInputType.number,
+              ),
+              const SizedBox(height: 16),
+              _buildModernTextField(
+                _landTypeController,
+                'Land Type (e.g., Residential, Commercial)',
+                icon: Icons.category,
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
                 controller: _landLocationController,
-                decoration: const InputDecoration(
-                  labelText: 'Location',
-                  border: OutlineInputBorder(),
+                style: const TextStyle(fontSize: 16),
+                decoration: InputDecoration(
+                  labelText: 'Location Coordinates',
+                  prefixIcon: _isLoading
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: Padding(
+                            padding: EdgeInsets.all(12),
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                        )
+                      : Icon(Icons.location_on, color: Colors.blue[700]),
+                  hintText: _isLoading ? 'Detecting location...' : 'Location will be detected automatically',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  filled: true,
+                  fillColor: Colors.grey[50],
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
                 ),
                 readOnly: true,
               ),
-            ),
-            const SizedBox(width: 8),
-            ElevatedButton.icon(
-              onPressed: _isLoading ? null : _getCurrentLocation,
-              icon: _isLoading
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.location_on),
-              label: const Text('Get Location'),
-            ),
-          ],
-        ),
-        if (hasLocation && googleMapsUrl != null) ...[
-          const SizedBox(height: 8),
-          InkWell(
-            onTap: () async {
-              final url = Uri.parse(googleMapsUrl);
-              if (await canLaunchUrl(url)) {
-                await launchUrl(url, mode: LaunchMode.externalApplication);
-              } else {
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Could not open Google Maps')),
-                  );
-                }
-              }
-            },
-            child: Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.blue[50],
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.blue[200]!),
-              ),
-              child: Row(
-                children: [
-                  Icon(Icons.map, color: Colors.blue[700], size: 20),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'View on Google Maps',
-                      style: TextStyle(
-                        color: Colors.blue[900],
-                        fontWeight: FontWeight.w500,
-                        decoration: TextDecoration.underline,
-                      ),
-                    ),
-                  ),
-                  Icon(Icons.open_in_new, color: Colors.blue[700], size: 18),
-                ],
-              ),
-            ),
+            ],
           ),
-        ],
+        ),
+        const SizedBox(height: 16),
       ],
     );
   }
 
   Widget _buildBuildingFields() {
-    final hasLocation = _buildingLatitude != null && _buildingLongitude != null;
-    final googleMapsUrl = hasLocation 
-        ? 'https://www.google.com/maps?q=$_buildingLatitude,$_buildingLongitude'
-        : null;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _buildSectionTitle('Building Details'),
-        _buildTextField(_buildingAreaController, 'Area (sq meters)', keyboardType: TextInputType.number),
-        _buildTextField(_buildingTypeController, 'Building Type (e.g., House, Apartment)'),
-        Row(
-          children: [
-            Expanded(
-              child: TextFormField(
+        _buildSectionCard(
+          title: 'Building Details',
+          icon: Icons.business,
+          child: Column(
+            children: [
+              _buildModernTextField(
+                _buildingAreaController,
+                'Area (sq meters)',
+                icon: Icons.square_foot,
+                keyboardType: TextInputType.number,
+              ),
+              const SizedBox(height: 16),
+              _buildModernTextField(
+                _buildingTypeController,
+                'Building Type (e.g., House, Apartment)',
+                icon: Icons.home,
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
                 controller: _buildingLocationController,
-                decoration: const InputDecoration(
-                  labelText: 'Location',
-                  border: OutlineInputBorder(),
+                style: const TextStyle(fontSize: 16),
+                decoration: InputDecoration(
+                  labelText: 'Location Coordinates',
+                  prefixIcon: _isLoading
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: Padding(
+                            padding: EdgeInsets.all(12),
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                        )
+                      : Icon(Icons.location_on, color: Colors.blue[700]),
+                  hintText: _isLoading ? 'Detecting location...' : 'Location will be detected automatically',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  filled: true,
+                  fillColor: Colors.grey[50],
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
                 ),
                 readOnly: true,
               ),
-            ),
-            const SizedBox(width: 8),
-            ElevatedButton.icon(
-              onPressed: _isLoading ? null : _getCurrentLocation,
-              icon: _isLoading
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.location_on),
-              label: const Text('Get Location'),
-            ),
-          ],
-        ),
-        if (hasLocation && googleMapsUrl != null) ...[
-          const SizedBox(height: 8),
-          InkWell(
-            onTap: () async {
-              final url = Uri.parse(googleMapsUrl);
-              if (await canLaunchUrl(url)) {
-                await launchUrl(url, mode: LaunchMode.externalApplication);
-              } else {
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Could not open Google Maps')),
-                  );
-                }
-              }
-            },
-            child: Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.blue[50],
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.blue[200]!),
+              // Google Maps link for building location
+              if (_buildingLatitude != null && _buildingLongitude != null) ...[
+                const SizedBox(height: 12),
+                _buildGoogleMapsLink(),
+              ],
+              const SizedBox(height: 16),
+              _buildModernTextField(
+                _numberOfFloorsController,
+                'Number of Floors',
+                icon: Icons.layers,
+                keyboardType: TextInputType.number,
               ),
-              child: Row(
-                children: [
-                  Icon(Icons.map, color: Colors.blue[700], size: 20),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'View on Google Maps',
-                      style: TextStyle(
-                        color: Colors.blue[900],
-                        fontWeight: FontWeight.w500,
-                        decoration: TextDecoration.underline,
-                      ),
-                    ),
-                  ),
-                  Icon(Icons.open_in_new, color: Colors.blue[700], size: 18),
-                ],
+              const SizedBox(height: 16),
+              _buildModernTextField(
+                _yearBuiltController,
+                'Year Built',
+                icon: Icons.calendar_today,
+                keyboardType: TextInputType.number,
               ),
-            ),
+            ],
           ),
-        ],
-        _buildTextField(_numberOfFloorsController, 'Number of Floors', keyboardType: TextInputType.number),
-        _buildTextField(_yearBuiltController, 'Year Built', keyboardType: TextInputType.number),
+        ),
+        const SizedBox(height: 16),
       ],
     );
   }
@@ -1087,13 +1674,26 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _buildSectionTitle('Vehicle Details'),
-        _buildTextField(_vehicleMakeController, 'Make'),
-        _buildTextField(_vehicleModelController, 'Model'),
-        _buildTextField(_vehicleYearController, 'Year', keyboardType: TextInputType.number),
-        _buildTextField(_vehicleRegistrationController, 'Registration Number'),
-        _buildTextField(_vehicleMileageController, 'Mileage', keyboardType: TextInputType.number),
-        _buildTextField(_vehicleConditionController, 'Condition (e.g., Excellent, Good, Fair)'),
+        _buildSectionCard(
+          title: 'Vehicle Details',
+          icon: Icons.directions_car,
+          child: Column(
+            children: [
+              _buildModernTextField(_vehicleMakeController, 'Make', icon: Icons.build),
+              const SizedBox(height: 16),
+              _buildModernTextField(_vehicleModelController, 'Model', icon: Icons.directions_car),
+              const SizedBox(height: 16),
+              _buildModernTextField(_vehicleYearController, 'Year', icon: Icons.calendar_today, keyboardType: TextInputType.number),
+              const SizedBox(height: 16),
+              _buildModernTextField(_vehicleRegistrationController, 'Registration Number', icon: Icons.confirmation_number),
+              const SizedBox(height: 16),
+              _buildModernTextField(_vehicleMileageController, 'Mileage', icon: Icons.speed, keyboardType: TextInputType.number),
+              const SizedBox(height: 16),
+              _buildModernTextField(_vehicleConditionController, 'Condition (e.g., Excellent, Good, Fair)', icon: Icons.star),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
       ],
     );
   }
@@ -1102,10 +1702,131 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _buildSectionTitle('Other Details'),
-        _buildTextField(_otherTypeController, 'Type'),
-        _buildTextField(_otherSpecificationsController, 'Specifications', maxLines: 3),
+        _buildSectionCard(
+          title: 'Other Details',
+          icon: Icons.category,
+          child: Column(
+            children: [
+              _buildModernTextField(_otherTypeController, 'Type', icon: Icons.category),
+              const SizedBox(height: 16),
+              _buildModernTextField(_otherSpecificationsController, 'Specifications', icon: Icons.description, maxLines: 3),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
       ],
+    );
+  }
+
+  Widget _buildGoogleMapsLink() {
+    double? lat;
+    double? lng;
+    
+    if (_category == 'land' && _landLatitude != null && _landLongitude != null) {
+      lat = _landLatitude;
+      lng = _landLongitude;
+    } else if (_category == 'building' && _buildingLatitude != null && _buildingLongitude != null) {
+      lat = _buildingLatitude;
+      lng = _buildingLongitude;
+    }
+
+    if (lat == null || lng == null) return const SizedBox.shrink();
+
+    return InkWell(
+      onTap: () async {
+        try {
+          // Use the most reliable web URL format
+          final webUrl = Uri.parse('https://www.google.com/maps/search/?api=1&query=$lat,$lng');
+          
+          // Try to launch - don't check canLaunchUrl first as it may return false incorrectly
+          try {
+            await launchUrl(
+              webUrl,
+              mode: LaunchMode.externalApplication,
+            );
+          } catch (e) {
+            // If external application fails, try platform default (opens in browser)
+            try {
+              await launchUrl(
+                webUrl,
+                mode: LaunchMode.platformDefault,
+              );
+            } catch (e2) {
+              // Last resort: try in-app web view
+              try {
+                await launchUrl(
+                  webUrl,
+                  mode: LaunchMode.inAppWebView,
+                );
+              } catch (e3) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Could not open maps. Please try opening manually: ${webUrl.toString()}'),
+                      duration: const Duration(seconds: 5),
+                    ),
+                  );
+                }
+              }
+            }
+          }
+        } catch (e) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Error opening maps: $e'),
+                duration: const Duration(seconds: 3),
+              ),
+            );
+          }
+        }
+      },
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.blue[50],
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.blue[200]!, width: 1.5),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.blue[100],
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(Icons.map, color: Colors.blue[700], size: 20),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'View on Google Maps',
+                    style: TextStyle(
+                      color: Colors.blue[900],
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'Tap to open location in maps',
+                    style: TextStyle(
+                      color: Colors.blue[700],
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(Icons.arrow_forward_ios, color: Colors.blue[700], size: 16),
+          ],
+        ),
+      ),
     );
   }
 
@@ -1116,18 +1837,96 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
         Row(
           children: [
             Expanded(
-              child: OutlinedButton.icon(
-                onPressed: _pickImage,
-                icon: const Icon(Icons.photo_library),
-                label: const Text('Pick from Gallery'),
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: _pickImage,
+                  borderRadius: BorderRadius.circular(16),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: Colors.blue[300]!,
+                        width: 2,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.blue.withOpacity(0.1),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 20),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: Colors.blue[50],
+                              shape: BoxShape.circle,
+                            ),
+                            child: Icon(
+                              Icons.photo_library_rounded,
+                              color: Colors.blue[700],
+                              size: 32,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
               ),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: 16),
             Expanded(
-              child: OutlinedButton.icon(
-                onPressed: _takePhoto,
-                icon: const Icon(Icons.camera_alt),
-                label: const Text('Take Photo'),
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: _takePhoto,
+                  borderRadius: BorderRadius.circular(16),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: Colors.blue[300]!,
+                        width: 2,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.blue.withOpacity(0.1),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 20),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: Colors.blue[50],
+                              shape: BoxShape.circle,
+                            ),
+                            child: Icon(
+                              Icons.camera_alt_rounded,
+                              color: Colors.blue[700],
+                              size: 32,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
               ),
             ),
           ],

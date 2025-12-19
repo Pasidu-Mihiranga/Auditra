@@ -102,10 +102,11 @@ class Valuation {
       return null;
     }
 
-    // Required fields - throw error if null
+    // Required fields - handle offline/cached data gracefully
     final id = parseInt(json['id']);
     final projectId = parseInt(json['project']);
-    final fieldOfficerId = parseInt(json['field_officer']);
+    // For offline valuations, field_officer might be missing - use 0 as fallback
+    final fieldOfficerId = parseInt(json['field_officer']) ?? 0;
 
     if (id == null) {
       throw FormatException('Required field "id" is null or cannot be parsed');
@@ -113,21 +114,19 @@ class Valuation {
     if (projectId == null) {
       throw FormatException('Required field "project" is null or cannot be parsed');
     }
-    if (fieldOfficerId == null) {
-      throw FormatException('Required field "field_officer" is null or cannot be parsed');
-    }
+    // Note: field_officer can be 0 for offline valuations that haven't been synced yet
 
     return Valuation(
       id: id,
       projectId: projectId,
-      projectTitle: json['project_title'] ?? '',
+      projectTitle: (json['project_title'] as String?) ?? '',
       fieldOfficerId: fieldOfficerId,
-      fieldOfficerUsername: json['field_officer_username'] ?? '',
-      fieldOfficerName: json['field_officer_name'],
-      category: json['category'] ?? '',
-      categoryDisplay: json['category_display'] ?? '',
-      status: json['status'] ?? 'draft',
-      statusDisplay: json['status_display'] ?? 'Draft',
+      fieldOfficerUsername: (json['field_officer_username'] as String?) ?? '',
+      fieldOfficerName: json['field_officer_name'] as String?,
+      category: (json['category'] as String?) ?? 'unknown',
+      categoryDisplay: (json['category_display'] as String?) ?? (json['category'] as String?) ?? 'Unknown',
+      status: (json['status'] as String?) ?? 'draft',
+      statusDisplay: (json['status_display'] as String?) ?? 'Draft',
       description: json['description'],
       estimatedValue: json['estimated_value'] != null ? double.parse(json['estimated_value'].toString()) : null,
       notes: json['notes'],
@@ -149,22 +148,36 @@ class Valuation {
       buildingLongitude: json['building_longitude'] != null 
           ? double.parse(double.parse(json['building_longitude'].toString()).toStringAsFixed(6))
           : null,
-      numberOfFloors: json['number_of_floors'],
-      yearBuilt: json['year_built'],
+      numberOfFloors: parseInt(json['number_of_floors']),
+      yearBuilt: parseInt(json['year_built']),
       vehicleMake: json['vehicle_make'],
       vehicleModel: json['vehicle_model'],
-      vehicleYear: json['vehicle_year'],
+      vehicleYear: parseInt(json['vehicle_year']),
       vehicleRegistrationNumber: json['vehicle_registration_number'],
-      vehicleMileage: json['vehicle_mileage'],
+      vehicleMileage: parseInt(json['vehicle_mileage']),
       vehicleCondition: json['vehicle_condition'],
       otherType: json['other_type'],
       otherSpecifications: json['other_specifications'],
       photos: (json['photos'] as List<dynamic>?)
-          ?.map((photo) => ValuationPhoto.fromJson(photo))
+          ?.map((photo) {
+            try {
+              return ValuationPhoto.fromJson(photo);
+            } catch (e) {
+              print('Warning: Failed to parse valuation photo: $e');
+              return null;
+            }
+          })
+          .whereType<ValuationPhoto>()
           .toList() ?? [],
-      createdAt: DateTime.parse(json['created_at']),
-      updatedAt: DateTime.parse(json['updated_at']),
-      submittedAt: json['submitted_at'] != null ? DateTime.parse(json['submitted_at']) : null,
+      createdAt: json['created_at'] != null 
+          ? DateTime.parse(json['created_at'].toString())
+          : DateTime.now(),
+      updatedAt: json['updated_at'] != null
+          ? DateTime.parse(json['updated_at'].toString())
+          : DateTime.now(),
+      submittedAt: json['submitted_at'] != null 
+          ? DateTime.parse(json['submitted_at'].toString()) 
+          : null,
       canBeEdited: json['can_be_edited'] ?? false,
     );
   }
@@ -189,9 +202,26 @@ class ValuationPhoto {
   });
 
   factory ValuationPhoto.fromJson(Map<String, dynamic> json) {
+    // Safely parse int fields
+    int? parseInt(dynamic value) {
+      if (value == null) return null;
+      if (value is int) return value;
+      if (value is String) return int.tryParse(value);
+      if (value is double) return value.toInt();
+      return null;
+    }
+
+    final id = parseInt(json['id']);
+    // valuationId may be missing when nested in Valuation serializer (it's implied by parent)
+    final valuationId = parseInt(json['valuation'] ?? json['valuation_id']) ?? 0;
+
+    if (id == null) {
+      throw FormatException('Required field "id" is null or cannot be parsed in ValuationPhoto JSON: ${json['id']}');
+    }
+
     return ValuationPhoto(
-      id: json['id'],
-      valuationId: json['valuation'] ?? json['valuation_id'],
+      id: id,
+      valuationId: valuationId, // Use 0 as placeholder if not provided (it's implied by parent)
       photoUrl: json['photo_url'],
       caption: json['caption'],
       uploadedAt: DateTime.parse(json['uploaded_at']),
