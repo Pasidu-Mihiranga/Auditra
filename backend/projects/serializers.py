@@ -105,6 +105,8 @@ class ProjectSerializer(serializers.ModelSerializer):
     status_display = serializers.CharField(source='get_status_display', read_only=True)
     documents = ProjectDocumentSerializer(many=True, read_only=True)
     documents_count = serializers.IntegerField(source='documents.count', read_only=True)
+    valuations = serializers.SerializerMethodField()
+    valuations_count = serializers.SerializerMethodField()
     
     class Meta:
         model = Project
@@ -119,7 +121,7 @@ class ProjectSerializer(serializers.ModelSerializer):
             'assigned_senior_valuer', 'assigned_senior_valuer_username', 'assigned_senior_valuer_name',
             'assigned_senior_valuer_email', 'has_agent', 'client_info', 'agent_info',
             'status', 'status_display', 'workflow_stage', 'priority', 'start_date', 'end_date',
-            'documents', 'documents_count', 'created_at', 'updated_at'
+            'documents', 'documents_count', 'valuations', 'valuations_count', 'created_at', 'updated_at'
         )
         read_only_fields = ('coordinator', 'created_at', 'updated_at')
     
@@ -163,6 +165,17 @@ class ProjectSerializer(serializers.ModelSerializer):
                 return f"{obj.assigned_senior_valuer.first_name} {obj.assigned_senior_valuer.last_name}".strip()
             return obj.assigned_senior_valuer.username
         return None
+    
+    def get_valuations(self, obj):
+        """Get valuations for this project"""
+        # Import here to avoid circular import
+        from valuations.serializers import ValuationSerializer
+        valuations = obj.valuations.all().select_related('field_officer').prefetch_related('photos')
+        return ValuationSerializer(valuations, many=True, context=self.context).data
+    
+    def get_valuations_count(self, obj):
+        """Get count of valuations for this project"""
+        return obj.valuations.count()
 
 
 class ProjectCreateSerializer(serializers.ModelSerializer):

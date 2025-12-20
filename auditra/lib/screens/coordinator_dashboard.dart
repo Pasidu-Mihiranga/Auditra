@@ -5,8 +5,10 @@ import 'package:file_picker/file_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'dart:math' as math;
 import '../services/api_service.dart';
+import '../services/pdf_service.dart';
 import '../models/attendance_model.dart';
 import '../models/project_model.dart';
+import '../models/valuation_model.dart';
 import 'login_screen.dart';
 import 'generic_dashboard.dart';
 import 'create_project_screen.dart';
@@ -203,12 +205,20 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
       setState(() {
         _isLoadingProjects = false;
         if (result['success']) {
-          final data = result['data'];
-          if (data is List) {
+          try {
+            final data = result['data'] as List<dynamic>;
             _projects = data.map((p) => Project.fromJson(p)).toList();
             // Sort by creation date (oldest first - creation order)
             _projects.sort((a, b) => a.createdAt.compareTo(b.createdAt));
-          } else {
+          } catch (e) {
+            print('Error parsing projects: $e');
+            print('Response data: ${result['data']}');
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Error loading projects: $e'),
+                backgroundColor: Colors.red,
+              ),
+            );
             _projects = [];
           }
         } else {
@@ -5112,271 +5122,674 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
   }
 
   Future<void> _viewProjectDetails(Project project) async {
+    // Fetch fresh project data to ensure valuations are loaded
+    final projectResult = await ApiService.getProject(project.id);
+    Project? updatedProject = project;
+    
+    if (projectResult['success'] && projectResult['data'] != null) {
+      try {
+        updatedProject = Project.fromJson(projectResult['data']);
+      } catch (e) {
+        print('Error parsing updated project: $e');
+      }
+    }
+    
+    final finalProject = updatedProject ?? project;
+    final screenWidth = MediaQuery.of(context).size.width;
+    final screenHeight = MediaQuery.of(context).size.height;
+    final isSmallScreen = screenWidth < 360;
+    
     await showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        child: Container(
-          width: MediaQuery.of(context).size.width * 0.9,
-          constraints: BoxConstraints(
-            maxHeight: MediaQuery.of(context).size.height * 0.85,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Header with gradient
-              Container(
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: Theme.of(context).primaryColor,
-                  borderRadius: const BorderRadius.only(
-                    topLeft: Radius.circular(20),
-                    topRight: Radius.circular(20),
-                  ),
+      builder: (dialogContext) {
+        return DefaultTabController(
+          length: 2,
+          child: Builder(
+            builder: (context) {
+              final tabController = DefaultTabController.of(context);
+              return StatefulBuilder(
+                builder: (context, setState) {
+                  // Add listener for tab changes
+                  tabController.addListener(() {
+                    if (mounted) {
+                      setState(() {});
+                    }
+                  });
+                  return Dialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(isSmallScreen ? 16 : 20)),
+              child: Container(
+                width: screenWidth * (isSmallScreen ? 0.95 : 0.9),
+                constraints: BoxConstraints(
+                  maxHeight: screenHeight * (isSmallScreen ? 0.9 : 0.85),
                 ),
-                child: Row(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
+                    // Header with solid color
                     Container(
-                      padding: const EdgeInsets.all(12),
+                      padding: EdgeInsets.all(_getResponsivePadding(context)),
                       decoration: BoxDecoration(
-                              color: Theme.of(context).primaryColor,
-                        borderRadius: BorderRadius.circular(12),
+                        color: Colors.blue[600]!,
+                        borderRadius: const BorderRadius.only(
+                          topLeft: Radius.circular(20),
+                          topRight: Radius.circular(20),
+                        ),
                       ),
-                      child: const Icon(Icons.info_outline, color: Colors.white, size: 24),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                      child: Row(
                         children: [
-                          Text(
-                            project.title,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                            ),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          const SizedBox(height: 4),
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            padding: const EdgeInsets.all(12),
                             decoration: BoxDecoration(
-                              color: Colors.grey[200]!,
-                              borderRadius: BorderRadius.circular(8),
+                              color: Colors.blue[400]!,
+                              borderRadius: BorderRadius.circular(12),
                             ),
-                            child: Text(
-                              project.statusDisplay,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                              ),
+                            child: Icon(
+                              Icons.folder_open,
+                              color: Colors.white,
+                              size: _getResponsiveIconSize(context),
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  finalProject.title,
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: _getResponsiveFontSize(context, 20),
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                const SizedBox(height: 4),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withOpacity(0.2),
+                                    borderRadius: BorderRadius.circular(20),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Container(
+                                        width: 8,
+                                        height: 8,
+                                        decoration: BoxDecoration(
+                                          color: _getProjectStatusColor(finalProject.status),
+                                          shape: BoxShape.circle,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Text(
+                                        finalProject.statusDisplay,
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.close, color: Colors.white),
+                            onPressed: () => Navigator.of(dialogContext).pop(),
+                          ),
+                        ],
+                      ),
+                    ),
+                    // Tab Bar with white background
+                    Container(
+                      color: Colors.white,
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                      child: TabBar(
+                        controller: tabController,
+                        indicator: BoxDecoration(
+                          color: Colors.blue[50]!.withOpacity(0.5),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        indicatorSize: TabBarIndicatorSize.tab,
+                        dividerColor: Colors.transparent,
+                        labelColor: Colors.blue[700],
+                        unselectedLabelColor: Colors.grey[600],
+                        labelStyle: TextStyle(
+                          fontSize: isSmallScreen ? 11 : 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                        unselectedLabelStyle: TextStyle(
+                          fontSize: isSmallScreen ? 11 : 12,
+                          fontWeight: FontWeight.w500,
+                        ),
+                        tabAlignment: TabAlignment.fill,
+                        tabs: [
+                          Tab(
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Container(
+                                  width: 22,
+                                  height: 22,
+                                  alignment: Alignment.center,
+                                  decoration: BoxDecoration(
+                                    color: tabController.index == 0 
+                                        ? Colors.blue[50]!.withOpacity(0.5)
+                                        : Colors.transparent,
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                      color: tabController.index == 0
+                                          ? Colors.blue[700]!
+                                          : Colors.grey[600]!,
+                                      width: 1.5,
+                                    ),
+                                  ),
+                                  child: Icon(
+                                    Icons.info_outline,
+                                    size: 11,
+                                    color: tabController.index == 0
+                                        ? Colors.blue[700]
+                                        : Colors.grey[600],
+                                  ),
+                                ),
+                                const SizedBox(width: 3),
+                                Flexible(
+                                  child: Text(
+                                    'Details',
+                                    overflow: TextOverflow.ellipsis,
+                                    maxLines: 1,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Tab(
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Container(
+                                  width: 22,
+                                  height: 22,
+                                  alignment: Alignment.center,
+                                  decoration: BoxDecoration(
+                                    color: tabController.index == 1 
+                                        ? Colors.blue[50]!.withOpacity(0.5)
+                                        : Colors.transparent,
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                      color: tabController.index == 1
+                                          ? Colors.blue[700]!
+                                          : Colors.grey[600]!,
+                                      width: 1.5,
+                                    ),
+                                  ),
+                                  child: Icon(
+                                    Icons.assessment_outlined,
+                                    size: 11,
+                                    color: tabController.index == 1
+                                        ? Colors.blue[700]
+                                        : Colors.grey[600],
+                                  ),
+                                ),
+                                const SizedBox(width: 3),
+                                Flexible(
+                                  child: Text(
+                                    'Reports',
+                                    overflow: TextOverflow.ellipsis,
+                                    maxLines: 1,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ],
                       ),
                     ),
-                    IconButton(
-                      icon: const Icon(Icons.close, color: Colors.white),
-                      onPressed: () => Navigator.of(context).pop(),
-                    ),
-                  ],
-                ),
-              ),
-              // Content
-              Expanded(
-                child: SingleChildScrollView(
-                  physics: const BouncingScrollPhysics(),
-                  padding: const EdgeInsets.all(20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                // Tab Content
+                Flexible(
+                  child: TabBarView(
+                    controller: tabController,
                     children: [
-                      if (project.description != null) ...[
-                        _buildSectionCard(
-                          context,
-                          title: 'Description',
-                          icon: Icons.description,
-                          child: Text(
-                            project.description!,
-                            style: const TextStyle(fontSize: 14, height: 1.5),
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                      ],
-                      _buildSectionCard(
-                        context,
-                        title: 'Project Information',
-                        icon: Icons.info,
+                      // Details Tab
+                      SingleChildScrollView(
+                        physics: const BouncingScrollPhysics(),
+                        padding: EdgeInsets.all(isSmallScreen ? 16 : 20),
                         child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            _buildInfoRow('Status', project.statusDisplay),
-                            const SizedBox(height: 12),
-                            _buildInfoRow('Priority', _formatPriorityLabel(project.priority ?? 'medium')),
-                            if (project.startDate != null) ...[
+                            // Description Card
+                            if (finalProject.description != null) ...[
+                              _buildModernInfoCard(
+                                icon: Icons.description,
+                                label: 'Description',
+                                value: finalProject.description!,
+                                color: Colors.blue,
+                              ),
                               const SizedBox(height: 12),
-                              _buildInfoRow('Start Date', DateFormat('MMM dd, yyyy').format(project.startDate!)),
                             ],
-                            if (project.endDate != null) ...[
-                              const SizedBox(height: 12),
-                              _buildInfoRow('End Date', DateFormat('MMM dd, yyyy').format(project.endDate!)),
-                            ],
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      _buildSectionCard(
-                        context,
-                        title: 'Assigned Users',
-                        icon: Icons.people_outline,
-                        child: Column(
-                          children: [
-                            if (project.assignedFieldOfficerName != null)
-                              _buildInfoRow('Field Officer', project.assignedFieldOfficerName!)
-                            else
-                              _buildInfoRow('Field Officer', 'Not assigned', isWarning: true),
-                            if (project.assignedClientName != null) ...[
-                              const SizedBox(height: 12),
-                              _buildInfoRow('Client', project.assignedClientName!),
-                            ] else ...[
-                              const SizedBox(height: 12),
-                              _buildInfoRow('Client', 'Not assigned', isWarning: true),
-                            ],
-                            if (project.hasAgent) ...[
-                              const SizedBox(height: 12),
-                              if (project.assignedAgentName != null)
-                                _buildInfoRow('Agent', project.assignedAgentName!)
-                              else
-                                _buildInfoRow('Agent', 'Not assigned', isWarning: true),
-                            ],
-                          ],
-                        ),
-                      ),
-                      if (project.documents.isNotEmpty) ...[
-                        const SizedBox(height: 16),
-                        _buildSectionCard(
-                          context,
-                          title: 'Documents (${project.documents.length})',
-                          icon: Icons.folder_outlined,
-                          child: Column(
-                            children: project.documents.map((doc) {
-                              return Card(
-                                margin: const EdgeInsets.only(bottom: 8),
-                                elevation: 1,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: ListTile(
-                                  leading: Icon(Icons.insert_drive_file, color: Theme.of(context).primaryColor),
-                                  title: Text(
-                                    doc.name,
-                                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
-                                  ),
-                                  subtitle: Text(
-                                    doc.fileSizeFormatted,
-                                    style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                                  ),
-                                  trailing: IconButton(
-                                    icon: const Icon(Icons.delete_outline, color: Colors.red),
-                                    onPressed: () async {
-                                      final deleteResult = await ApiService.deleteProjectDocument(doc.id);
-                                      if (deleteResult['success']) {
-                                        Navigator.of(context).pop();
-                                        await _loadProjects();
-                                        ScaffoldMessenger.of(context).showSnackBar(
-                                          const SnackBar(
-                                            content: Text('Document deleted'),
-                                            backgroundColor: Colors.green,
-                                          ),
-                                        );
-                                      }
-                                    },
-                                  ),
-                                ),
-                              );
-                            }).toList(),
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-              ),
-              // Action Buttons
-              Container(
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: Colors.grey[50],
-                  borderRadius: const BorderRadius.only(
-                    bottomLeft: Radius.circular(20),
-                    bottomRight: Radius.circular(20),
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: () => Navigator.of(context).pop(),
-                        style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                        child: const Text('Close', style: TextStyle(fontSize: 16)),
-                      ),
-                    ),
-                    if (project.assignedFieldOfficerId == null) ...[
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: ElevatedButton.icon(
-                          onPressed: () {
-                            Navigator.of(context).pop();
-                            _assignFieldOfficer(project);
-                          },
-                          icon: const Icon(Icons.person_add, size: 20),
-                          label: const Text('Assign Field Officer', style: TextStyle(fontSize: 16)),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.lightBlue[600],
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(vertical: 16),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
+                            // Priority Card
+                            _buildModernInfoCard(
+                              icon: Icons.flag,
+                              label: 'Priority',
+                              value: _formatPriorityLabel(finalProject.priority ?? 'medium'),
+                              color: _getPriorityColor(finalProject.priority ?? 'medium'),
                             ),
-                            elevation: 2,
-                          ),
+                            const SizedBox(height: 12),
+                            // Coordinator Card
+                            _buildModernInfoCard(
+                              icon: Icons.person,
+                              label: 'Coordinator',
+                              value: finalProject.coordinatorName ?? finalProject.coordinatorUsername ?? 'Not assigned',
+                              color: Colors.blue,
+                            ),
+                            // Dates
+                            if (finalProject.startDate != null || finalProject.endDate != null) ...[
+                              const SizedBox(height: 12),
+                              _buildModernInfoCard(
+                                icon: Icons.calendar_today,
+                                label: 'Project Dates',
+                                value: _buildDatesText(finalProject),
+                                color: Colors.blue,
+                              ),
+                            ],
+                            // Assigned Users
+                            const SizedBox(height: 12),
+                            _buildModernInfoCard(
+                              icon: Icons.people_outline,
+                              label: 'Assigned Users',
+                              value: _buildAssignedUsersText(finalProject),
+                              color: Colors.blue,
+                            ),
+                            // Documents
+                            if (finalProject.documents.isNotEmpty) ...[
+                              const SizedBox(height: 12),
+                              Card(
+                                elevation: 2,
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                child: Padding(
+                                  padding: EdgeInsets.all(isSmallScreen ? 12 : 16),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Icon(Icons.folder_outlined, color: Colors.blue[700], size: 20),
+                                          const SizedBox(width: 8),
+                                          Text(
+                                            'Documents (${finalProject.documents.length})',
+                                            style: const TextStyle(
+                                              fontSize: 16,
+                                              fontWeight: FontWeight.bold,
+                                              color: Colors.black87,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 12),
+                                      ...finalProject.documents.map((doc) => Padding(
+                                        padding: const EdgeInsets.only(bottom: 8),
+                                        child: ListTile(
+                                          contentPadding: EdgeInsets.zero,
+                                          leading: Container(
+                                            padding: const EdgeInsets.all(8),
+                                            decoration: BoxDecoration(
+                                              color: Colors.grey[100],
+                                              borderRadius: BorderRadius.circular(8),
+                                            ),
+                                            child: const Icon(Icons.insert_drive_file, color: Colors.grey, size: 20),
+                                          ),
+                                          title: Text(
+                                            doc.name,
+                                            style: const TextStyle(fontWeight: FontWeight.w500),
+                                          ),
+                                          subtitle: Text(
+                                            doc.fileSizeFormatted,
+                                            style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                                          ),
+                                          trailing: IconButton(
+                                            icon: const Icon(Icons.delete_outline, size: 20),
+                                            color: Colors.red[700],
+                                            onPressed: () async {
+                                              final deleteResult = await ApiService.deleteProjectDocument(doc.id);
+                                              if (deleteResult['success']) {
+                                                Navigator.of(dialogContext).pop();
+                                                await _loadProjects();
+                                                if (mounted) {
+                                                  ScaffoldMessenger.of(context).showSnackBar(
+                                                    const SnackBar(
+                                                      content: Text('Document deleted'),
+                                                      backgroundColor: Colors.green,
+                                                    ),
+                                                  );
+                                                }
+                                              }
+                                            },
+                                          ),
+                                        ),
+                                      )),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
                         ),
                       ),
+                      // Valuation Reports Tab
+                      finalProject.valuations.isEmpty
+                          ? Center(
+                              child: Padding(
+                                padding: const EdgeInsets.all(24),
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(Icons.description_outlined, size: 64, color: Colors.grey[400]),
+                                    const SizedBox(height: 16),
+                                    Text(
+                                      'No valuation reports yet',
+                                      style: TextStyle(
+                                        fontSize: 18,
+                                        color: Colors.grey[600],
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      'Field officers will generate reports here',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        color: Colors.grey[500],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            )
+                          : SingleChildScrollView(
+                              physics: const BouncingScrollPhysics(),
+                              padding: EdgeInsets.all(isSmallScreen ? 16 : 20),
+                              child: Column(
+                                children: finalProject.valuations.map((valuation) => Padding(
+                                  padding: const EdgeInsets.only(bottom: 12),
+                                  child: Card(
+                                    elevation: 2,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    child: Padding(
+                                      padding: EdgeInsets.all(isSmallScreen ? 12 : 16),
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Row(
+                                            children: [
+                                              Container(
+                                                width: 48,
+                                                height: 48,
+                                                decoration: BoxDecoration(
+                                                  color: _getValuationStatusColor(valuation.status).withOpacity(0.15),
+                                                  borderRadius: BorderRadius.circular(12),
+                                                ),
+                                                child: Center(
+                                                  child: Icon(
+                                                    Icons.description,
+                                                    color: _getValuationStatusColor(valuation.status),
+                                                    size: 24,
+                                                  ),
+                                                ),
+                                              ),
+                                              const SizedBox(width: 12),
+                                              Expanded(
+                                                child: Column(
+                                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                                  children: [
+                                                    Text(
+                                                      valuation.categoryDisplay,
+                                                      style: const TextStyle(
+                                                        fontWeight: FontWeight.w600,
+                                                        fontSize: 16,
+                                                      ),
+                                                    ),
+                                                    const SizedBox(height: 6),
+                                                    Container(
+                                                      padding: const EdgeInsets.symmetric(
+                                                        horizontal: 10,
+                                                        vertical: 4,
+                                                      ),
+                                                      decoration: BoxDecoration(
+                                                        color: _getValuationStatusColor(valuation.status).withOpacity(0.2),
+                                                        borderRadius: BorderRadius.circular(6),
+                                                      ),
+                                                      child: Text(
+                                                        valuation.status == 'draft' ? 'Saved' : valuation.statusDisplay,
+                                                        style: TextStyle(
+                                                          fontSize: 12,
+                                                          fontWeight: FontWeight.w500,
+                                                          color: _getValuationStatusColor(valuation.status),
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                          const SizedBox(height: 12),
+                                          Row(
+                                            children: [
+                                              Icon(Icons.calendar_today, size: 14, color: Colors.grey[600]),
+                                              const SizedBox(width: 6),
+                                              Text(
+                                                'Created: ${DateFormat('MMM dd, yyyy').format(valuation.createdAt)}',
+                                                style: TextStyle(
+                                                  fontSize: 12,
+                                                  color: Colors.grey[600],
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                          const SizedBox(height: 12),
+                                          SizedBox(
+                                            width: double.infinity,
+                                            child: ElevatedButton.icon(
+                                              onPressed: () async {
+                                                await _generatePdfReport(valuation, finalProject);
+                                              },
+                                              icon: const Icon(Icons.article, size: 20),
+                                              label: const Text('View PDF Report'),
+                                              style: ElevatedButton.styleFrom(
+                                                backgroundColor: Colors.orange[700],
+                                                foregroundColor: Colors.white,
+                                                padding: const EdgeInsets.symmetric(vertical: 12),
+                                                shape: RoundedRectangleBorder(
+                                                  borderRadius: BorderRadius.circular(8),
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                )).toList(),
+                              ),
+                            ),
                     ],
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: ElevatedButton.icon(
-                        onPressed: () async {
-                          Navigator.of(context).pop();
-                          // Use a dummy setDialogState for this context
-                          await _uploadDocumentWithUserSelection(project, (fn) {});
-                        },
-                        icon: const Icon(Icons.upload_file, size: 20),
-                        label: const Text('Upload Document', style: TextStyle(fontSize: 16)),
-                        style: ElevatedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          elevation: 2,
-                        ),
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
+        );
+                },
+              );
+            },
+          ),
+          );
+        },
+      );
+  }
+  
+  String _buildDatesText(Project project) {
+    final parts = <String>[];
+    if (project.startDate != null) {
+      parts.add('Start: ${DateFormat('MMM dd, yyyy').format(project.startDate!)}');
+    }
+    if (project.endDate != null) {
+      parts.add('End: ${DateFormat('MMM dd, yyyy').format(project.endDate!)}');
+    }
+    return parts.join('\n');
+  }
+  
+  String _buildAssignedUsersText(Project project) {
+    final parts = <String>[];
+    if (project.assignedFieldOfficerName != null) {
+      parts.add('Field Officer: ${project.assignedFieldOfficerName}');
+    } else {
+      parts.add('Field Officer: Not assigned');
+    }
+    if (project.assignedClientName != null) {
+      parts.add('Client: ${project.assignedClientName}');
+    } else {
+      parts.add('Client: Not assigned');
+    }
+    if (project.hasAgent && project.assignedAgentName != null) {
+      parts.add('Agent: ${project.assignedAgentName}');
+    }
+    return parts.join('\n');
+  }
+  
+  Widget _buildModernInfoCard({
+    required IconData icon,
+    required String label,
+    required String value,
+    required Color color,
+  }) {
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: color.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(icon, color: color, size: 16),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey[600],
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              value,
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+                color: Colors.black87,
+              ),
+            ),
+          ],
         ),
       ),
     );
+  }
+  
+  Future<void> _generatePdfReport(Valuation valuation, Project project) async {
+    try {
+      // Show loading indicator
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(
+          child: Card(
+            child: Padding(
+              padding: EdgeInsets.all(20.0),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(height: 16),
+                  Text('Generating PDF report...'),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+
+      final pdfFile = await PdfService.generateValuationReport(
+        valuation: valuation,
+        project: project,
+      );
+
+      // Close loading dialog
+      if (context.mounted) {
+        Navigator.of(context).pop();
+      }
+
+      // Share/Print the PDF
+      if (context.mounted) {
+        try {
+          await PdfService.sharePdf(
+            pdfFile,
+            subject: 'Valuation Report - ${valuation.categoryDisplay}',
+          );
+        } catch (shareError) {
+          print('Error sharing PDF: $shareError');
+          // Try alternative method
+          if (context.mounted) {
+            await PdfService.saveAndOpenPdf(pdfFile);
+          }
+        }
+      }
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('PDF report generated successfully!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      // Close loading dialog if still open
+      if (context.mounted) {
+        Navigator.of(context).pop();
+      }
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error generating PDF: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   Future<void> _logout() async {
@@ -5986,33 +6399,38 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
     return Stack(
       clipBehavior: Clip.none,
       children: [
-        Container(
-          margin: EdgeInsets.only(bottom: isReceivedTab ? 4 : 10),
-          decoration: BoxDecoration(
-            color: Colors.white,
+        Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: () => _viewProjectDetails(project),
             borderRadius: BorderRadius.circular(16),
-            boxShadow: [
-              BoxShadow(
-                color: project.status == 'in_progress'
-                    ? Colors.grey[200]!
-                    : project.status == 'completed'
+            child: Container(
+              margin: EdgeInsets.only(bottom: isReceivedTab ? 4 : 10),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(
+                    color: project.status == 'in_progress'
                         ? Colors.grey[200]!
-                        : project.status == 'cancelled'
+                        : project.status == 'completed'
                             ? Colors.grey[200]!
-                            : Colors.grey[200]!,
-                blurRadius: 12,
-                offset: const Offset(0, 4),
-                spreadRadius: 0,
+                            : project.status == 'cancelled'
+                                ? Colors.grey[200]!
+                                : Colors.grey[200]!,
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
+                    spreadRadius: 0,
+                  ),
+                  BoxShadow(
+                    color: Colors.grey[200]!,
+                    blurRadius: 6,
+                    offset: const Offset(0, 2),
+                    spreadRadius: 0,
+                  ),
+                ],
               ),
-              BoxShadow(
-                color: Colors.grey[200]!,
-                blurRadius: 6,
-                offset: const Offset(0, 2),
-                spreadRadius: 0,
-              ),
-            ],
-          ),
-          child: Padding(
+              child: Padding(
             padding: const EdgeInsets.all(14.0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -6278,6 +6696,8 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
             ],
           ],
         ),
+              ),
+            ),
           ),
         ),
         // Priority ribbon at top-left corner
@@ -6581,6 +7001,23 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
         ),
       ),
     );
+  }
+
+  Color _getValuationStatusColor(String status) {
+    switch (status) {
+      case 'draft':
+        return Colors.grey[600]!;
+      case 'submitted':
+        return Colors.blue[600]!;
+      case 'reviewed':
+        return Colors.purple[600]!;
+      case 'approved':
+        return Colors.green[600]!;
+      case 'rejected':
+        return Colors.red[600]!;
+      default:
+        return Colors.grey[400]!;
+    }
   }
 
   Color _getStatusColor(String status) {

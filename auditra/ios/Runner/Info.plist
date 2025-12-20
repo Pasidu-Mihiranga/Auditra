@@ -45,5 +45,16 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<!-- Location permissions for valuation feature -->
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>We need your location to capture property coordinates for valuations.</string>
+	<key>NSLocationAlwaysUsageDescription</key>
+	<string>We need your location to capture property coordinates for valuations.</string>
+	<!-- Camera permission for photo capture -->
+	<key>NSCameraUsageDescription</key>
+	<string>We need access to your camera to take photos for valuations.</string>
+	<!-- Photo library permission -->
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>We need access to your photo library to select photos for valuations.</string>
 </dict>
 </plist>

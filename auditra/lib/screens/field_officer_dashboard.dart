@@ -1,12 +1,26 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:fl_chart/fl_chart.dart';
+import 'package:open_file/open_file.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:io';
 import 'dart:math' as math;
+import 'dart:async';
 import '../services/api_service.dart';
+import '../services/pdf_service.dart';
+import '../services/offline_db_service.dart';
+import '../services/sync_engine.dart';
+import '../services/network_service.dart';
 import '../models/attendance_model.dart';
 import '../models/project_model.dart';
+import '../models/valuation_model.dart';
+import '../widgets/sync_status_indicator.dart';
+import '../services/offline_storage_service.dart';
 import 'login_screen.dart';
 import 'generic_dashboard.dart';
+import 'valuation_form_screen.dart';
 
 class FieldOfficerDashboard extends StatefulWidget {
   const FieldOfficerDashboard({super.key});
@@ -34,6 +48,19 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
   // Timer for countdown
   DateTime? _countdownEnd;
   Duration _remainingTime = Duration.zero;
+  
+  // Network monitoring for auto-refresh
+  StreamSubscription<bool>? _networkSubscription;
+  
+  // Sync event listener for refreshing offline queue
+  Function(Map<String, dynamic>)? _syncListener;
+  
+  // Track downloaded documents to force UI refresh
+  Set<int> _downloadedDocuments = {};
+  
+  // Search and sort state
+  final TextEditingController _searchController = TextEditingController();
+  String _sortOption = 'date_asc'; // 'date_asc', 'date_desc', 'title_asc', 'title_desc', 'priority'
 
   @override
   void initState() {
@@ -44,13 +71,86 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
         setState(() {});
       }
     });
+    _initOfflineMode();
     _loadUserInfo();
     _loadProjects();
+    
+    // Initialize network monitoring for auto-refresh
+    _initNetworkMonitoring();
+    
+    // Initialize sync event listener
+    _initSyncListener();
+    
+    // Initialize search controller listener
+    _searchController.addListener(() => setState(() {}));
+  }
+
+  Future<void> _initOfflineMode() async {
+    try {
+      // Initialize offline mode for field officers
+      await OfflineDBService.initOfflineDB();
+      await NetworkService.init();
+      await SyncEngine.init();
+      
+      // Clean up old synced valuations on startup
+      final cleanedCount = await OfflineStorageService.cleanupSyncedValuations();
+      if (cleanedCount > 0) {
+        print('🧹 Cleaned up $cleanedCount old synced valuations on startup');
+      }
+      
+      // Delete all unsynced valuations that are failing (they have invalid data and can't sync)
+      // This removes valuations that fail validation (like estimated_value > 15 digits)
+      final deletedCount = await OfflineStorageService.deleteAllUnsyncedValuations();
+      if (deletedCount > 0) {
+        print('🗑️ Deleted $deletedCount unsynced valuations with invalid data on startup');
+        // Refresh the UI after cleanup
+        if (mounted) {
+          setState(() {});
+        }
+      }
+      
+      print('✅ Offline mode initialized for field officer');
+    } catch (e) {
+      print('Warning: Failed to initialize offline mode: $e');
+    }
+  }
+  
+  void _initNetworkMonitoring() {
+    // NetworkService is already initialized in _initOfflineMode()
+    _networkSubscription = NetworkService.networkStatusStream.listen((isOnline) {
+      if (mounted) {
+        print('📶 Field Officer Dashboard: Network status changed to ${isOnline ? "Online" : "Offline"}');
+        // Refresh projects when network status changes
+        _loadProjects();
+      }
+    });
+  }
+  
+  void _initSyncListener() {
+    // Listen to sync events to refresh offline queue when valuations are synced
+    _syncListener = (event) {
+      if (mounted) {
+        final eventType = event['event'] as String?;
+        if (eventType == 'syncComplete' || eventType == 'valuationSynced' || eventType == 'syncSuccess') {
+          print('🔄 Sync event received: $eventType - Refreshing offline queue and projects');
+          // Trigger rebuild to refresh offline queue (reads from local storage)
+          // Also reload projects to get updated valuations from server
+          setState(() {});
+          _loadProjects();
+        }
+      }
+    };
+    SyncEngine.addListener(_syncListener!);
   }
 
   @override
   void dispose() {
+    _networkSubscription?.cancel();
+    if (_syncListener != null) {
+      SyncEngine.removeListener(_syncListener!);
+    }
     _tabController.dispose();
+    _searchController.dispose();
     super.dispose();
   }
 
@@ -138,10 +238,16 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
   }
 
   Future<void> _loadProjects() async {
-    setState(() {
-      _isLoading = true;
-      _isLoadingProjects = true;
-    });
+    // Only show loading indicator if we don't have projects yet (initial load)
+    final isInitialLoad = _projects.isEmpty;
+    
+    if (isInitialLoad) {
+      setState(() {
+        _isLoading = true;
+        _isLoadingProjects = true;
+      });
+    }
+    
     final result = await ApiService.getProjects();
     
     if (mounted) {
@@ -149,8 +255,26 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
         _isLoading = false;
         _isLoadingProjects = false;
         if (result['success']) {
-          final data = result['data'] as List<dynamic>;
-          _projects = data.map((p) => Project.fromJson(p)).toList();
+          try {
+            final data = result['data'] as List<dynamic>;
+            _projects = data.map((p) => Project.fromJson(p)).toList();
+          } catch (e) {
+            print('Error parsing projects: $e');
+            print('Response data: ${result['data']}');
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Error loading projects: $e'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Failed to load projects: ${result['message'] ?? 'Unknown error'}'),
+              backgroundColor: Colors.red,
+            ),
+          );
         }
       });
     }
@@ -336,19 +460,133 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
   Future<void> _logout() async {
     final confirm = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Logout'),
-        content: const Text('Are you sure you want to logout?'),
-        actions: [
-          TextButton(
+      barrierDismissible: false,
+      builder: (context) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        child: Container(
+          width: MediaQuery.of(context).size.width * 0.85,
+          constraints: const BoxConstraints(maxHeight: 400),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Header with gradient
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: Colors.orange[500]!,
+                  borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(20),
+                    topRight: Radius.circular(20),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.orange[400]!,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(Icons.logout, color: Colors.white, size: 24),
+                    ),
+                    const SizedBox(width: 16),
+                    const Expanded(
+                      child: Text(
+                        'Logout',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              // Content
+              Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  children: [
+                    Icon(
+                      Icons.exit_to_app_rounded,
+                      size: 64,
+                      color: Colors.orange[300],
+                    ),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'Are you sure?',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      'You are about to logout from your account.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.grey[700],
+                        height: 1.5,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              // Action Buttons
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: Colors.grey[50],
+                  borderRadius: const BorderRadius.only(
+                    bottomLeft: Radius.circular(20),
+                    bottomRight: Radius.circular(20),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        child: const Text('Cancel', style: TextStyle(fontSize: 16)),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: ElevatedButton(
             onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Logout'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.orange[600],
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          elevation: 2,
+                        ),
+                        child: const Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.logout, size: 20),
+                            SizedBox(width: 8),
+                            Text('Logout', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
 
@@ -369,124 +607,290 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
     return '$hours:$minutes:$seconds';
   }
 
+  /// Get local file path for a downloaded document
+  Future<String?> _getLocalFilePath(int documentId) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final filePath = prefs.getString('doc_$documentId');
+      if (filePath != null) {
+        final file = File(filePath);
+        if (await file.exists()) {
+          return filePath;
+        } else {
+          // File doesn't exist, remove from preferences
+          await prefs.remove('doc_$documentId');
+        }
+      }
+      return null;
+    } catch (e) {
+      print('Error getting local file path: $e');
+      return null;
+    }
+  }
+
+  /// Check if document is already downloaded
+  Future<bool> _isDocumentDownloaded(int documentId) async {
+    // Check in-memory cache first for immediate UI updates
+    if (_downloadedDocuments.contains(documentId)) {
+      return true;
+    }
+    // Then check actual file system
+    final filePath = await _getLocalFilePath(documentId);
+    if (filePath != null) {
+      _downloadedDocuments.add(documentId);
+      return true;
+    }
+    return false;
+  }
+
+  /// Download document to local storage
+  Future<String?> _downloadDocument(ProjectDocument doc) async {
+    if (doc.fileUrl == null) return null;
+
+    try {
+      // Show loading indicator
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Row(
+              children: [
+                SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                ),
+                SizedBox(width: 16),
+                Text('Downloading document...'),
+              ],
+            ),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+
+      // Get documents directory
+      final appDir = await getApplicationDocumentsDirectory();
+      final documentsDir = Directory('${appDir.path}/project_documents');
+      
+      if (!await documentsDir.exists()) {
+        await documentsDir.create(recursive: true);
+      }
+
+      // Get file extension from URL or filename
+      String fileExtension = '';
+      if (doc.name.contains('.')) {
+        fileExtension = doc.name.split('.').last;
+      } else if (doc.fileUrl!.contains('.')) {
+        final urlParts = doc.fileUrl!.split('.');
+        fileExtension = urlParts.last.split('?').first; // Remove query parameters
+      }
+
+      // Create filename
+      String fileName = 'doc_${doc.id}_${doc.name.replaceAll(RegExp(r'[^\w\s-.]'), '_')}';
+      if (fileExtension.isNotEmpty && !fileName.endsWith('.$fileExtension')) {
+        final fileNameWithoutExt = fileName.split('.').first;
+        fileName = '$fileNameWithoutExt.$fileExtension';
+      }
+      final filePath = '${documentsDir.path}/$fileName';
+
+      // Download file
+      final response = await http.get(Uri.parse(doc.fileUrl!));
+      
+      if (response.statusCode == 200) {
+        final file = File(filePath);
+        await file.writeAsBytes(response.bodyBytes);
+
+        // Save file path to SharedPreferences
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('doc_${doc.id}', filePath);
+
+        // Add to in-memory cache for immediate UI update
+        if (mounted) {
+          setState(() {
+            _downloadedDocuments.add(doc.id);
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Document downloaded successfully!'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+
+        return filePath;
+      } else {
+        throw Exception('Failed to download: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Error downloading document: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to download document: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return null;
+    }
+  }
+
+  /// View downloaded document
+  Future<void> _viewDownloadedDocument(String filePath) async {
+    try {
+      final file = File(filePath);
+      if (await file.exists()) {
+        // Use open_file which handles FileProvider automatically on Android
+        final result = await OpenFile.open(filePath);
+        
+        if (result.type != ResultType.done && result.type != ResultType.noAppToOpen) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Failed to open document: ${result.message ?? "Unknown error"}'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+        } else if (result.type == ResultType.noAppToOpen) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('No app available to open this file type'),
+                backgroundColor: Colors.orange,
+              ),
+            );
+          }
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Document file not found. Please download again.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error opening document: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text(
-              'Field Officer Dashboard',
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                letterSpacing: 0.5,
-              ),
-            ),
-            if (_username != null || _roleDisplay != null)
-              Padding(
-                padding: const EdgeInsets.only(top: 4.0),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (_username != null)
-                      Row(
+        title: _username != null || _roleDisplay != null
+            ? Row(
+                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  if (_username != null)
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.person_outline,
+                          size: 16,
+                          color: Theme.of(context).brightness == Brightness.dark
+                              ? Colors.white.withOpacity(0.9)
+                              : Colors.black87.withOpacity(0.8),
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          _username!,
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: Theme.of(context).brightness == Brightness.dark
+                                ? Colors.white.withOpacity(0.95)
+                                : Colors.black87,
+                            letterSpacing: 0.3,
+                          ),
+                        ),
+                      ],
+                    ),
+                  if (_username != null && _roleDisplay != null)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 10.0),
+                      child: Container(
+                        width: 1,
+                        height: 18,
+                        color: Theme.of(context).brightness == Brightness.dark
+                            ? Colors.white.withOpacity(0.3)
+                            : Colors.black26,
+                      ),
+                    ),
+                  if (_roleDisplay != null)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: Theme.of(context).brightness == Brightness.dark
+                              ? [
+                                  Colors.white.withOpacity(0.25),
+                                  Colors.white.withOpacity(0.15),
+                                ]
+                              : [
+                                  Colors.blue.withOpacity(0.15),
+                                  Colors.blue.withOpacity(0.1),
+                                ],
+                        ),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: Theme.of(context).brightness == Brightness.dark
+                              ? Colors.white.withOpacity(0.3)
+                              : Colors.blue.withOpacity(0.3),
+                          width: 1,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.1),
+                            blurRadius: 4,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Icon(
-                            Icons.person_outline,
+                            Icons.badge_outlined,
                             size: 14,
                             color: Theme.of(context).brightness == Brightness.dark
                                 ? Colors.white.withOpacity(0.9)
-                                : Colors.black87.withOpacity(0.8),
+                                : Colors.blue[700],
                           ),
-                          const SizedBox(width: 4),
+                          const SizedBox(width: 6),
                           Text(
-                            _username!,
+                            _roleDisplay!,
                             style: TextStyle(
                               fontSize: 13,
                               fontWeight: FontWeight.w600,
+                              letterSpacing: 0.5,
                               color: Theme.of(context).brightness == Brightness.dark
-                                  ? Colors.white.withOpacity(0.95)
-                                  : Colors.black87,
-                              letterSpacing: 0.3,
+                                  ? Colors.white
+                                  : Colors.blue[900],
                             ),
                           ),
                         ],
                       ),
-                    if (_username != null && _roleDisplay != null)
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                        child: Container(
-                          width: 1,
-                          height: 14,
-                          color: Theme.of(context).brightness == Brightness.dark
-                              ? Colors.white.withOpacity(0.3)
-                              : Colors.black26,
-                        ),
-                      ),
-                    if (_roleDisplay != null)
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            colors: Theme.of(context).brightness == Brightness.dark
-                                ? [
-                                    Colors.white.withOpacity(0.25),
-                                    Colors.white.withOpacity(0.15),
-                                  ]
-                                : [
-                                    Colors.blue.withOpacity(0.15),
-                                    Colors.blue.withOpacity(0.1),
-                                  ],
-                          ),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: Theme.of(context).brightness == Brightness.dark
-                                ? Colors.white.withOpacity(0.3)
-                                : Colors.blue.withOpacity(0.3),
-                            width: 1,
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.1),
-                              blurRadius: 4,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              Icons.badge_outlined,
-                              size: 12,
-                              color: Theme.of(context).brightness == Brightness.dark
-                                  ? Colors.white.withOpacity(0.9)
-                                  : Colors.blue[700],
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              _roleDisplay!,
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w600,
-                                letterSpacing: 0.5,
-                                color: Theme.of(context).brightness == Brightness.dark
-                                    ? Colors.white
-                                    : Colors.blue[900],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-          ],
-        ),
+                    ),
+                ],
+              )
+            : null,
         centerTitle: true,
         actions: [
+          const SyncStatusIndicator(),
+          const SizedBox(width: 8),
           IconButton(
             icon: const Icon(Icons.logout),
             onPressed: _logout,
@@ -517,10 +921,52 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
     );
   }
 
+  List<Project> _filterAndSortProjects(List<Project> projects) {
+    // Get search query
+    final searchQuery = _searchController.text.toLowerCase().trim();
+    
+    // Filter by search query
+    var filtered = projects.where((p) {
+      if (searchQuery.isEmpty) return true;
+      return p.title.toLowerCase().contains(searchQuery) ||
+          (p.description?.toLowerCase().contains(searchQuery) ?? false);
+    }).toList();
+    
+    // Sort projects
+    switch (_sortOption) {
+      case 'date_desc':
+        filtered.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+        break;
+      case 'title_asc':
+        filtered.sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
+        break;
+      case 'title_desc':
+        filtered.sort((a, b) => b.title.toLowerCase().compareTo(a.title.toLowerCase()));
+        break;
+      case 'priority':
+        final priorityOrder = {'high': 3, 'medium': 2, 'low': 1};
+        filtered.sort((a, b) {
+          final aPriority = priorityOrder[a.priority?.toLowerCase() ?? 'medium'] ?? 2;
+          final bPriority = priorityOrder[b.priority?.toLowerCase() ?? 'medium'] ?? 2;
+          if (aPriority != bPriority) return bPriority.compareTo(aPriority);
+          return a.createdAt.compareTo(b.createdAt);
+        });
+        break;
+      case 'date_asc':
+      default:
+        filtered.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+        break;
+    }
+    
+    return filtered;
+  }
+
   Widget _buildProjectsTab() {
+    final filteredProjects = _filterAndSortProjects(_projects);
+    
     return RefreshIndicator(
       onRefresh: _loadProjects,
-      child: _isLoadingProjects
+      child: _isLoadingProjects && _projects.isEmpty
           ? const Center(child: CircularProgressIndicator())
           : _projects.isEmpty
               ? Center(
@@ -541,13 +987,225 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
                     ],
                   ),
                 )
-              : ListView.builder(
-                  padding: const EdgeInsets.all(16),
-                  itemCount: _projects.length,
-                  itemBuilder: (context, index) {
-                    final project = _projects[index];
-                    return _buildProjectCard(project);
-                  },
+              : Column(
+                  children: [
+                    _buildOfflineQueueSection(),
+                    // Search and Sort Bar
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      color: Colors.white,
+                      child: Row(
+                        children: [
+                          // Search field
+                          Expanded(
+                            child: TextField(
+                              controller: _searchController,
+                              decoration: InputDecoration(
+                                hintText: 'Search projects...',
+                                prefixIcon: const Icon(Icons.search, size: 20),
+                                suffixIcon: _searchController.text.isNotEmpty
+                                    ? IconButton(
+                                        icon: const Icon(Icons.clear, size: 18),
+                                        onPressed: () {
+                                          _searchController.clear();
+                                        },
+                                      )
+                                    : null,
+                                filled: true,
+                                fillColor: Colors.grey[100],
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                  borderSide: BorderSide.none,
+                                ),
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                isDense: true,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          // Sort dropdown
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: Colors.blue[50],
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(color: Colors.blue[200]!, width: 1.5),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.grey[200]!,
+                                  blurRadius: 4,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ],
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.sort, size: 20, color: Colors.blue[700]),
+                                const SizedBox(width: 6),
+                                DropdownButton<String>(
+                                  value: _sortOption,
+                                  underline: const SizedBox(),
+                                  icon: Icon(Icons.arrow_drop_down, size: 22, color: Colors.blue[700]),
+                                  isDense: false,
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.blue[900],
+                                  ),
+                                  items: const [
+                                    DropdownMenuItem(
+                                      value: 'date_asc',
+                                      child: Text('Date ↑', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+                                    ),
+                                    DropdownMenuItem(
+                                      value: 'date_desc',
+                                      child: Text('Date ↓', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+                                    ),
+                                    DropdownMenuItem(
+                                      value: 'title_asc',
+                                      child: Text('Title A-Z', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+                                    ),
+                                    DropdownMenuItem(
+                                      value: 'title_desc',
+                                      child: Text('Title Z-A', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+                                    ),
+                                    DropdownMenuItem(
+                                      value: 'priority',
+                                      child: Text('Priority', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+                                    ),
+                                  ],
+                                  onChanged: (value) {
+                                    setState(() {
+                                      _sortOption = value!;
+                                    });
+                                  },
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Expanded(
+                      child: filteredProjects.isEmpty
+                          ? Center(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.search_off, size: 64, color: Colors.grey[400]),
+                                  const SizedBox(height: 16),
+                                  Text(
+                                    'No projects found',
+                                    style: TextStyle(fontSize: 18, color: Colors.grey[600]),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    'Try adjusting your search criteria',
+                                    style: TextStyle(color: Colors.grey[500]),
+                                  ),
+                                ],
+                              ),
+                            )
+                          : ListView.builder(
+                              padding: const EdgeInsets.all(16),
+                              itemCount: filteredProjects.length,
+                              itemBuilder: (context, index) {
+                                final project = filteredProjects[index];
+                                return _buildProjectCard(project);
+                              },
+                            ),
+                    ),
+                  ],
+                ),
+    );
+  }
+
+  Widget _buildOfflineQueueSection() {
+    final unsyncedValuations = OfflineStorageService.getUnsyncedValuations();
+    final isOnline = NetworkService.isOnline;
+    
+    // Don't show queue if there are no unsynced items
+    if (unsyncedValuations.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.orange[50],
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.orange[300]!),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.cloud_upload, color: Colors.orange[700], size: 24),
+              const SizedBox(width: 8),
+              Text(
+                'Offline Queue',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.orange[900],
+                ),
+              ),
+              const Spacer(),
+              Chip(
+                label: Text(
+                  '${unsyncedValuations.length}',
+                  style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+                ),
+                backgroundColor: Colors.orange[700],
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            isOnline 
+              ? 'Syncing reports... They will be submitted automatically.'
+              : 'Reports saved offline. They will be submitted when internet connects.',
+            style: TextStyle(
+              fontSize: 14,
+              color: Colors.orange[800],
+            ),
+          ),
+          const SizedBox(height: 12),
+          ...unsyncedValuations.take(3).map((valuation) => Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Row(
+              children: [
+                Icon(Icons.description, size: 16, color: Colors.orange[700]),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    '${valuation['category'] ?? 'Valuation'} - ${valuation['description'] ?? 'No description'}',
+                    style: TextStyle(fontSize: 13, color: Colors.orange[900]),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                if (!isOnline)
+                  Icon(Icons.cloud_off, size: 16, color: Colors.orange[700]),
+              ],
+            ),
+          )),
+          if (unsyncedValuations.length > 3)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                'And ${unsyncedValuations.length - 3} more...',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontStyle: FontStyle.italic,
+                  color: Colors.orange[700],
+                ),
+              ),
+            ),
+        ],
                 ),
     );
   }
@@ -638,8 +1296,53 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
                   ],
                 ),
               ],
-            ],
-          ),
+                const SizedBox(height: 16),
+                // Action buttons
+                      Row(
+                        children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () => _viewProjectDetails(project),
+                        icon: const Icon(Icons.info_outline, size: 18),
+                        label: const Text('Project Details'),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          side: BorderSide(color: Colors.green[700]!),
+                          foregroundColor: Colors.green[700],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                            Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: () => _viewValuationReports(project),
+                        icon: const Icon(Icons.assessment, size: 18),
+                        label: const Text('Valuation Reports'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.blue[700],
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                const SizedBox(height: 12),
+                // Submit to Accessor button
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: () => _submitReportsToAccessor(project),
+                    icon: const Icon(Icons.send, size: 18),
+                    label: const Text('Submit to Accessor'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.teal[700],
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                  ),
+                ),
+                    ],
         ),
       ),
       ),
@@ -731,69 +1434,1159 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
     }
   }
 
+  Color _getValuationStatusColor(String status) {
+    switch (status) {
+      case 'draft':
+        return Colors.grey[600]!;
+      case 'submitted':
+        return Colors.blue[600]!;
+      case 'reviewed':
+        return Colors.purple[600]!;
+      case 'approved':
+        return Colors.green[600]!;
+      case 'rejected':
+        return Colors.red[600]!;
+      default:
+        return Colors.grey[400]!;
+    }
+  }
+
   Future<void> _viewProjectDetails(Project project) async {
+    // Fetch fresh project data to ensure valuations are loaded
+    final projectResult = await ApiService.getProject(project.id);
+    Project? updatedProject = project;
+    
+    if (projectResult['success'] && projectResult['data'] != null) {
+      try {
+        updatedProject = Project.fromJson(projectResult['data']);
+        print('Loaded project with ${updatedProject.valuations.length} valuations');
+        print('Valuations count: ${updatedProject.valuationsCount}');
+      } catch (e) {
+        print('Error parsing updated project: $e');
+        print('Error details: ${e.toString()}');
+        // Fall back to original project if parsing fails
+      }
+    } else {
+      print('Failed to fetch project data: ${projectResult['message']}');
+    }
+    
+    // Ensure updatedProject is never null
+    final finalProject = updatedProject ?? project;
+    
+    final screenWidth = MediaQuery.of(context).size.width;
+    final screenHeight = MediaQuery.of(context).size.height;
+    final isSmallScreen = screenWidth < 360;
+    
     await showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text(project.title),
-        content: SingleChildScrollView(
+      builder: (context) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(isSmallScreen ? 16 : 20)),
+        child: Container(
+          width: screenWidth * (isSmallScreen ? 0.95 : 0.9),
+          constraints: BoxConstraints(
+            maxHeight: screenHeight * (isSmallScreen ? 0.9 : 0.85),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Header with green gradient
+              Container(
+                padding: EdgeInsets.all(isSmallScreen ? 12 : 16),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [Colors.green[600]!, Colors.green[500]!],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(20),
+                    topRight: Radius.circular(20),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(Icons.folder_open, color: Colors.white, size: 20),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              if (project.description != null) ...[
                 Text(
-                  'Description:',
-                  style: TextStyle(fontWeight: FontWeight.bold),
+                            finalProject.title,
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: isSmallScreen ? 18 : 20,
+                              fontWeight: FontWeight.bold,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.2),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Text(
+                              finalProject.statusDisplay,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close, color: Colors.white, size: 20),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                      onPressed: () => Navigator.of(context).pop(),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 4),
-                Text(project.description!),
-                const SizedBox(height: 16),
-              ],
-              Text(
-                'Status: ${project.statusDisplay}',
-                style: TextStyle(fontWeight: FontWeight.bold),
               ),
-              const SizedBox(height: 8),
-              Text(
-                'Priority: ${_formatPriorityLabel(project.priority ?? 'medium')}',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Coordinator: ${project.coordinatorName ?? project.coordinatorUsername}',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
+              // Content
+              Flexible(
+                child: SingleChildScrollView(
+                  physics: const BouncingScrollPhysics(),
+                  padding: EdgeInsets.all(isSmallScreen ? 16 : 20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Project Info Section
+                      if (finalProject.description != null) ...[
+                        Card(
+                          elevation: 2,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          child: Padding(
+                            padding: EdgeInsets.all(isSmallScreen ? 12 : 16),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Icon(Icons.description, color: Colors.blue[700], size: 20),
+                                    const SizedBox(width: 8),
+                                    const Text(
+                                      'Description',
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.black87,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 12),
+                                Text(
+                                  finalProject.description!,
+                                  style: TextStyle(color: Colors.grey[800], fontSize: 14),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
               const SizedBox(height: 16),
-              if (project.documents.isNotEmpty) ...[
-                const Text(
-                  'Documents:',
-                  style: TextStyle(fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 8),
-                ...project.documents.map((doc) => ListTile(
-                      title: Text(doc.name),
-                      subtitle: Text(doc.fileSizeFormatted),
+                      ],
+                      _buildModernInfoCard(
+                        icon: Icons.flag,
+                        label: 'Priority',
+                        value: _formatPriorityLabel(finalProject.priority ?? 'medium'),
+                        color: _getPriorityColor(finalProject.priority ?? 'medium'),
+                      ),
+                      const SizedBox(height: 12),
+                      _buildModernInfoCard(
+                        icon: Icons.person,
+                        label: 'Coordinator',
+                        value: finalProject.coordinatorName ?? finalProject.coordinatorUsername,
+                        color: Colors.blue,
+                      ),
+                      // Documents Section (if any)
+                      if (finalProject.documents.isNotEmpty) ...[
+                        const SizedBox(height: 24),
+                        Card(
+                          elevation: 2,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          child: Padding(
+                            padding: EdgeInsets.all(isSmallScreen ? 12 : 16),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Icon(Icons.insert_drive_file, color: Colors.blue[700], size: 20),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      'Documents (${finalProject.documents.length})',
+                                      style: const TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.black87,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 12),
+                                ...finalProject.documents.map((doc) => Padding(
+                                      padding: const EdgeInsets.only(bottom: 8),
+                                      child: ListTile(
+                                        contentPadding: EdgeInsets.zero,
+                                        leading: Container(
+                                          padding: const EdgeInsets.all(8),
+                                          decoration: BoxDecoration(
+                                            color: Colors.grey[100],
+                                            borderRadius: BorderRadius.circular(8),
+                                          ),
+                                          child: const Icon(Icons.insert_drive_file, color: Colors.grey, size: 20),
+                                        ),
+                                        title: Text(
+                                          doc.name,
+                                          style: const TextStyle(fontWeight: FontWeight.w500),
+                                        ),
+                                        subtitle: Text(
+                                          doc.fileSizeFormatted,
+                                          style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                                        ),
                       trailing: doc.fileUrl != null
-                          ? IconButton(
-                              icon: const Icon(Icons.download),
-                              onPressed: () {
-                                // TODO: Implement file download
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(content: Text('Download: ${doc.fileUrl}')),
+                                            ? FutureBuilder<bool>(
+                                                key: ValueKey('doc_${doc.id}_${_downloadedDocuments.contains(doc.id)}'),
+                                                future: _isDocumentDownloaded(doc.id),
+                                                builder: (context, snapshot) {
+                                                  final isDownloaded = snapshot.data ?? false;
+                                                  return IconButton(
+                                                    icon: Icon(
+                                                      isDownloaded ? Icons.visibility : Icons.download,
+                                                      size: 20,
+                                                    ),
+                                                    color: Colors.blue[700],
+                                                    tooltip: isDownloaded ? 'View Document' : 'Download Document',
+                                                    onPressed: () async {
+                                                      if (isDownloaded) {
+                                                        // View downloaded file
+                                                        final filePath = await _getLocalFilePath(doc.id);
+                                                        if (filePath != null) {
+                                                          await _viewDownloadedDocument(filePath);
+                                                        }
+                                                      } else {
+                                                        // Download file first
+                                                        await _downloadDocument(doc);
+                                                      }
+                                                    },
                                 );
                               },
                             )
                           : null,
-                    )),
-              ],
+                                      ),
+                                    )),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Future<void> _viewValuationReports(Project project) async {
+    // Fetch fresh project data to ensure valuations are loaded
+    final projectResult = await ApiService.getProject(project.id);
+    Project? updatedProject = project;
+    
+    if (projectResult['success'] && projectResult['data'] != null) {
+      try {
+        updatedProject = Project.fromJson(projectResult['data']);
+      } catch (e) {
+        print('Error parsing updated project: $e');
+      }
+    }
+    
+    final finalProject = updatedProject ?? project;
+    final screenWidth = MediaQuery.of(context).size.width;
+    final screenHeight = MediaQuery.of(context).size.height;
+    final isSmallScreen = screenWidth < 360;
+    
+    await showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(isSmallScreen ? 16 : 20)),
+        child: Container(
+          width: screenWidth * (isSmallScreen ? 0.95 : 0.9),
+          constraints: BoxConstraints(
+            maxHeight: screenHeight * (isSmallScreen ? 0.9 : 0.85),
+          ),
+          child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+              // Header with gradient
+              Container(
+                padding: EdgeInsets.all(isSmallScreen ? 16 : 20),
+                decoration: BoxDecoration(
+                  color: Colors.blue[500]!,
+                  borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(20),
+                    topRight: Radius.circular(20),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.blue[400]!,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(Icons.assessment, color: Colors.white, size: 24),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Valuation Reports',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: isSmallScreen ? 18 : 20,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            finalProject.title,
+                            style: TextStyle(
+                              color: Colors.white.withOpacity(0.9),
+                              fontSize: isSmallScreen ? 12 : 14,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                            IconButton(
+                      icon: const Icon(Icons.close, color: Colors.white),
+                      onPressed: () => Navigator.of(context).pop(),
+                    ),
+                  ],
+                ),
+              ),
+              // Content
+              Expanded(
+                child: SingleChildScrollView(
+                  physics: const BouncingScrollPhysics(),
+                  padding: EdgeInsets.all(isSmallScreen ? 16 : 20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Generated Reports Section
+                      Card(
+                        elevation: 2,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Container(
+                              padding: EdgeInsets.all(isSmallScreen ? 12 : 16),
+                              decoration: BoxDecoration(
+                                color: Colors.blue[50],
+                                borderRadius: const BorderRadius.only(
+                                  topLeft: Radius.circular(12),
+                                  topRight: Radius.circular(12),
+                                ),
+                              ),
+                              child: Row(
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.all(8),
+                                    decoration: BoxDecoration(
+                                      color: Colors.blue[100],
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Icon(Icons.assessment, color: Colors.blue[700], size: 20),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  const Expanded(
+                                    child: Text(
+                                      'Generated Reports',
+                                      style: TextStyle(
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.black87,
+                                      ),
+                                    ),
+                                  ),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                    decoration: BoxDecoration(
+                                      color: Colors.blue[700],
+                                      borderRadius: BorderRadius.circular(16),
+                                    ),
+                                    child: Text(
+                                      '${finalProject.valuations.length}',
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 14,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const Divider(height: 1),
+                            if (finalProject.valuations.isEmpty)
+                              Padding(
+                                padding: const EdgeInsets.all(24),
+                                child: Center(
+                                  child: Column(
+                                    children: [
+                                      Icon(Icons.description_outlined, size: 48, color: Colors.grey[400]),
+                                      const SizedBox(height: 12),
+                                      Text(
+                                        'No reports generated yet',
+                                        style: TextStyle(
+                                          fontSize: 16,
+                                          color: Colors.grey[600],
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        'Create a valuation report to get started',
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          color: Colors.grey[500],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              )
+                            else
+                              Padding(
+                                padding: EdgeInsets.all(isSmallScreen ? 12 : 16),
+                                child: Column(
+                                  children: finalProject.valuations.map((valuation) => Padding(
+                                    padding: const EdgeInsets.only(bottom: 12),
+                                    child: Card(
+                                      elevation: 2,
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      child: Padding(
+                                        padding: EdgeInsets.all(isSmallScreen ? 12 : 16),
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Row(
+                                              children: [
+                                                Container(
+                                                  width: 48,
+                                                  height: 48,
+                                                  decoration: BoxDecoration(
+                                                    color: _getValuationStatusColor(valuation.status).withOpacity(0.15),
+                                                    borderRadius: BorderRadius.circular(12),
+                                                  ),
+                                                  child: Center(
+                                                    child: Icon(
+                                                      Icons.description,
+                                                      color: _getValuationStatusColor(valuation.status),
+                                                      size: 24,
+                                                    ),
+                                                  ),
+                                                ),
+                                                const SizedBox(width: 12),
+                                                Expanded(
+                                                  child: Column(
+                                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                                    children: [
+                                                      Text(
+                                                        valuation.categoryDisplay,
+                                                        style: const TextStyle(
+                                                          fontWeight: FontWeight.w600,
+                                                          fontSize: 16,
+                                                        ),
+                                                      ),
+                                                      const SizedBox(height: 6),
+                                                      Container(
+                                                        padding: const EdgeInsets.symmetric(
+                                                          horizontal: 10,
+                                                          vertical: 4,
+                                                        ),
+                                                        decoration: BoxDecoration(
+                                                          color: _getValuationStatusColor(valuation.status).withOpacity(0.2),
+                                                          borderRadius: BorderRadius.circular(6),
+                                                        ),
+                                                        child: Text(
+                                                          valuation.status == 'draft' ? 'Saved' : valuation.statusDisplay,
+                                                          style: TextStyle(
+                                                            fontSize: 12,
+                                                            fontWeight: FontWeight.w500,
+                                                            color: _getValuationStatusColor(valuation.status),
+                                                          ),
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                            const SizedBox(height: 12),
+                                            Row(
+                                              children: [
+                                                Icon(Icons.calendar_today, size: 14, color: Colors.grey[600]),
+                                                const SizedBox(width: 6),
+                                                Text(
+                                                  'Created: ${DateFormat('MMM dd, yyyy').format(valuation.createdAt)}',
+                                                  style: TextStyle(
+                                                    fontSize: 12,
+                                                    color: Colors.grey[600],
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                            const SizedBox(height: 12),
+                                            // Action buttons row
+                                            Row(
+                                              mainAxisAlignment: MainAxisAlignment.end,
+                                              children: [
+                                                Container(
+                                                  decoration: BoxDecoration(
+                                                    color: Colors.orange[50],
+                                                    borderRadius: BorderRadius.circular(8),
+                                                  ),
+                                                  child: IconButton(
+                                                    icon: const Icon(Icons.article, size: 20),
+                                                    color: Colors.orange[700],
+                                                    tooltip: 'Generate PDF Report',
+                                                    padding: const EdgeInsets.all(8),
+                                                    constraints: const BoxConstraints(
+                                                      minWidth: 40,
+                                                      minHeight: 40,
+                                                    ),
+                                                    onPressed: () async {
+                                                      await _generatePdfReport(valuation, finalProject);
+                                                    },
+                                                  ),
+                                                ),
+                                                // Show edit button if valuation can be edited (within 2 days of creation)
+                                                if (_canEditValuation(valuation)) ...[
+                                                  const SizedBox(width: 8),
+                                                  Container(
+                                                    decoration: BoxDecoration(
+                                                      color: Colors.blue[50],
+                                                      borderRadius: BorderRadius.circular(8),
+                                                    ),
+                                                    child: IconButton(
+                                                      icon: const Icon(Icons.edit_outlined, size: 20),
+                                                      color: Colors.blue[700],
+                                                      tooltip: 'Edit Report',
+                                                      padding: const EdgeInsets.all(8),
+                                                      constraints: const BoxConstraints(
+                                                        minWidth: 40,
+                                                        minHeight: 40,
+                                                      ),
+                                                      onPressed: () async {
+                                Navigator.of(context).pop();
+                                                        final result = await Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (_) => ValuationFormScreen(
+                                                              project: finalProject,
+                                      existingValuation: valuation,
+                                    ),
+                                  ),
+                                );
+                                                        // Refresh projects when form returns (valuation saved/submitted)
+                                                        if (result == true) {
+                                                          _loadProjects();
+                                                        }
+                                                      },
+                                                    ),
+                                                  ),
+                                                ],
+                                                // Show delete button if valuation was created within 2 days
+                                                if (_canDeleteValuation(valuation)) ...[
+                                                  const SizedBox(width: 8),
+                                                  Container(
+                                                    decoration: BoxDecoration(
+                                                      color: Colors.red[50],
+                                                      borderRadius: BorderRadius.circular(8),
+                                                    ),
+                                                    child: IconButton(
+                                                      icon: const Icon(Icons.delete_outline, size: 20),
+                                                      color: Colors.red[700],
+                                                      tooltip: 'Delete Report',
+                                                      padding: const EdgeInsets.all(8),
+                                                      constraints: const BoxConstraints(
+                                                        minWidth: 40,
+                                                        minHeight: 40,
+                                                      ),
+                              onPressed: () async {
+                                                        await _deleteValuation(valuation, finalProject);
+                                                      },
+                                                    ),
+                                                  ),
+                                                ],
+                                              ],
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  )).toList(),
+                                ),
+                              ),
+            ],
+          ),
+        ),
+                    ],
+                  ),
+                ),
+              ),
+              // Footer Actions
+              Container(
+                padding: EdgeInsets.all(isSmallScreen ? 16 : 20),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: const BorderRadius.only(
+                    bottomLeft: Radius.circular(20),
+                    bottomRight: Radius.circular(20),
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.05),
+                      blurRadius: 10,
+                      offset: const Offset(0, -2),
+                    ),
+                  ],
+                ),
+                child: SizedBox(
+                  width: double.infinity,
+                  height: 60,
+                  child: ElevatedButton.icon(
+                    onPressed: () async {
+              Navigator.of(context).pop();
+                      final result = await Navigator.of(context).push(
+                MaterialPageRoute(
+                          builder: (_) => ValuationFormScreen(project: finalProject),
+                        ),
+                      );
+                      // Refresh projects when form returns (valuation saved/submitted)
+                      if (result == true) {
+                        _loadProjects();
+                      }
+                    },
+                    icon: Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: const Icon(Icons.add_rounded, size: 20),
+                    ),
+                    label: const Text(
+                      'Create New Report',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 0.3,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue[700],
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      elevation: 0,
+                      shadowColor: Colors.transparent,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildModernInfoCard({
+    required IconData icon,
+    required String label,
+    required String value,
+    required Color color,
+  }) {
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: color.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(icon, color: color, size: 16),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey[600],
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              value,
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+                color: Colors.black87,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInfoSection({required String title, required Widget child}) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: const TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            color: Colors.black87,
+          ),
+        ),
+        const SizedBox(height: 8),
+        child,
+      ],
+    );
+  }
+
+  /// Check if a valuation can be edited (created within 2 days)
+  bool _canEditValuation(Valuation valuation) {
+    final now = DateTime.now();
+    final createdAt = valuation.createdAt;
+    final difference = now.difference(createdAt);
+    
+    // Allow editing if created within 2 days (48 hours)
+    return difference.inDays < 2;
+  }
+
+  /// Check if a valuation can be deleted (created within 2 days)
+  bool _canDeleteValuation(Valuation valuation) {
+    final now = DateTime.now();
+    final createdAt = valuation.createdAt;
+    final difference = now.difference(createdAt);
+    
+    // Allow deletion if created within 2 days (48 hours)
+    return difference.inDays < 2;
+  }
+
+  /// Delete a valuation
+  Future<void> _deleteValuation(Valuation valuation, Project project) async {
+    // Confirm deletion
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Report'),
+        content: Text(
+          'Are you sure you want to delete this ${valuation.categoryDisplay} report? '
+          'This action cannot be undone.',
+        ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Close'),
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) {
+      return;
+    }
+
+    // Show loading indicator
+    if (context.mounted) {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(
+          child: Card(
+            child: Padding(
+              padding: EdgeInsets.all(20.0),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(height: 16),
+                  Text('Deleting report...'),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    try {
+      // Delete from server
+      final result = await ApiService.deleteValuation(valuation.id);
+
+      // Close loading dialog
+      if (context.mounted) {
+        Navigator.of(context).pop();
+      }
+
+      if (result['success']) {
+        // Show success message
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Report deleted successfully'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+
+        // Close the project detail dialog
+        if (context.mounted) {
+          Navigator.of(context).pop();
+        }
+
+        // Refresh projects list
+        _loadProjects();
+      } else {
+        // Show error message
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(result['message'] ?? 'Failed to delete report'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      // Close loading dialog
+      if (context.mounted) {
+        Navigator.of(context).pop();
+      }
+
+      // Show error message
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error deleting report: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _submitReportsToAccessor(Project project) async {
+    // Check if accessor is assigned
+    if (project.assignedAccessorId == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No accessor assigned to this project. Please contact the coordinator.'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+      return;
+    }
+
+    // Fetch fresh project data to ensure valuations are loaded
+    final projectResult = await ApiService.getProject(project.id);
+    Project? updatedProject = project;
+    
+    if (projectResult['success'] && projectResult['data'] != null) {
+      try {
+        updatedProject = Project.fromJson(projectResult['data']);
+      } catch (e) {
+        print('Error parsing updated project: $e');
+      }
+    }
+    
+    final finalProject = updatedProject ?? project;
+    
+    // Filter draft valuations
+    final draftValuations = finalProject.valuations.where((v) => v.status == 'draft').toList();
+    
+    if (draftValuations.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No draft reports to submit. All reports are already submitted.'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+      return;
+    }
+
+    // Show confirmation dialog
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Submit Reports to Accessor'),
+        content: Text(
+          'Are you sure you want to submit ${draftValuations.length} report(s) to ${finalProject.assignedAccessorName ?? finalProject.assignedAccessorUsername ?? 'the accessor'} for review?\n\n'
+          'Once submitted, you will not be able to edit these reports.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.lightBlue,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Submit'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    // Show loading indicator
+    if (mounted) {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(
+          child: Card(
+            child: Padding(
+              padding: EdgeInsets.all(20.0),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(height: 16),
+                  Text('Submitting reports...'),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    int successCount = 0;
+    int failCount = 0;
+    List<String> errors = [];
+
+    // Submit each draft valuation
+    for (var valuation in draftValuations) {
+      try {
+        final result = await ApiService.submitValuation(valuation.id);
+        if (result['success']) {
+          successCount++;
+        } else {
+          failCount++;
+          errors.add('${valuation.categoryDisplay}: ${result['message'] ?? 'Failed to submit'}');
+        }
+      } catch (e) {
+        failCount++;
+        errors.add('${valuation.categoryDisplay}: ${e.toString()}');
+      }
+    }
+
+    // Close loading dialog
+    if (mounted) {
+      Navigator.of(context).pop();
+    }
+
+    // Show results
+    if (mounted) {
+      if (failCount == 0) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Successfully submitted $successCount report(s) to the accessor!'),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      } else if (successCount > 0) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Submitted $successCount report(s), but $failCount failed. ${errors.join('; ')}'),
+            backgroundColor: Colors.orange,
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to submit reports. ${errors.join('; ')}'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      }
+      
+      // Refresh projects list
+      await _loadProjects();
+    }
+  }
+
+  Future<void> _generatePdfReport(Valuation valuation, Project project) async {
+    // Show loading indicator
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(
+        child: Card(
+          child: Padding(
+            padding: EdgeInsets.all(20.0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularProgressIndicator(),
+                SizedBox(height: 16),
+                Text('Generating PDF report...'),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+
+    try {
+      // Generate PDF
+      print('Generating PDF for valuation ${valuation.id}, category: ${valuation.category}, statusDisplay: ${valuation.statusDisplay}');
+      final pdfFile = await PdfService.generateValuationReport(
+        valuation: valuation,
+        project: project,
+      );
+
+      // Close loading dialog
+      if (context.mounted) {
+        Navigator.of(context).pop();
+      }
+
+      // Share/Print the PDF
+      if (context.mounted) {
+        try {
+          await PdfService.sharePdf(
+            pdfFile,
+            subject: 'Valuation Report - ${valuation.categoryDisplay}',
+          );
+        } catch (shareError) {
+          print('Error sharing PDF: $shareError');
+          // Try alternative method
+          if (context.mounted) {
+            await PdfService.saveAndOpenPdf(pdfFile);
+          }
+        }
+      }
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('PDF report generated successfully!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      // Close loading dialog if still open
+      if (context.mounted) {
+        Navigator.of(context).pop();
+      }
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error generating PDF: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      print('Error generating PDF: $e');
+    }
+  }
+
+  Widget _buildInfoCard({required String label, required String value}) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.grey[50],
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.grey[200]!),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              color: Colors.grey[600],
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: Colors.black87,
+            ),
           ),
         ],
       ),

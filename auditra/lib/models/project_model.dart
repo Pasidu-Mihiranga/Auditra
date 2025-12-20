@@ -1,3 +1,5 @@
+import 'valuation_model.dart';
+
 class Project {
   final int id;
   final String title;
@@ -36,6 +38,8 @@ class Project {
   final DateTime? endDate;
   final List<ProjectDocument> documents;
   final int documentsCount;
+  final List<Valuation> valuations;
+  final int valuationsCount;
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -77,19 +81,54 @@ class Project {
     this.endDate,
     required this.documents,
     required this.documentsCount,
+    required this.valuations,
+    required this.valuationsCount,
     required this.createdAt,
     required this.updatedAt,
   });
 
   factory Project.fromJson(Map<String, dynamic> json) {
+    // Helper to safely parse int values
+    int? parseIntSafely(dynamic value) {
+      if (value == null) return null;
+      if (value is int) return value;
+      if (value is String) return int.tryParse(value);
+      if (value is double) return value.toInt();
+      return null;
+    }
+
+    // Parse required int fields with validation
+    final id = parseIntSafely(json['id']);
+    final coordinatorId = parseIntSafely(json['coordinator']);
+
+    if (id == null) {
+      throw FormatException('Required field "id" is null or cannot be parsed in Project JSON: ${json['id']}');
+    }
+    if (coordinatorId == null) {
+      throw FormatException('Required field "coordinator" is null or cannot be parsed in Project JSON: ${json['coordinator']}');
+    }
+
+    // Parse valuations safely, skipping any that fail to parse
+    List<Valuation> valuations = [];
+    if (json['valuations'] != null && json['valuations'] is List) {
+      for (var valJson in json['valuations']) {
+        try {
+          valuations.add(Valuation.fromJson(valJson));
+        } catch (e) {
+          print('Warning: Failed to parse valuation: $e');
+          // Continue with other valuations
+        }
+      }
+    }
+
     return Project(
-      id: json['id'],
-      title: json['title'],
+      id: id,
+      title: json['title'] ?? '',
       description: json['description'],
-      coordinatorId: json['coordinator'],
+      coordinatorId: coordinatorId,
       coordinatorUsername: json['coordinator_username'] ?? '',
       coordinatorName: json['coordinator_name'],
-      assignedFieldOfficerId: json['assigned_field_officer'],
+      assignedFieldOfficerId: parseIntSafely(json['assigned_field_officer']),
       assignedFieldOfficerUsername: json['assigned_field_officer_username'],
       assignedFieldOfficerName: json['assigned_field_officer_name'],
       assignedFieldOfficerEmail: json['assigned_field_officer_email'],
@@ -119,9 +158,19 @@ class Project {
       startDate: json['start_date'] != null ? DateTime.parse(json['start_date']) : null,
       endDate: json['end_date'] != null ? DateTime.parse(json['end_date']) : null,
       documents: (json['documents'] as List<dynamic>?)
-          ?.map((doc) => ProjectDocument.fromJson(doc))
+          ?.map((doc) {
+            try {
+              return ProjectDocument.fromJson(doc);
+            } catch (e) {
+              print('Warning: Failed to parse document: $e');
+              return null;
+            }
+          })
+          .whereType<ProjectDocument>()
           .toList() ?? [],
-      documentsCount: json['documents_count'] ?? 0,
+      documentsCount: parseIntSafely(json['documents_count']) ?? 0,
+      valuations: valuations,
+      valuationsCount: parseIntSafely(json['valuations_count']) ?? valuations.length,
       createdAt: DateTime.parse(json['created_at']),
       updatedAt: DateTime.parse(json['updated_at']),
     );
@@ -131,6 +180,65 @@ class Project {
   bool get isPending => status == 'pending';
   bool get isInProgress => status == 'in_progress';
   bool get isCompleted => status == 'completed';
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'title': title,
+      'description': description,
+      'coordinator': coordinatorId,
+      'coordinator_username': coordinatorUsername,
+      'coordinator_name': coordinatorName,
+      'assigned_field_officer': assignedFieldOfficerId,
+      'assigned_field_officer_username': assignedFieldOfficerUsername,
+      'assigned_field_officer_name': assignedFieldOfficerName,
+      'assigned_field_officer_email': assignedFieldOfficerEmail,
+      'assigned_client': assignedClientId,
+      'assigned_client_username': assignedClientUsername,
+      'assigned_client_name': assignedClientName,
+      'assigned_client_email': assignedClientEmail,
+      'assigned_agent': assignedAgentId,
+      'assigned_agent_username': assignedAgentUsername,
+      'assigned_agent_name': assignedAgentName,
+      'assigned_agent_email': assignedAgentEmail,
+      'assigned_accessor': assignedAccessorId,
+      'assigned_accessor_username': assignedAccessorUsername,
+      'assigned_accessor_name': assignedAccessorName,
+      'assigned_accessor_email': assignedAccessorEmail,
+      'assigned_senior_valuer': assignedSeniorValuerId,
+      'assigned_senior_valuer_username': assignedSeniorValuerUsername,
+      'assigned_senior_valuer_name': assignedSeniorValuerName,
+      'assigned_senior_valuer_email': assignedSeniorValuerEmail,
+      'has_agent': hasAgent,
+      'client_info': clientInfo,
+      'agent_info': agentInfo,
+      'priority': priority,
+      'status': status,
+      'status_display': statusDisplay,
+      'workflow_stage': workflowStage,
+      'start_date': startDate?.toIso8601String(),
+      'end_date': endDate?.toIso8601String(),
+      'documents': documents.map((doc) => doc.toJson()).toList(),
+      'documents_count': documentsCount,
+      'valuations': valuations.map((val) => _valuationToJson(val)).toList(),
+      'valuations_count': valuationsCount,
+      'created_at': createdAt.toIso8601String(),
+      'updated_at': updatedAt.toIso8601String(),
+    };
+  }
+
+  // Helper to convert Valuation to JSON (simplified)
+  Map<String, dynamic> _valuationToJson(Valuation val) {
+    return {
+      'id': val.id,
+      'project': val.projectId,
+      'category': val.category,
+      'status': val.status,
+      'description': val.description,
+      'estimated_value': val.estimatedValue,
+      // Add other fields as needed
+    };
+  }
 }
 
 class ProjectDocument {
@@ -163,14 +271,33 @@ class ProjectDocument {
   });
 
   factory ProjectDocument.fromJson(Map<String, dynamic> json) {
+    // Helper to safely parse int values
+    int? parseIntSafely(dynamic value) {
+      if (value == null) return null;
+      if (value is int) return value;
+      if (value is String) return int.tryParse(value);
+      if (value is double) return value.toInt();
+      return null;
+    }
+
+    final id = parseIntSafely(json['id']);
+    final projectId = parseIntSafely(json['project']);
+
+    if (id == null) {
+      throw FormatException('Required field "id" is null or cannot be parsed in ProjectDocument JSON: ${json['id']}');
+    }
+    if (projectId == null) {
+      throw FormatException('Required field "project" is null or cannot be parsed in ProjectDocument JSON: ${json['project']}');
+    }
+
     return ProjectDocument(
-      id: json['id'],
-      projectId: json['project'],
+      id: id,
+      projectId: projectId,
       fileUrl: json['file_url'],
-      fileSize: json['file_size'],
+      fileSize: parseIntSafely(json['file_size']),
       name: json['name'] ?? 'Unknown Document',
       description: json['description'],
-      uploadedById: json['uploaded_by'],
+      uploadedById: parseIntSafely(json['uploaded_by']),
       uploadedByUsername: json['uploaded_by_username'],
       assignedToId: json['assigned_to'],
       assignedToUsername: json['assigned_to_username'],
@@ -184,6 +311,23 @@ class ProjectDocument {
     if (fileSize! < 1024) return '${fileSize}B';
     if (fileSize! < 1024 * 1024) return '${(fileSize! / 1024).toStringAsFixed(1)}KB';
     return '${(fileSize! / (1024 * 1024)).toStringAsFixed(1)}MB';
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'project': projectId,
+      'file_url': fileUrl,
+      'file_size': fileSize,
+      'name': name,
+      'description': description,
+      'uploaded_by': uploadedById,
+      'uploaded_by_username': uploadedByUsername,
+      'assigned_to': assignedToId,
+      'assigned_to_username': assignedToUsername,
+      'assigned_to_name': assignedToName,
+      'uploaded_at': uploadedAt.toIso8601String(),
+    };
   }
 }
 

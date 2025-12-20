@@ -31,11 +31,27 @@ class ProjectListView(generics.ListCreateAPIView):
         
         # Coordinators see all projects they created
         if hasattr(user, 'role') and user.role.role == 'coordinator':
-            return Project.objects.filter(coordinator=user)
+            queryset = Project.objects.filter(coordinator=user)
         
         # Field officers see only assigned projects
         elif hasattr(user, 'role') and user.role.role == 'field_officer':
-            return Project.objects.filter(assigned_field_officer=user)
+            queryset = Project.objects.filter(assigned_field_officer=user)
+        
+        # Clients see only assigned projects
+        elif hasattr(user, 'role') and user.role.role == 'client':
+            return Project.objects.filter(assigned_client=user)
+        
+        # Agents see only assigned projects
+        elif hasattr(user, 'role') and user.role.role == 'agent':
+            return Project.objects.filter(assigned_agent=user)
+        
+        # Accessors see only assigned projects
+        elif hasattr(user, 'role') and user.role.role == 'accessor':
+            return Project.objects.filter(assigned_accessor=user)
+        
+        # Senior valuers see only assigned projects
+        elif hasattr(user, 'role') and user.role.role == 'senior_valuer':
+            return Project.objects.filter(assigned_senior_valuer=user)
         
         # Clients see only assigned projects
         elif hasattr(user, 'role') and user.role.role == 'client':
@@ -55,9 +71,16 @@ class ProjectListView(generics.ListCreateAPIView):
         
         # Admins see all projects
         elif user.is_staff or user.is_superuser:
-            return Project.objects.all()
+            queryset = Project.objects.all()
+        else:
+            queryset = Project.objects.none()
         
-        return Project.objects.none()
+        # Optimize queryset with select_related and prefetch_related
+        return queryset.select_related(
+            'coordinator', 'assigned_field_officer'
+        ).prefetch_related(
+            'documents', 'valuations__field_officer', 'valuations__photos'
+        )
     
     def perform_create(self, serializer):
         # Only coordinators can create projects
