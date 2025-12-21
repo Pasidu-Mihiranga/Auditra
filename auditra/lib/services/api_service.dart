@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'offline_db_service.dart';
 import 'offline_storage_service.dart';
 import 'network_service.dart';
+import 'sync_engine.dart';
 import '../models/project_model.dart';
 
 // Helper function to safely parse JSON response and handle HTML errors
@@ -1651,37 +1652,50 @@ class ApiService {
     final useOfflineMode = await _shouldUseOfflineMode();
     
     if (useOfflineMode) {
-      // OFFLINE-FIRST: Always save locally first
-      try {
-        final localId = await OfflineStorageService.saveValuationOffline(valuationData);
-        print('💾 Valuation saved offline with localId: ${localId.substring(0, 8)}...');
-        
-        // Try to sync immediately if online
-        if (NetworkService.isOnline) {
-          try {
-            final syncResult = await syncValuationToServer(valuationData);
-            if (syncResult['success']) {
-              final serverId = syncResult['data']['id'] as int;
-              await OfflineStorageService.markValuationSynced(localId, serverId);
-              print('✅ Valuation synced immediately: $localId -> $serverId');
-              return {'success': true, 'data': syncResult['data'], 'localId': localId};
-            } else {
-              // Sync failed, but data saved locally
-              print('📴 Sync failed, but valuation saved locally');
-              return {'success': true, 'localId': localId, 'synced': false};
-            }
-          } catch (syncErr) {
-            // Sync failed, but data saved locally
-            print('📴 Sync error, but valuation saved locally: $syncErr');
+      // Check network status first
+      final isOnline = NetworkService.isOnline;
+      
+      if (isOnline) {
+        // ONLINE: Try to send directly to server first
+        try {
+          final syncResult = await syncValuationToServer(valuationData);
+          if (syncResult['success']) {
+            // Successfully sent to server - no need for offline storage
+            print('✅ Valuation sent directly to server (online mode)');
+            return {'success': true, 'data': syncResult['data']};
+          } else {
+            // Server request failed - fall back to offline storage
+            print('⚠️ Server request failed, saving offline: ${syncResult['message']}');
+            final localId = await OfflineStorageService.saveValuationOffline(valuationData);
+            // Trigger background sync retry
+            Future.delayed(const Duration(seconds: 2), () {
+              SyncEngine.syncAll(silent: true);
+            });
             return {'success': true, 'localId': localId, 'synced': false};
           }
-        } else {
-          // Offline, data saved locally
-          print('📴 Offline - valuation saved locally, will sync later');
-          return {'success': true, 'localId': localId, 'synced': false};
+        } catch (e) {
+          // Network error - save offline and retry
+          print('⚠️ Network error, saving offline: $e');
+          try {
+            final localId = await OfflineStorageService.saveValuationOffline(valuationData);
+            // Trigger background sync retry
+            Future.delayed(const Duration(seconds: 2), () {
+              SyncEngine.syncAll(silent: true);
+            });
+            return {'success': true, 'localId': localId, 'synced': false};
+          } catch (saveErr) {
+            return {'success': false, 'message': 'Failed to save valuation offline: $saveErr'};
+          }
         }
-      } catch (e) {
-        return {'success': false, 'message': 'Failed to save valuation offline: $e'};
+      } else {
+        // OFFLINE: Save to offline storage
+        try {
+          final localId = await OfflineStorageService.saveValuationOffline(valuationData);
+          print('📴 Offline - valuation saved locally, will sync when online');
+          return {'success': true, 'localId': localId, 'synced': false};
+        } catch (e) {
+          return {'success': false, 'message': 'Failed to save valuation offline: $e'};
+        }
       }
     }
     
@@ -1981,6 +1995,65 @@ class ApiService {
       } else {
         final data = jsonDecode(response.body);
         return {'success': false, 'message': data['detail'] ?? 'Failed to delete photo'};
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'Connection error: $e'};
+    }
+  }
+
+  static Future<Map<String, dynamic>> acceptValuation(int valuationId) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token');
+
+      if (token == null) {
+        return {'success': false, 'message': 'Not authenticated'};
+      }
+
+      final response = await http.post(
+        Uri.parse('$baseUrl/valuations/$valuationId/accept/'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      final data = jsonDecode(response.body);
+
+      if (response.statusCode == 200) {
+        return {'success': true, 'data': data};
+      } else {
+        return {'success': false, 'message': data['error'] ?? data['detail'] ?? 'Failed to accept valuation'};
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'Connection error: $e'};
+    }
+  }
+
+  static Future<Map<String, dynamic>> rejectValuation(int valuationId, {required String rejectionReason}) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token');
+
+      if (token == null) {
+        return {'success': false, 'message': 'Not authenticated'};
+      }
+
+      final response = await http.post(
+        Uri.parse('$baseUrl/valuations/$valuationId/reject/'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({'rejection_reason': rejectionReason}),
+      );
+
+      final data = jsonDecode(response.body);
+
+      if (response.statusCode == 200) {
+        return {'success': true, 'data': data};
+      } else {
+        return {'success': false, 'message': data['error'] ?? data['detail'] ?? 'Failed to reject valuation'};
       }
     } catch (e) {
       return {'success': false, 'message': 'Connection error: $e'};

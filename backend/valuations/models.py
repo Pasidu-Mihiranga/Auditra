@@ -69,6 +69,13 @@ class Valuation(models.Model):
     other_type = models.CharField(max_length=200, blank=True)
     other_specifications = models.TextField(blank=True)
     
+    # Accessor review fields
+    rejection_reason = models.TextField(blank=True, help_text='Reason for rejection if status is rejected')
+    
+    # Senior valuer fields
+    senior_valuer_comments = models.TextField(blank=True, default='', help_text='Comments from senior valuer during review')
+    final_report = models.FileField(upload_to='final_valuation_reports/%Y/%m/%d/', blank=True, null=True, help_text='Final valuation report uploaded by senior valuer for MD/GM approval')
+    
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     submitted_at = models.DateTimeField(null=True, blank=True)
@@ -90,12 +97,16 @@ class Valuation(models.Model):
             self.save()
     
     def can_be_edited(self):
-        """Check if valuation can be edited (draft or submitted within 2 hours)"""
+        """Check if valuation can be edited (draft, submitted within 2 hours, or rejected)"""
         if self.status == 'draft':
+            return True
+        if self.status == 'rejected':
+            # Rejected valuations can always be edited
             return True
         if self.status == 'submitted' and self.submitted_at:
             time_diff = timezone.now() - self.submitted_at
             return time_diff.total_seconds() <= 2 * 60 * 60  # 2 hours in seconds
+        # Reviewed and approved valuations cannot be edited
         return False
 
 

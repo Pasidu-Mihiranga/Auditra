@@ -48,6 +48,8 @@ class ValuationSerializer(serializers.ModelSerializer):
             'vehicle_mileage', 'vehicle_condition',
             # Other fields
             'other_type', 'other_specifications',
+            # Accessor review fields
+            'rejection_reason',
             # Timestamps
             'created_at', 'updated_at', 'submitted_at', 'photos', 'can_be_edited'
         ]

@@ -3,8 +3,10 @@ import 'package:intl/intl.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'dart:math' as math;
 import '../services/api_service.dart';
+import '../services/pdf_service.dart';
 import '../models/attendance_model.dart';
 import '../models/project_model.dart';
+import '../models/valuation_model.dart';
 import 'login_screen.dart';
 
 class GenericDashboard extends StatefulWidget {
@@ -2395,6 +2397,511 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
         );
       },
     );
+  }
+
+  Widget _buildHistoryTab() {
+    // Get all valuations from all projects
+    List<Valuation> allValuations = [];
+    for (var project in _projects) {
+      allValuations.addAll(project.valuations);
+    }
+    
+    // Sort by date (newest first)
+    allValuations.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    
+    return RefreshIndicator(
+      onRefresh: _loadProjects,
+      child: allValuations.isEmpty
+          ? Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.history, size: 64, color: Colors.grey[400]),
+                  const SizedBox(height: 16),
+                  Text(
+                    'No valuation history yet',
+                    style: TextStyle(
+                      fontSize: 18,
+                      color: Colors.grey[600],
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'All received valuations will appear here',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.grey[500],
+                    ),
+                  ),
+                ],
+              ),
+            )
+          : ListView.builder(
+              padding: const EdgeInsets.all(16),
+              itemCount: allValuations.length,
+              itemBuilder: (context, index) {
+                final valuation = allValuations[index];
+                final project = _projects.firstWhere(
+                  (p) => p.id == valuation.projectId,
+                  orElse: () => _projects.first,
+                );
+                return _buildHistoryValuationCard(valuation, project);
+              },
+            ),
+    );
+  }
+
+  Widget _buildHistoryValuationCard(Valuation valuation, Project project) {
+    Color statusColor;
+    IconData statusIcon;
+    String statusText;
+    
+    switch (valuation.status) {
+      case 'approved':
+        statusColor = Colors.green;
+        statusIcon = Icons.check_circle;
+        statusText = 'Approved';
+        break;
+      case 'reviewed':
+        statusColor = Colors.blue;
+        statusIcon = Icons.visibility;
+        statusText = 'Reviewed (Pending Approval)';
+        break;
+      case 'rejected':
+        statusColor = Colors.red;
+        statusIcon = Icons.cancel;
+        statusText = 'Rejected';
+        break;
+      case 'submitted':
+        statusColor = Colors.orange;
+        statusIcon = Icons.send;
+        statusText = 'Submitted';
+        break;
+      case 'draft':
+        statusColor = Colors.grey;
+        statusIcon = Icons.edit;
+        statusText = 'Draft';
+        break;
+      default:
+        statusColor = Colors.grey;
+        statusIcon = Icons.description;
+        statusText = valuation.statusDisplay;
+    }
+    
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: InkWell(
+        onTap: () => _viewHistoryValuationDetails(valuation, project),
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: statusColor.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Icon(statusIcon, color: statusColor, size: 24),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          project.title,
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          valuation.categoryDisplay,
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Colors.grey[700],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: statusColor.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: statusColor.withOpacity(0.3)),
+                    ),
+                    child: Text(
+                      statusText,
+                      style: TextStyle(
+                        color: _getShadeColor(statusColor, 700),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              if (valuation.rejectionReason != null && valuation.rejectionReason!.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.red[50],
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.red[200]!),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(Icons.info_outline, color: Colors.red[700], size: 18),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Rejection Reason: ${valuation.rejectionReason}',
+                          style: TextStyle(
+                            color: Colors.red[900],
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Icon(Icons.calendar_today, size: 14, color: Colors.grey[600]),
+                  const SizedBox(width: 6),
+                  Text(
+                    'Created: ${DateFormat('MMM dd, yyyy').format(valuation.createdAt)}',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                  if (valuation.submittedAt != null) ...[
+                    const SizedBox(width: 16),
+                    Icon(Icons.send, size: 14, color: Colors.grey[600]),
+                    const SizedBox(width: 6),
+                    Text(
+                      'Submitted: ${DateFormat('MMM dd, yyyy').format(valuation.submittedAt!)}',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey[600],
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _viewHistoryValuationDetails(Valuation valuation, Project project) async {
+    // Fetch fresh project data
+    final projectResult = await ApiService.getProject(project.id);
+    Project? updatedProject = project;
+    
+    if (projectResult['success'] && projectResult['data'] != null) {
+      try {
+        updatedProject = Project.fromJson(projectResult['data']);
+      } catch (e) {
+        print('Error parsing updated project: $e');
+      }
+    }
+    
+    final finalProject = updatedProject ?? project;
+    final updatedValuation = finalProject.valuations.firstWhere(
+      (v) => v.id == valuation.id,
+      orElse: () => valuation,
+    );
+    
+    await showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        child: Container(
+          width: MediaQuery.of(context).size.width * 0.9,
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(context).size.height * 0.8,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Header
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: Colors.blue[50],
+                  borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(20),
+                    topRight: Radius.circular(20),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.blue[100],
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(Icons.description, color: Colors.blue, size: 24),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            finalProject.title,
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            updatedValuation.categoryDisplay,
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.grey[700],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      icon: const Icon(Icons.close),
+                    ),
+                  ],
+                ),
+              ),
+              // Content
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Status
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: _getValuationStatusColor(updatedValuation.status).withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: _getValuationStatusColor(updatedValuation.status).withOpacity(0.3),
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              _getStatusIcon(updatedValuation.status),
+                              color: _getValuationStatusColor(updatedValuation.status),
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              'Status: ${updatedValuation.statusDisplay}',
+                              style: TextStyle(
+                                color: _getValuationStatusColor(updatedValuation.status),
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      // Description
+                      if (updatedValuation.description != null && updatedValuation.description!.isNotEmpty) ...[
+                        const Text(
+                          'Description:',
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(updatedValuation.description!),
+                        const SizedBox(height: 16),
+                      ],
+                      // Estimated Value
+                      if (updatedValuation.estimatedValue != null) ...[
+                        const Text(
+                          'Estimated Value:',
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Rs. ${NumberFormat('#,##0.00').format(updatedValuation.estimatedValue)}',
+                          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                        ),
+                        const SizedBox(height: 16),
+                      ],
+                      // Rejection Reason
+                      if (updatedValuation.rejectionReason != null && updatedValuation.rejectionReason!.isNotEmpty) ...[
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.red[50],
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.red[200]!),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Rejection Reason:',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.red,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(updatedValuation.rejectionReason!),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                      ],
+                      // Dates
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'Created:',
+                                  style: TextStyle(fontSize: 12, color: Colors.grey),
+                                ),
+                                Text(
+                                  DateFormat('MMM dd, yyyy').format(updatedValuation.createdAt),
+                                  style: const TextStyle(fontWeight: FontWeight.w500),
+                                ),
+                              ],
+                            ),
+                          ),
+                          if (updatedValuation.submittedAt != null)
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text(
+                                    'Submitted:',
+                                    style: TextStyle(fontSize: 12, color: Colors.grey),
+                                  ),
+                                  Text(
+                                    DateFormat('MMM dd, yyyy').format(updatedValuation.submittedAt!),
+                                    style: const TextStyle(fontWeight: FontWeight.w500),
+                                  ),
+                                ],
+                              ),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      // View PDF Button (view-only, no accept/reject)
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
+                          onPressed: () async {
+                            Navigator.of(context).pop();
+                            await _viewValuationPDF(updatedValuation, finalProject);
+                          },
+                          icon: const Icon(Icons.picture_as_pdf),
+                          label: const Text('View PDF Report'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.blue[700],
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  IconData _getStatusIcon(String status) {
+    switch (status) {
+      case 'approved':
+        return Icons.check_circle;
+      case 'reviewed':
+        return Icons.visibility;
+      case 'rejected':
+        return Icons.cancel;
+      case 'submitted':
+        return Icons.send;
+      case 'draft':
+        return Icons.edit;
+      default:
+        return Icons.description;
+    }
+  }
+
+  Color _getValuationStatusColor(String status) {
+    switch (status) {
+      case 'draft':
+        return Colors.grey[600]!;
+      case 'submitted':
+        return Colors.blue[600]!;
+      case 'reviewed':
+        return Colors.purple[600]!;
+      case 'approved':
+        return Colors.green[600]!;
+      case 'rejected':
+        return Colors.red[600]!;
+      default:
+        return Colors.grey[400]!;
+    }
+  }
+
+  Future<void> _viewValuationPDF(Valuation valuation, Project project) async {
+    try {
+      final pdfFile = await PdfService.generateValuationReport(
+        valuation: valuation,
+        project: project,
+      );
+      await PdfService.saveAndOpenPdf(pdfFile);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error viewing PDF: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Color _getShadeColor(Color color, int shade) {
+    if (color == Colors.green) return Colors.green[shade]!;
+    if (color == Colors.blue) return Colors.blue[shade]!;
+    if (color == Colors.red) return Colors.red[shade]!;
+    if (color == Colors.orange) return Colors.orange[shade]!;
+    if (color == Colors.grey) return Colors.grey[shade]!;
+    return color;
   }
 }
 
