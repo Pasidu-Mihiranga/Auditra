@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
+from django.db.models import Q
 from .models import Project, ProjectDocument
 
 
@@ -103,8 +104,8 @@ class ProjectSerializer(serializers.ModelSerializer):
         allow_null=True
     )
     status_display = serializers.CharField(source='get_status_display', read_only=True)
-    documents = ProjectDocumentSerializer(many=True, read_only=True)
-    documents_count = serializers.IntegerField(source='documents.count', read_only=True)
+    documents = serializers.SerializerMethodField()
+    documents_count = serializers.SerializerMethodField()
     valuations = serializers.SerializerMethodField()
     valuations_count = serializers.SerializerMethodField()
     
@@ -176,6 +177,46 @@ class ProjectSerializer(serializers.ModelSerializer):
     def get_valuations_count(self, obj):
         """Get count of valuations for this project"""
         return obj.valuations.count()
+    
+    def get_documents(self, obj):
+        """Get documents filtered by assigned user"""
+        request = self.context.get('request')
+        if not request or not request.user:
+            # If no request context, return all documents (for backward compatibility)
+            documents = obj.documents.all()
+        else:
+            user = request.user
+            # Coordinators can see ALL documents for their projects, including:
+            # - Documents uploaded by coordinator
+            # - Documents uploaded by any assigned user (field officer, client, agent, accessor, senior valuer)
+            # - Documents transferred between any assigned users
+            # - Documents assigned to any user in the project
+            if hasattr(user, 'role') and user.role.role == 'coordinator' and obj.coordinator == user:
+                documents = obj.documents.all()  # Show all documents regardless of sender/receiver
+            else:
+                # Other users can only see documents assigned to them (not unassigned documents)
+                documents = obj.documents.filter(assigned_to=user)
+        
+        return ProjectDocumentSerializer(documents, many=True, context=self.context).data
+    
+    def get_documents_count(self, obj):
+        """Get count of documents visible to the current user"""
+        request = self.context.get('request')
+        if not request or not request.user:
+            # If no request context, return all documents count
+            return obj.documents.count()
+        
+        user = request.user
+        # Coordinators can see ALL documents for their projects, including:
+        # - Documents uploaded by coordinator
+        # - Documents uploaded by any assigned user (field officer, client, agent, accessor, senior valuer)
+        # - Documents transferred between any assigned users
+        # - Documents assigned to any user in the project
+        if hasattr(user, 'role') and user.role.role == 'coordinator' and obj.coordinator == user:
+            return obj.documents.count()  # Count all documents regardless of sender/receiver
+        else:
+            # Other users can only see documents assigned to them (not unassigned documents)
+            return obj.documents.filter(assigned_to=user).count()
 
 
 class ProjectCreateSerializer(serializers.ModelSerializer):

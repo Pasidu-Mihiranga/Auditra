@@ -15,7 +15,7 @@ Map<String, dynamic>? _safeParseJsonResponse(http.Response response) {
   
   if (bodyTrimmed.startsWith('<!DOCTYPE') || 
       bodyTrimmed.startsWith('<html') ||
-      (!contentType.contains('application/json') && response.body.isNotEmpty && !bodyTrimmed.startsWith('{'))) {
+      (!contentType.contains('application/json') && response.body.isNotEmpty && !bodyTrimmed.startsWith('{') && !bodyTrimmed.startsWith('['))) {
     return null; // Indicates HTML response
   }
 
@@ -24,44 +24,22 @@ Map<String, dynamic>? _safeParseJsonResponse(http.Response response) {
     if (response.body.isEmpty) {
       return {};
     } else {
-      return jsonDecode(response.body) as Map<String, dynamic>;
-    }
-  } catch (e) {
-    // If parsing fails, check if it's HTML
-    if (bodyTrimmed.startsWith('<!DOCTYPE') || bodyTrimmed.startsWith('<html')) {
-      return null; // Indicates HTML response
-    }
-    rethrow; // Re-throw if it's a different parsing error
-  }
-}
-
-// Helper function to get user-friendly error message for HTML responses
-String _getHtmlErrorMessage(http.Response response) {
-  if (response.statusCode != 200 && response.statusCode != 201) {
-    return 'Server error (Status ${response.statusCode}). Please check if the backend server is running correctly.';
-  } else {
-    return 'Server returned HTML instead of JSON. Please check backend configuration.';
-  }
-}
-
-// Helper function to safely parse JSON response and handle HTML errors
-Map<String, dynamic>? _safeParseJsonResponse(http.Response response) {
-  // Check if response is HTML (error page) before parsing JSON
-  String contentType = response.headers['content-type'] ?? '';
-  String bodyTrimmed = response.body.trim();
-  
-  if (bodyTrimmed.startsWith('<!DOCTYPE') || 
-      bodyTrimmed.startsWith('<html') ||
-      (!contentType.contains('application/json') && response.body.isNotEmpty && !bodyTrimmed.startsWith('{'))) {
-    return null; // Indicates HTML response
-  }
-
-  // Try to parse JSON response
-  try {
-    if (response.body.isEmpty) {
-      return {};
-    } else {
-      return jsonDecode(response.body) as Map<String, dynamic>;
+      final decoded = jsonDecode(response.body);
+      // Handle case where response is a List (shouldn't happen for most endpoints, but be safe)
+      if (decoded is List) {
+        // Convert List to Map with a 'results' key for consistency
+        return {'results': decoded};
+      }
+      // Ensure it's a Map
+      if (decoded is Map<String, dynamic>) {
+        return decoded;
+      }
+      // If it's a Map but not typed correctly, try to cast
+      if (decoded is Map) {
+        return Map<String, dynamic>.from(decoded);
+      }
+      // If it's neither List nor Map, return null
+      return null;
     }
   } catch (e) {
     // If parsing fails, check if it's HTML
@@ -272,6 +250,14 @@ class ApiService {
   static Future<String?> getUsername() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getString('username');
+  }
+
+  // Get user ID
+  static Future<int?> getUserId() async {
+    final prefs = await SharedPreferences.getInstance();
+    final userIdString = prefs.getString('user_id');
+    if (userIdString == null) return null;
+    return int.tryParse(userIdString);
   }
 
   // Get user role
@@ -2046,6 +2032,177 @@ class ApiService {
       } else {
         final data = response.body.isNotEmpty ? jsonDecode(response.body) : {};
         return {'success': false, 'message': data['detail'] ?? 'Failed to delete valuation'};
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'Connection error: $e'};
+    }
+  }
+
+  // Chat API methods
+  static Future<Map<String, dynamic>> getChatMessages({
+    required int recipientId,
+    int? projectId,
+  }) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token');
+
+      if (token == null) {
+        return {'success': false, 'message': 'Not authenticated'};
+      }
+
+      final uri = Uri.parse('$baseUrl/chat/messages/').replace(
+        queryParameters: {
+          'recipient': recipientId.toString(),
+          if (projectId != null) 'project': projectId.toString(),
+        },
+      );
+
+      final response = await http.get(
+        uri,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      final data = _safeParseJsonResponse(response);
+      if (data == null) {
+        return {'success': false, 'message': _getHtmlErrorMessage(response)};
+      }
+
+      if (response.statusCode == 200) {
+        return {
+          'success': true,
+          'messages': data['results'] ?? data['data'] ?? [],
+        };
+      } else {
+        return {
+          'success': false,
+          'message': data['detail'] ?? data['message'] ?? 'Failed to load messages',
+        };
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'Connection error: $e'};
+    }
+  }
+
+  static Future<Map<String, dynamic>> sendChatMessage({
+    required int recipientId,
+    required String message,
+    int? projectId,
+  }) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token');
+
+      if (token == null) {
+        return {'success': false, 'message': 'Not authenticated'};
+      }
+
+      final body = {
+        'recipient': recipientId,
+        'message': message,
+        if (projectId != null) 'project': projectId,
+      };
+
+      final response = await http.post(
+        Uri.parse('$baseUrl/chat/messages/'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode(body),
+      );
+
+      final data = _safeParseJsonResponse(response);
+      if (data == null) {
+        return {'success': false, 'message': _getHtmlErrorMessage(response)};
+      }
+
+      if (response.statusCode == 201 || response.statusCode == 200) {
+        return {'success': true, 'data': data};
+      } else {
+        return {
+          'success': false,
+          'message': data['detail'] ?? data['message'] ?? 'Failed to send message',
+        };
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'Connection error: $e'};
+    }
+  }
+
+  static Future<Map<String, dynamic>> getConversations() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token');
+
+      if (token == null) {
+        return {'success': false, 'message': 'Not authenticated'};
+      }
+
+      final response = await http.get(
+        Uri.parse('$baseUrl/chat/conversations/'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      final data = _safeParseJsonResponse(response);
+      if (data == null) {
+        return {'success': false, 'message': _getHtmlErrorMessage(response)};
+      }
+
+      if (response.statusCode == 200) {
+        return {
+          'success': true,
+          'conversations': data['results'] ?? data['data'] ?? [],
+        };
+      } else {
+        return {
+          'success': false,
+          'message': data['detail'] ?? data['message'] ?? 'Failed to load conversations',
+        };
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'Connection error: $e'};
+    }
+  }
+
+  static Future<Map<String, dynamic>> getUnreadMessageCount() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token');
+
+      if (token == null) {
+        return {'success': false, 'message': 'Not authenticated'};
+      }
+
+      final response = await http.get(
+        Uri.parse('$baseUrl/chat/unread-count/'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      final data = _safeParseJsonResponse(response);
+      if (data == null) {
+        return {'success': false, 'message': _getHtmlErrorMessage(response)};
+      }
+
+      if (response.statusCode == 200) {
+        return {
+          'success': true,
+          'unread_count': data['unread_count'] ?? 0,
+        };
+      } else {
+        return {
+          'success': false,
+          'message': data['detail'] ?? data['message'] ?? 'Failed to load unread count',
+        };
       }
     } catch (e) {
       return {'success': false, 'message': 'Connection error: $e'};

@@ -271,7 +271,7 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
                 const SizedBox(width: 8),
                 Text(
                   title,
-                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
                 ),
               ],
             ),
@@ -426,7 +426,7 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
                       'Create New Project',
                       style: TextStyle(
                         color: Colors.white,
-                        fontSize: 24,
+                        fontSize: 20,
                         fontWeight: FontWeight.bold,
                       ),
                     ),

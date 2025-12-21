@@ -12,6 +12,12 @@ import '../models/valuation_model.dart';
 import 'login_screen.dart';
 import 'generic_dashboard.dart';
 import 'create_project_screen.dart';
+import 'edit_project_screen.dart';
+import 'upload_document_screen.dart';
+import 'assign_users_screen.dart';
+import 'contact_assigned_users_screen.dart';
+import 'workflow_screen.dart';
+import 'view_project_details_screen.dart';
 
 // Helper class to hold upload dialog state
 class _UploadDialogState {
@@ -83,23 +89,36 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
   // Search and sort state for each tab
   final Map<int, TextEditingController> _searchControllers = {};
   final Map<int, String> _sortOptions = {}; // 'date_asc', 'date_desc', 'title_asc', 'title_desc', 'priority'
-  late TabController _tabController;
+  TabController? _tabController;
   TabController? _projectSubTabController;
+  TabController? _assignClientSubTabController;
+  // Unread message counts per project
+  final Map<int, int> _projectUnreadCounts = {};
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
-    _tabController.addListener(() {
-      if (!_tabController.indexIsChanging) {
+    // Dispose old controllers if they exist (for hot reload)
+    _tabController?.dispose();
+    _projectSubTabController?.dispose();
+    _assignClientSubTabController?.dispose();
+    
+    _tabController = TabController(length: 3, vsync: this);
+    _tabController!.addListener(() {
+      if (!_tabController!.indexIsChanging) {
         setState(() {});
       }
     });
-    // Dispose old controller if it exists (for hot reload)
-    _projectSubTabController?.dispose();
     _projectSubTabController = TabController(length: 4, vsync: this, initialIndex: 0);
     _projectSubTabController!.addListener(() {
       if (!_projectSubTabController!.indexIsChanging && mounted) {
+        setState(() {});
+      }
+    });
+    // Initialize Assign Client subtab controller
+    _assignClientSubTabController = TabController(length: 2, vsync: this, initialIndex: 0);
+    _assignClientSubTabController!.addListener(() {
+      if (!_assignClientSubTabController!.indexIsChanging && mounted) {
         setState(() {});
       }
     });
@@ -109,8 +128,9 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
 
   @override
   void dispose() {
-    _tabController.dispose();
+    _tabController?.dispose();
     _projectSubTabController?.dispose();
+    _assignClientSubTabController?.dispose();
     // Dispose search controllers
     for (var controller in _searchControllers.values) {
       controller.dispose();
@@ -207,9 +227,20 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
         if (result['success']) {
           try {
             final data = result['data'] as List<dynamic>;
-            _projects = data.map((p) => Project.fromJson(p)).toList();
+            final projectsList = data.map((p) => Project.fromJson(p)).toList();
+            // Remove duplicates based on project ID
+            final seenIds = <int>{};
+            _projects = projectsList.where((project) {
+              if (seenIds.contains(project.id)) {
+                return false;
+              }
+              seenIds.add(project.id);
+              return true;
+            }).toList();
             // Sort by creation date (oldest first - creation order)
             _projects.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+            // Load unread counts for all projects
+            _loadAllProjectUnreadCounts();
           } catch (e) {
             print('Error parsing projects: $e');
             print('Response data: ${result['data']}');
@@ -312,6 +343,19 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
   }
 
   Future<void> _editProject(Project project) async {
+    final result = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (context) => EditProjectScreen(project: project),
+      ),
+    );
+
+    if (result == true) {
+      await _loadProjects();
+    }
+  }
+
+  // Legacy method kept for reference - not used anymore
+  Future<void> _editProjectLegacy(Project project) async {
     final titleController = TextEditingController(text: project.title);
     final descriptionController = TextEditingController(text: project.description ?? '');
     DateTime? startDate = project.startDate;
@@ -1088,6 +1132,16 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
       return false;
     }
     
+    // Accessor is always required
+    if (project.assignedAccessorName == null) {
+      return false;
+    }
+    
+    // Senior Valuer is always required
+    if (project.assignedSeniorValuerName == null) {
+      return false;
+    }
+    
     return true;
   }
 
@@ -1106,21 +1160,28 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
       if (project.hasAgent && project.assignedAgentName == null) {
         missing.add('Agent');
       }
+      if (project.assignedAccessorName == null) {
+        missing.add('Accessor');
+      }
+      if (project.assignedSeniorValuerName == null) {
+        missing.add('Senior Valuer');
+      }
 
       String message;
       if (missing.length == 1) {
         // Single missing type – show specific message
         message = 'Please assign ${missing.first} before starting this project.';
       } else {
-        // Multiple missing types – keep it generic
-        message = 'Please assign all required users before starting this project.';
+        // Multiple missing types – show all missing roles
+        final missingList = missing.join(', ');
+        message = 'Please assign all required users before starting this project.\n\nMissing: $missingList';
       }
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(message),
           backgroundColor: Colors.orange,
-          duration: const Duration(seconds: 3),
+          duration: const Duration(seconds: 4),
         ),
       );
       return;
@@ -1526,6 +1587,19 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
   ];
 
   Future<void> _showStatusDialog(Project project) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => WorkflowScreen(
+          project: project,
+          onWorkflowUpdated: () => _loadProjects(),
+        ),
+      ),
+    );
+  }
+
+  // Legacy method kept for reference (not used)
+  Future<void> _showStatusDialogLegacy(Project project) async {
     // Check if all stages are completed
     final projectCurrentStageIndex = project.workflowStage != null 
         ? workflowStages.indexWhere((s) => s['id'] == project.workflowStage)
@@ -1561,6 +1635,11 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
                   ),
                   child: Row(
                     children: [
+                      IconButton(
+                        icon: const Icon(Icons.arrow_back, color: Colors.white),
+                        onPressed: () => Navigator.of(context).pop(),
+                      ),
+                      const SizedBox(width: 8),
                       Container(
                         padding: const EdgeInsets.all(10),
                         decoration: BoxDecoration(
@@ -1729,59 +1808,45 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
                       final isSelectedStageCompleted = projectCurrentStageIndex > selectedStageIndex && selectedStageIndex != -1;
                       final isButtonEnabled = selectedWorkflowStage != null && !isSelectedStageCompleted;
                       
-                      return Row(
-                        children: [
-                          Expanded(
-                            child: OutlinedButton(
-                              onPressed: () => Navigator.of(context).pop(),
-                              style: OutlinedButton.styleFrom(
-                                padding: const EdgeInsets.symmetric(vertical: 12),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                              ),
-                              child: const Text('Cancel', style: TextStyle(fontSize: 14)),
+                      // Only show button if not all stages are completed
+                      if (allStagesCompleted) {
+                        return const SizedBox.shrink();
+                      }
+                      
+                      return SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton(
+                          onPressed: isButtonEnabled
+                              ? () async {
+                                  Navigator.of(context).pop();
+                                  await _updateWorkflowStage(project, selectedWorkflowStage);
+                                }
+                              : null,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.blue[600],
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
                             ),
+                            elevation: 2,
                           ),
-                          // Only show spacing and button if not all stages are completed
-                          if (!allStagesCompleted) ...[
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: ElevatedButton(
-                                onPressed: isButtonEnabled
-                                    ? () async {
-                                        Navigator.of(context).pop();
-                                        await _updateWorkflowStage(project, selectedWorkflowStage);
-                                      }
-                                    : null,
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.blue[600],
-                                  foregroundColor: Colors.white,
-                                  padding: const EdgeInsets.symmetric(vertical: 12),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  elevation: 2,
-                                ),
-                                child: const Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(Icons.save, size: 18),
-                                    SizedBox(width: 6),
-                                    Flexible(
-                                      child: Text(
-                                        'Update Workflow',
-                                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ),
-                                  ],
+                          child: const Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.save, size: 18),
+                              SizedBox(width: 6),
+                              Flexible(
+                                child: Text(
+                                  'Update Workflow',
+                                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                                  overflow: TextOverflow.ellipsis,
                                 ),
                               ),
-                            ),
-                          ],
-                        ],
+                            ],
+                          ),
+                        ),
                       );
                     },
                   ),
@@ -2767,6 +2832,62 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
   }
 
   Future<void> _showAssignUsersDialog(Project project) async {
+    final result = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (context) => AssignUsersScreen(
+          project: project,
+          onUsersAssigned: () async {
+            await _loadProjects();
+          },
+        ),
+      ),
+    );
+
+    if (result == true) {
+      await _loadProjects();
+    }
+    
+    // Check assigned users after screen closes
+    if (mounted) {
+      final updatedProject = _projects.firstWhere(
+        (p) => p.id == project.id,
+        orElse: () => project,
+      );
+      
+      final List<String> allMissingRoles = [];
+      
+      if (updatedProject.assignedFieldOfficerName == null) {
+        allMissingRoles.add('Field Officer');
+      }
+      if (updatedProject.assignedClientName == null) {
+        allMissingRoles.add('Client');
+      }
+      if (updatedProject.hasAgent && updatedProject.assignedAgentName == null) {
+        allMissingRoles.add('Agent');
+      }
+      if (updatedProject.assignedAccessorName == null) {
+        allMissingRoles.add('Accessor');
+      }
+      if (updatedProject.assignedSeniorValuerName == null) {
+        allMissingRoles.add('Senior Valuer');
+      }
+      
+      if (allMissingRoles.isNotEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Missing roles: ${allMissingRoles.join(', ')}. Please assign all users before starting the project.',
+            ),
+            backgroundColor: Colors.orange,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+    }
+  }
+
+  // Legacy method kept for reference - not used anymore
+  Future<void> _showAssignUsersDialogLegacy(Project project) async {
     // Get the current project from the list (may be updated after assignment)
     final currentProject = _projects.firstWhere(
       (p) => p.id == project.id,
@@ -2821,7 +2942,7 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
                           'Assign Users to Project',
                           style: TextStyle(
                             color: Colors.white,
-                            fontSize: 24,
+                            fontSize: 20,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
@@ -3063,7 +3184,7 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
                             userData['full_name'] ?? userData['username'],
                             style: const TextStyle(
                               color: Colors.white,
-                              fontSize: 20,
+                              fontSize: 18,
                               fontWeight: FontWeight.bold,
                             ),
                           ),
@@ -3105,7 +3226,7 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
                                   'No projects assigned',
                                   style: TextStyle(
                                     color: Colors.grey[600],
-                                    fontSize: 16,
+                                    fontSize: 14,
                                     fontWeight: FontWeight.w500,
                                   ),
                                 ),
@@ -3143,7 +3264,7 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
                                           project['title'],
                                           style: const TextStyle(
                                             fontWeight: FontWeight.w600,
-                                            fontSize: 16,
+                                            fontSize: 14,
                                           ),
                                           maxLines: 2,
                                           overflow: TextOverflow.ellipsis,
@@ -3318,7 +3439,7 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
                               style: const TextStyle(
                                 color: Colors.white,
                                 fontWeight: FontWeight.w600,
-                                fontSize: 18,
+                                fontSize: 16,
                               ),
                             ),
                           ),
@@ -3332,7 +3453,7 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
                                   fullName,
                                   style: const TextStyle(
                                     fontWeight: FontWeight.w600,
-                                    fontSize: 16,
+                                    fontSize: 14,
                                   ),
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
@@ -3609,7 +3730,7 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
                           style: const TextStyle(
                             color: Colors.white,
                             fontWeight: FontWeight.w600,
-                            fontSize: 20,
+                            fontSize: 18,
                           ),
                         ),
                       ),
@@ -3622,7 +3743,7 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
                               name,
                               style: const TextStyle(
                                 fontWeight: FontWeight.w600,
-                                fontSize: 18,
+                                fontSize: 16,
                               ),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
@@ -3972,6 +4093,25 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
   }
 
   Future<void> _showDocumentsDialog(Project project) async {
+    final result = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (context) => UploadDocumentScreen(
+          project: project,
+          onDocumentUploaded: () async {
+            await _loadProjects();
+          },
+        ),
+      ),
+    );
+
+    if (result == true) {
+      await _loadProjects();
+    }
+  }
+
+
+  // Legacy method kept for reference - not used anymore
+  Future<void> _showDocumentsDialogLegacy(Project project) async {
     // Get the current project from the list (may be updated after upload/delete)
     final currentProject = _projects.firstWhere(
       (p) => p.id == project.id,
@@ -5122,6 +5262,23 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
   }
 
   Future<void> _viewProjectDetails(Project project) async {
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ViewProjectDetailsScreen(
+          project: project,
+          isCoordinator: true,
+          onProjectUpdated: () => _loadProjects(),
+        ),
+      ),
+    );
+    
+    if (result == true) {
+      await _loadProjects();
+    }
+  }
+
+  Future<void> _viewProjectDetailsLegacy(Project project) async {
     // Fetch fresh project data to ensure valuations are loaded
     final projectResult = await ApiService.getProject(project.id);
     Project? updatedProject = project;
@@ -5949,6 +6106,25 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
 
   @override
   Widget build(BuildContext context) {
+    // Ensure controller is initialized with correct length
+    if (_tabController == null || _tabController!.length != 3) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _tabController?.dispose();
+          _tabController = TabController(length: 3, vsync: this);
+          _tabController!.addListener(() {
+            if (!_tabController!.indexIsChanging && mounted) {
+              setState(() {});
+            }
+          });
+          setState(() {});
+        }
+      });
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
     return Scaffold(
       appBar: AppBar(
         title: Column(
@@ -6056,21 +6232,27 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
             tooltip: 'Logout',
           ),
         ],
-        bottom: TabBar(
-          controller: _tabController,
-          tabs: const [
-            Tab(icon: Icon(Icons.access_time), text: 'Attendance'),
-            Tab(icon: Icon(Icons.folder), text: 'Projects'),
-          ],
-        ),
+        bottom: _tabController != null
+            ? TabBar(
+                controller: _tabController,
+                tabs: const [
+                  Tab(icon: Icon(Icons.access_time), text: 'Attendance'),
+                  Tab(icon: Icon(Icons.folder), text: 'Projects'),
+                  Tab(icon: Icon(Icons.person_add), text: 'Assign Client'),
+                ],
+              )
+            : null,
       ),
-      body: TabBarView(
-        controller: _tabController,
-        children: [
-          _buildAttendanceTab(),
-          _buildProjectsTab(),
-        ],
-      ),
+      body: _tabController != null
+          ? TabBarView(
+              controller: _tabController,
+              children: [
+                _buildAttendanceTab(),
+                _buildProjectsTab(),
+                _buildAssignClientTab(),
+              ],
+            )
+          : const Center(child: CircularProgressIndicator()),
     );
   }
 
@@ -6079,6 +6261,445 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
       role: 'coordinator',
       roleDisplay: _roleDisplay ?? 'Coordinator',
       isEmbedded: true,
+    );
+  }
+
+  Widget _buildAssignClientTab() {
+    if (_assignClientSubTabController == null) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    return Column(
+      children: [
+        // Subtabs
+        Container(
+          color: Colors.white,
+          child: TabBar(
+            controller: _assignClientSubTabController,
+            labelColor: Colors.cyan[700],
+            unselectedLabelColor: Colors.grey[600],
+            indicatorColor: Colors.cyan[700],
+            indicatorWeight: 3,
+            tabs: const [
+              Tab(
+                icon: Icon(Icons.mail_outline),
+                text: 'Invitations',
+              ),
+              Tab(
+                icon: Icon(Icons.payment),
+                text: 'Payment',
+              ),
+            ],
+          ),
+        ),
+        // Tab content
+        Expanded(
+          child: TabBarView(
+            controller: _assignClientSubTabController,
+            children: [
+              _buildInvitationsSubTab(),
+              _buildPaymentSubTab(),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildInvitationsSubTab() {
+    // Filter projects that don't have a client assigned
+    final projectsWithoutClient = _projects.where((p) => p.assignedClientId == null).toList();
+    final projectsWithClient = _projects.where((p) => p.assignedClientId != null).toList();
+
+    return RefreshIndicator(
+      onRefresh: _loadProjects,
+      child: projectsWithoutClient.isEmpty && projectsWithClient.isEmpty
+          ? Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24.0),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.folder_outlined,
+                      size: 64,
+                      color: Colors.grey[400],
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      'No projects found',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.grey[700],
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Create a project to get started',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.grey[600],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          : ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+                if (projectsWithoutClient.isNotEmpty) ...[
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Row(
+                      children: [
+                        Icon(Icons.warning_amber_rounded, color: Colors.orange[700], size: 20),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Projects Without Client (${projectsWithoutClient.length})',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.orange[700],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  ...projectsWithoutClient.map((project) => Card(
+                        margin: const EdgeInsets.only(bottom: 12),
+                        elevation: 2,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: ListTile(
+                          contentPadding: const EdgeInsets.all(16),
+                          title: Text(
+                            project.title,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 16,
+                            ),
+                          ),
+                          subtitle: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const SizedBox(height: 8),
+                              Text(
+                                project.description ?? 'No description',
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: Colors.grey[700],
+                                  fontSize: 14,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Row(
+                                children: [
+                                  Chip(
+                                    label: Text(project.statusDisplay),
+                                    backgroundColor: _getProjectStatusColor(project.status),
+                                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                                  ),
+                                  if (project.priority != null) ...[
+                                    const SizedBox(width: 8),
+                                    Chip(
+                                      label: Text(
+                                        project.priority!.toUpperCase(),
+                                        style: const TextStyle(fontSize: 11),
+                                      ),
+                                      backgroundColor: project.priority == 'high'
+                                          ? Colors.red[100]
+                                          : project.priority == 'medium'
+                                              ? Colors.orange[100]
+                                              : Colors.green[100],
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ],
+                          ),
+                          trailing: ElevatedButton.icon(
+                            onPressed: () => _assignClient(project),
+                            icon: const Icon(Icons.person_add, size: 18),
+                            label: const Text('Assign Client'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.cyan[600],
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                            ),
+                          ),
+                        ),
+                      )),
+                  const SizedBox(height: 24),
+                ],
+                if (projectsWithClient.isNotEmpty) ...[
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Row(
+                      children: [
+                        Icon(Icons.check_circle, color: Colors.green[700], size: 20),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Projects With Client (${projectsWithClient.length})',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.green[700],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  ...projectsWithClient.map((project) => Card(
+                        margin: const EdgeInsets.only(bottom: 12),
+                        elevation: 2,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: ListTile(
+                          contentPadding: const EdgeInsets.all(16),
+                          title: Text(
+                            project.title,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 16,
+                            ),
+                          ),
+                          subtitle: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const SizedBox(height: 8),
+                              Text(
+                                'Client: ${project.assignedClientName ?? project.assignedClientUsername}',
+                                style: TextStyle(
+                                  color: Colors.grey[700],
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                project.description ?? 'No description',
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: Colors.grey[600],
+                                  fontSize: 13,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Row(
+                                children: [
+                                  Chip(
+                                    label: Text(project.statusDisplay),
+                                    backgroundColor: _getProjectStatusColor(project.status),
+                                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                                  ),
+                                  if (project.priority != null) ...[
+                                    const SizedBox(width: 8),
+                                    Chip(
+                                      label: Text(
+                                        project.priority!.toUpperCase(),
+                                        style: const TextStyle(fontSize: 11),
+                                      ),
+                                      backgroundColor: project.priority == 'high'
+                                          ? Colors.red[100]
+                                          : project.priority == 'medium'
+                                              ? Colors.orange[100]
+                                              : Colors.green[100],
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ],
+                          ),
+                          trailing: OutlinedButton.icon(
+                            onPressed: () => _assignClient(project),
+                            icon: const Icon(Icons.edit, size: 18),
+                            label: const Text('Change'),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: Colors.cyan[700],
+                              side: BorderSide(color: Colors.cyan[700]!),
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                            ),
+                          ),
+                        ),
+                      )),
+                ],
+              ],
+            ),
+    );
+  }
+
+  Widget _buildPaymentSubTab() {
+    // Filter only projects with pending status and assigned client
+    // These projects need payment before they can move to in_progress
+    final pendingProjectsWithClient = _projects.where((p) => 
+      p.status.toLowerCase() == 'pending' && p.assignedClientId != null
+    ).toList();
+
+    return RefreshIndicator(
+      onRefresh: _loadProjects,
+      child: pendingProjectsWithClient.isEmpty
+          ? Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24.0),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.payment_outlined,
+                      size: 64,
+                      color: Colors.grey[400],
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      'No pending payments',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.grey[700],
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Projects with "Pending" status and assigned clients\nwill appear here for payment tracking',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.grey[600],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          : ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Row(
+                    children: [
+                      Icon(Icons.payment, color: Colors.green[700], size: 20),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Pending Payments (${pendingProjectsWithClient.length})',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.green[700],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.blue[50],
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.blue[200]!),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.info_outline, color: Colors.blue[700], size: 20),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Projects can only be moved to "In Progress" after payment is completed.',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.blue[900],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                ...pendingProjectsWithClient.map((project) => Card(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      elevation: 2,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            CircleAvatar(
+                              backgroundColor: Colors.green[100],
+                              radius: 24,
+                              child: Icon(Icons.payment, color: Colors.green[700], size: 20),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    project.title,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 16,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    'Client: ${project.assignedClientName ?? project.assignedClientUsername}',
+                                    style: TextStyle(
+                                      color: Colors.grey[700],
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Chip(
+                                    label: Text(project.statusDisplay),
+                                    backgroundColor: _getProjectStatusColor(project.status),
+                                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  'Payment Status',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.grey[600],
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Chip(
+                                  label: const Text('Pending'),
+                                  backgroundColor: Colors.orange[100],
+                                  labelStyle: TextStyle(
+                                    color: Colors.orange[700],
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    )),
+              ],
+            ),
     );
   }
 
@@ -6474,7 +7095,7 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
                             minWidth: 32,
                             minHeight: 32,
                           ),
-                          tooltip: 'Documents',
+                          tooltip: 'Upload Documents',
                           style: IconButton.styleFrom(
                             backgroundColor: Colors.teal[50],
                             shape: RoundedRectangleBorder(
@@ -6666,34 +7287,63 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
             ],
             // Cancel button for ongoing projects (before contact button)
             // Note: Cancel button is now in the description row above, so this section is removed
-            // Contact Assigned Users Button (for ongoing projects)
-            if (!isPending && project.status.toLowerCase() == 'in_progress') ...[
-              const SizedBox(height: 8),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: () => _showContactAssignedUsers(project),
-                  icon: const Icon(Icons.contact_mail, size: 18),
-                  label: const Text(
-                    'Contact Assigned Users',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: 0.5,
-                    ),
+            // Chat Button (for all project statuses: received/pending, ongoing, completed, cancelled)
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: () => _showContactAssignedUsers(project),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blue[700],
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
                   ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blue[700],
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
+                  elevation: 2,
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.chat, size: 18),
+                    const SizedBox(width: 8),
+                    const Text(
+                      'Chat',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 0.5,
+                      ),
                     ),
-                    elevation: 2,
-                  ),
+                    if ((_projectUnreadCounts[project.id] ?? 0) > 0) ...[
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.blue[100],
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: Colors.blue[300]!,
+                            width: 1,
+                          ),
+                        ),
+                        child: Text(
+                          (_projectUnreadCounts[project.id] ?? 0) > 99 
+                              ? '99+' 
+                              : (_projectUnreadCounts[project.id] ?? 0).toString(),
+                          style: TextStyle(
+                            color: Colors.blue[800],
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
               ),
-            ],
+            ),
           ],
         ),
               ),
@@ -6745,6 +7395,63 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
   }
 
   Future<void> _showContactAssignedUsers(Project project) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ContactAssignedUsersScreen(project: project),
+      ),
+    );
+    // Reload unread counts after returning from chat
+    _loadProjectUnreadCount(project);
+  }
+
+  Future<void> _loadProjectUnreadCount(Project project) async {
+    try {
+      final result = await ApiService.getConversations();
+      if (result['success'] && mounted) {
+        final conversations = List<Map<String, dynamic>>.from(result['conversations'] ?? []);
+        
+        // Get all assigned user IDs for this project
+        final assignedUserIds = <int>[];
+        if (project.assignedFieldOfficerId != null) assignedUserIds.add(project.assignedFieldOfficerId!);
+        if (project.assignedAccessorId != null) assignedUserIds.add(project.assignedAccessorId!);
+        if (project.assignedClientId != null) assignedUserIds.add(project.assignedClientId!);
+        if (project.assignedAgentId != null) assignedUserIds.add(project.assignedAgentId!);
+        if (project.assignedSeniorValuerId != null) assignedUserIds.add(project.assignedSeniorValuerId!);
+        
+        // Sum up unread counts for all assigned users in this project
+        int totalUnread = 0;
+        for (final conv in conversations) {
+          final userId = conv['user_id'];
+          final projectId = conv['project_id'];
+          final unreadCount = conv['unread_count'] ?? 0;
+          
+          // Match if user is assigned to this project and conversation is for this project
+          if (assignedUserIds.contains(userId) && 
+              (projectId == null || projectId == project.id)) {
+            totalUnread += unreadCount as int;
+          }
+        }
+        
+        if (mounted) {
+          setState(() {
+            _projectUnreadCounts[project.id] = totalUnread;
+          });
+        }
+      }
+    } catch (e) {
+      // Silently fail - unread count is not critical
+    }
+  }
+
+  Future<void> _loadAllProjectUnreadCounts() async {
+    for (final project in _projects) {
+      await _loadProjectUnreadCount(project);
+    }
+  }
+
+  // Legacy method kept for reference (not used)
+  Future<void> _showContactAssignedUsersLegacy(Project project) async {
     final List<Map<String, String>> contacts = [];
     
     if (project.assignedFieldOfficerName != null) {

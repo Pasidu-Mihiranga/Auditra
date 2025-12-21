@@ -21,6 +21,7 @@ import '../services/offline_storage_service.dart';
 import 'login_screen.dart';
 import 'generic_dashboard.dart';
 import 'valuation_form_screen.dart';
+import '../widgets/chat_with_coordinator_button.dart';
 
 class FieldOfficerDashboard extends StatefulWidget {
   const FieldOfficerDashboard({super.key});
@@ -1328,6 +1329,9 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
                           ],
                         ),
                 const SizedBox(height: 12),
+                // Chat with Coordinator button
+                ChatWithCoordinatorButton(project: project),
+                const SizedBox(height: 12),
                 // Submit to Accessor button
                 SizedBox(
                   width: double.infinity,
@@ -1343,9 +1347,10 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
                   ),
                 ),
                     ],
+              ),
+            ),
+          ),
         ),
-      ),
-      ),
       // Priority ribbon at top-left corner
       Positioned(
         top: 4,

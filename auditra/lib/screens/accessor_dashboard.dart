@@ -6,6 +6,7 @@ import '../models/project_model.dart';
 import '../models/valuation_model.dart';
 import 'login_screen.dart';
 import 'generic_dashboard.dart';
+import '../widgets/chat_with_coordinator_button.dart';
 
 class AccessorDashboard extends StatefulWidget {
   const AccessorDashboard({super.key});
@@ -421,16 +422,15 @@ class _AccessorDashboardState extends State<AccessorDashboard> with TickerProvid
           elevation: 2,
           margin: const EdgeInsets.only(bottom: 12),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          child: InkWell(
-            onTap: () => _viewProjectDetails(project),
-            borderRadius: BorderRadius.circular(12),
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const SizedBox(height: 20), // Space for priority label
-                  Row(
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SizedBox(height: 20), // Space for priority label
+                InkWell(
+                  onTap: () => _viewProjectDetails(project),
+                  child: Row(
                     children: [
                       Expanded(
                         child: Text(
@@ -447,25 +447,32 @@ class _AccessorDashboardState extends State<AccessorDashboard> with TickerProvid
                       ),
                     ],
                   ),
-                  if (project.description != null) ...[
-                    const SizedBox(height: 8),
-                    Text(
+                ),
+                if (project.description != null) ...[
+                  const SizedBox(height: 8),
+                  InkWell(
+                    onTap: () => _viewProjectDetails(project),
+                    child: Text(
                       project.description!,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(color: Colors.grey[600]),
                     ),
-                  ],
-                  const SizedBox(height: 12),
-                  Row(
+                  ),
+                ],
+                const SizedBox(height: 12),
+                InkWell(
+                  onTap: () => _viewProjectDetails(project),
+                  child: Row(
                     children: [
                       Icon(Icons.person, size: 16, color: Colors.grey[600]),
                       const SizedBox(width: 4),
-                      Text(
-                        'Coordinator: ${project.coordinatorName ?? project.coordinatorUsername}',
-                        style: TextStyle(color: Colors.grey[700]),
+                      Expanded(
+                        child: Text(
+                          'Coordinator: ${project.coordinatorName ?? project.coordinatorUsername}',
+                          style: TextStyle(color: Colors.grey[700]),
+                        ),
                       ),
-                      const Spacer(),
                       Icon(Icons.assessment, size: 16, color: Colors.grey[600]),
                       const SizedBox(width: 4),
                       Text(
@@ -474,7 +481,8 @@ class _AccessorDashboardState extends State<AccessorDashboard> with TickerProvid
                       ),
                     ],
                   ),
-                  if (project.startDate != null || project.endDate != null) ...[
+                ),
+                if (project.startDate != null || project.endDate != null) ...[
                     const SizedBox(height: 8),
                     Row(
                       children: [
@@ -498,8 +506,9 @@ class _AccessorDashboardState extends State<AccessorDashboard> with TickerProvid
                       ],
                     ),
                   ],
-                ],
-              ),
+                const SizedBox(height: 12),
+                ChatWithCoordinatorButton(project: project),
+              ],
             ),
           ),
         ),
@@ -1095,6 +1104,9 @@ class _AccessorDashboardState extends State<AccessorDashboard> with TickerProvid
         ),
       ),
     );
+
+    // Ensure dialog is rendered before starting PDF generation
+    await Future.delayed(Duration.zero);
 
     try {
       // Generate PDF

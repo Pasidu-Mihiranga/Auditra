@@ -1,0 +1,173 @@
+warning: in the working copy of 'auditra/lib/screens/generic_dashboard.dart', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'auditra/linux/flutter/generated_plugin_registrant.cc', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'auditra/linux/flutter/generated_plugins.cmake', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'auditra/macos/Flutter/GeneratedPluginRegistrant.swift', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'auditra/windows/flutter/generated_plugin_registrant.cc', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'auditra/windows/flutter/generated_plugins.cmake', LF will be replaced by CRLF the next time Git touches it
+[1mdiff --git a/auditra/lib/screens/admin_dashboard.dart b/auditra/lib/screens/admin_dashboard.dart[m
+[1mindex b108529..a2fcb45 100644[m
+[1m--- a/auditra/lib/screens/admin_dashboard.dart[m
+[1m+++ b/auditra/lib/screens/admin_dashboard.dart[m
+[36m@@ -1,4 +1,5 @@[m
+ import 'package:flutter/material.dart';[m
+[32m+[m[32mimport 'package:intl/intl.dart';[m
+ import '../services/api_service.dart';[m
+ import '../models/user_model.dart';[m
+ import 'login_screen.dart';[m
+[36m@@ -10,19 +11,37 @@[m [mclass AdminDashboard extends StatefulWidget {[m
+   State<AdminDashboard> createState() => _AdminDashboardState();[m
+ }[m
+ [m
+[31m-class _AdminDashboardState extends State<AdminDashboard> {[m
+[32m+[m[32mclass _AdminDashboardState extends State<AdminDashboard> with SingleTickerProviderStateMixin {[m
+   List<UserModel> _users = [];[m
+   List<RoleOption> _roles = [];[m
+   bool _isLoading = true;[m
+   String? _username;[m
+   String? _roleDisplay;[m
+[32m+[m[32m  late TabController _tabController;[m
+[32m+[m[41m  [m
+[32m+[m[32m  // Delete requests state[m
+[32m+[m[32m  List<Map<String, dynamic>> _deleteRequests = [];[m
+[32m+[m[32m  bool _isLoadingDeleteRequests = false;[m
+[32m+[m[32m  String _deleteRequestFilter = 'pending'; // 'pending', 'approved', 'rejected', 'all'[m
+ [m
+   @override[m
+   void initState() {[m
+     super.initState();[m
+[32m+[m[32m    _tabController = TabController(length: 2, vsync: this);[m
+[32m+[m[32m    _tabController.addListener(() {[m
+[32m+[m[32m      if (!_tabController.indexIsChanging && _tabController.index == 1) {[m
+[32m+[m[32m        _loadDeleteRequests();[m
+[32m+[m[32m      }[m
+[32m+[m[32m    });[m
+     _loadData();[m
+   }[m
+ [m
+[32m+[m[32m  @override[m
+[32m+[m[32m  void dispose() {[m
+[32m+[m[32m    _tabController.dispose();[m
+[32m+[m[32m    super.dispose();[m
+[32m+[m[32m  }[m
+[32m+[m
+   Future<void> _loadData() async {[m
+     if (mounted) {[m
+       setState(() => _isLoading = true);[m
+[36m@@ -54,6 +73,28 @@[m [mclass _AdminDashboardState extends State<AdminDashboard> {[m
+     });[m
+   }[m
+ [m
+[32m+[m[32m  Future<void> _loadDeleteRequests() async {[m
+[32m+[m[32m    if (mounted) {[m
+[32m+[m[32m      setState(() => _isLoadingDeleteRequests = true);[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    final result = await ApiService.getDeleteRequests([m
+[32m+[m[32m      status: _deleteRequestFilter == 'all' ? null : _deleteRequestFilter,[m
+[32m+[m[32m    );[m
+[32m+[m
+[32m+[m[32m    if (!mounted) return;[m
+[32m+[m
+[32m+[m[32m    setState(() {[m
+[32m+[m[32m      _isLoadingDeleteRequests = false;[m
+[32m+[m[32m      if (result['success']) {[m
+[32m+[m[32m        final data = result['data'];[m
+[32m+[m[32m        _deleteRequests = (data is List ? data : (data['results'] ?? [])) as List<Map<String, dynamic>>;[m
+[32m+[m[32m      } else {[m
+[32m+[m[32m        _deleteRequests = [];[m
+[32m+[m[32m      }[m
+[32m+[m[32m    });[m
+[32m+[m[32m  }[m
+[32m+[m
+   Future<void> _assignRole(UserModel user) async {[m
+     String? selectedRole = user.role != 'unassigned' ? user.role : null;[m
+ [m
+[36m@@ -301,13 +342,12 @@[m [mclass _AdminDashboardState extends State<AdminDashboard> {[m
+       ),[m
+       body: _isLoading[m
+           ? const Center(child: CircularProgressIndicator())[m
+[31m-          : SingleChildScrollView([m
+[31m-              padding: const EdgeInsets.all(16.0),[m
+[31m-              child: Column([m
+[31m-                crossAxisAlignment: CrossAxisAlignment.start,[m
+[31m-                children: [[m
+[31m-                  // Welcome Card[m
+[31m-                  Card([m
+[32m+[m[32m          : Column([m
+[32m+[m[32m              children: [[m
+[32m+[m[32m                // Welcome Card[m
+[32m+[m[32m                Container([m
+[32m+[m[32m                  padding: const EdgeInsets.all(16.0),[m
+[32m+[m[32m                  child: Card([m
+                     elevation: 4,[m
+                     child: Padding([m
+                       padding: const EdgeInsets.all(20.0),[m
+[36m@@ -345,115 +385,144 @@[m [mclass _AdminDashboardState extends State<AdminDashboard> {[m
+                       ),[m
+                     ),[m
+                   ),[m
+[31m-                  const SizedBox(height: 24),[m
+[31m-[m
+[31m-                  // Statistics[m
+[31m-                  Row([m
+[31m-                    children: [[m
+[31m-                      Expanded([m
+[31m-                        child: _buildStatCard([m
+[31m-                          'Total Users',[m
+[31m-                          _users.length.toString(),[m
+[31m-                          Icons.people,[m
+[31m-                          Colors.blue,[m
+[31m-                        ),[m
+[31m-                      ),[m
+[31m-                      const SizedBox(width: 16),[m
+[31m-                      Expanded([m
+[31m-                        child: _buildStatCard([m
+[31m-                          'Unassigned',[m
+[31m-                          _users[m
+[31m-                              .where((u) => u.role == 'unassigned')[m
+[31m-                              .length[m
+[31m-                              .toString(),[m
+[31m-                          Icons.person_add_disabled,[m
+[31m-                          Colors.orange,[m
+[31m-                        ),[m
+[31m-                      ),[m
+[31m-                    ],[m
+[31m-                  ),[m
+[31m-                  const SizedBox(height: 24),[m
+[31m-[m
+[31m-                  // User List[m
+[31m-                  const Text([m
+[31m-                    'User Management',[m
+[31m-                    style: TextStyle([m
+[31m-                      fontSize: 20,[m
+[31m-                      fontWeight: FontWeight.bold,[m
+[32m+[m[32m                ),[m
+[32m+[m[32m                // Tabs[m
+[32m+[m[32m                TabBar([m
+[32m+[m[32m                  controller: _tabController,[m
+[32m+[m[32m                  tabs: const [[m
+[32m+[m[32m                    Tab([m
+[32m+[m[32m                      icon: Icon(Icons.people),[m
+[32m+[m[32m                      text: 'User Management',[m
+                     ),[m
+[31m-                  ),[m
+[31m-                  const SizedBox(height: 16),[m
+[31m-[m
+[31m-                  if (_users.isEmpty)[m
+[31m-                    const Center([m
+[31m-                      child: Padding([m
+[31m-                        padding: EdgeInsets.all(32.0),[m
+[31m-                        child: Text('No users found'),[m
+[31m-                      ),[m
+[31m-                    )[m
+[31m-                  else[m
+[31m-                    ListView.builder([m
+[31m-                      shrinkWrap: true,[m
+[31m-                      physics: const NeverScrollableScrollPhysics(),[m
+[31m-                      itemCount: _users.length,[m
+[31m-                      itemBuilder: (context, index) {[m
+[31m-                        final user = _users[index];[m
+[31m-                        return Card([m
+[31m-                          margin: const EdgeInsets.only(bottom: 12),[m
+[31m-                          child: ListTile([m
+

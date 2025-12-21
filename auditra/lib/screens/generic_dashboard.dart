@@ -6,6 +6,7 @@ import '../services/api_service.dart';
 import '../models/attendance_model.dart';
 import '../models/project_model.dart';
 import 'login_screen.dart';
+import '../widgets/chat_with_coordinator_button.dart';
 
 class GenericDashboard extends StatefulWidget {
   final String role;
@@ -790,18 +791,20 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
                   ],
                 ),
               ],
+              const SizedBox(height: 12),
+              ChatWithCoordinatorButton(project: project),
             ],
           ),
         ),
-      ),
-      ),
-      // Priority ribbon at top-left corner
-      Positioned(
-        top: 4,
-        left: 8,
-        child: _buildPriorityRibbon(priority),
-      ),
-    ],
+        ),
+        ),
+        // Priority ribbon at top-left corner
+        Positioned(
+          top: 4,
+          left: 8,
+          child: _buildPriorityRibbon(priority),
+        ),
+      ],
     );
   }
   
