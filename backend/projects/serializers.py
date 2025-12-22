@@ -2,7 +2,7 @@ from rest_framework import serializers
 from django.contrib.auth.models import User
 from django.db import transaction
 from .models import Project, ProjectDocument
-from .utils import process_client_for_project, process_agent_for_project
+from .utils import check_user_by_email
 
 
 class ProjectDocumentSerializer(serializers.ModelSerializer):
@@ -221,22 +221,42 @@ class ProjectCreateSerializer(serializers.ModelSerializer):
         with transaction.atomic():
             project = super().create(validated_data)
             
-            # Process client information
-            if client_info:
-                client_user, client_created, client_error = process_client_for_project(project, client_info)
-                if client_error and not client_user:
-                    # If client creation failed, raise validation error
+            # Process client information - only assign existing users
+            if client_info and client_info.get('email'):
+                email = client_info.get('email').strip().lower()
+                existing_user = check_user_by_email(email)
+                
+                if existing_user:
+                    # Check if user has client role
+                    if hasattr(existing_user, 'role') and existing_user.role.role == 'client':
+                        project.assigned_client = existing_user
+                        project.save()
+                    else:
+                        raise serializers.ValidationError({
+                            'client_info': f'User with email {email} exists but is not a client'
+                        })
+                else:
                     raise serializers.ValidationError({
-                        'client_info': client_error
+                        'client_info': f'Client with email {email} does not exist. Please create the client account first.'
                     })
             
-            # Process agent information (if has_agent is True)
-            if agent_info and validated_data.get('has_agent', False):
-                agent_user, agent_created, agent_error = process_agent_for_project(project, agent_info)
-                if agent_error and not agent_user:
-                    # If agent creation failed, raise validation error
+            # Process agent information - only assign existing users
+            if agent_info and agent_info.get('email') and validated_data.get('has_agent', False):
+                email = agent_info.get('email').strip().lower()
+                existing_user = check_user_by_email(email)
+                
+                if existing_user:
+                    # Check if user has agent role
+                    if hasattr(existing_user, 'role') and existing_user.role.role == 'agent':
+                        project.assigned_agent = existing_user
+                        project.save()
+                    else:
+                        raise serializers.ValidationError({
+                            'agent_info': f'User with email {email} exists but is not an agent'
+                        })
+                else:
                     raise serializers.ValidationError({
-                        'agent_info': agent_error
+                        'agent_info': f'Agent with email {email} does not exist. Please create the agent account first.'
                     })
             
             return project

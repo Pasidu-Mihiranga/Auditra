@@ -8,7 +8,10 @@ from .views import (
     AllUsersView,
     RoleListView,
     MyRoleView,
-    ChangePasswordView
+    ChangePasswordView,
+    CheckUserByEmailView,
+    CreateClientAccountView,
+    CreateAgentAccountView
 )
 
 urlpatterns = [
@@ -21,5 +24,8 @@ urlpatterns = [
     path('assign-role/', AssignRoleView.as_view(), name='assign-role'),
     path('users/', AllUsersView.as_view(), name='all-users'),
     path('change-password/', ChangePasswordView.as_view(), name='change-password'),
+    path('check-user-by-email/', CheckUserByEmailView.as_view(), name='check-user-by-email'),
+    path('create-client-account/', CreateClientAccountView.as_view(), name='create-client-account'),
+    path('create-agent-account/', CreateAgentAccountView.as_view(), name='create-agent-account'),
 ]
 

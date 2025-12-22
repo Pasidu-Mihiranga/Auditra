@@ -15,6 +15,8 @@ from .serializers import (
     UserRoleSerializer,
     ChangePasswordSerializer
 )
+from projects.utils import check_user_by_email, create_user_account
+from .services import EmailService
 
 
 class RegisterView(generics.CreateAPIView):
@@ -217,3 +219,206 @@ class ChangePasswordView(APIView):
         return Response({
             'message': 'Password changed successfully'
         }, status=status.HTTP_200_OK)
+
+
+class CheckUserByEmailView(APIView):
+    """Check if a user exists by email and return their role"""
+    permission_classes = (IsAuthenticated,)
+    
+    def post(self, request):
+        try:
+            email = request.data.get('email', '').strip().lower()
+            role_type = request.data.get('role_type', '')  # 'client' or 'agent'
+            
+            if not email:
+                return Response({
+                    'exists': False,
+                    'error': 'Email is required'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            if role_type not in ['client', 'agent']:
+                return Response({
+                    'exists': False,
+                    'error': 'Invalid role type. Must be "client" or "agent"'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Check if user exists (optimized query)
+            try:
+                user = User.objects.select_related('role').get(email=email)
+            except User.DoesNotExist:
+                return Response({
+                    'exists': False,
+                    'message': f'{role_type.capitalize()} does not exist'
+                }, status=status.HTTP_200_OK)
+            except User.MultipleObjectsReturned:
+                # Handle edge case of duplicate emails
+                user = User.objects.select_related('role').filter(email=email).first()
+            
+            if user:
+                # Check if user has the correct role
+                if hasattr(user, 'role') and user.role.role == role_type:
+                    return Response({
+                        'exists': True,
+                        'user_id': user.id,
+                        'username': user.username,
+                        'name': f"{user.first_name} {user.last_name}".strip() or user.username,
+                        'role': user.role.role,
+                        'message': f'{role_type.capitalize()} already exists'
+                    }, status=status.HTTP_200_OK)
+                else:
+                    # User exists but has different role
+                    return Response({
+                        'exists': False,
+                        'error': f'User with this email exists but is not a {role_type}',
+                        'current_role': user.role.role if hasattr(user, 'role') else None
+                    }, status=status.HTTP_200_OK)
+            else:
+                return Response({
+                    'exists': False,
+                    'message': f'{role_type.capitalize()} does not exist'
+                }, status=status.HTTP_200_OK)
+        except Exception as e:
+            return Response({
+                'exists': False,
+                'error': f'Error checking user: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class CreateClientAccountView(APIView):
+    """Create a client account and send credentials via email"""
+    permission_classes = (IsAuthenticated,)
+    
+    def post(self, request):
+        # Only coordinators can create client accounts
+        if not hasattr(request.user, 'role') or request.user.role.role != 'coordinator':
+            return Response({
+                'error': 'Only coordinators can create client accounts'
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        email = request.data.get('email', '').strip().lower()
+        name = request.data.get('name', '').strip()
+        phone = request.data.get('phone', '').strip() or None
+        address = request.data.get('address', '').strip() or None
+        company = request.data.get('company', '').strip() or None
+        
+        if not email or not name:
+            return Response({
+                'error': 'Email and name are required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Check if user already exists
+        existing_user = check_user_by_email(email)
+        if existing_user:
+            if hasattr(existing_user, 'role') and existing_user.role.role == 'client':
+                return Response({
+                    'error': 'Client with this email already exists',
+                    'user_id': existing_user.id
+                }, status=status.HTTP_400_BAD_REQUEST)
+            else:
+                return Response({
+                    'error': f'User with this email exists but is not a client (current role: {existing_user.role.role})'
+                }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Create client account
+        user, password = create_user_account(
+            email=email,
+            name=name,
+            role_type='client',
+            phone=phone,
+            address=address,
+            company=company
+        )
+        
+        if user:
+            # Send email with credentials
+            EmailService.send_account_credentials(
+                email=email,
+                username=user.username,
+                password=password,
+                user_type='client',
+                name=name
+            )
+            
+            return Response({
+                'success': True,
+                'message': 'Client account created successfully. Credentials sent via email.',
+                'user': {
+                    'id': user.id,
+                    'username': user.username,
+                    'email': user.email,
+                    'name': f"{user.first_name} {user.last_name}".strip() or user.username
+                }
+            }, status=status.HTTP_201_CREATED)
+        else:
+            return Response({
+                'error': 'Failed to create client account'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class CreateAgentAccountView(APIView):
+    """Create an agent account and send credentials via email"""
+    permission_classes = (IsAuthenticated,)
+    
+    def post(self, request):
+        # Only coordinators can create agent accounts
+        if not hasattr(request.user, 'role') or request.user.role.role != 'coordinator':
+            return Response({
+                'error': 'Only coordinators can create agent accounts'
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        email = request.data.get('email', '').strip().lower()
+        name = request.data.get('name', '').strip()
+        phone = request.data.get('phone', '').strip() or None
+        address = request.data.get('address', '').strip() or None
+        
+        if not email or not name:
+            return Response({
+                'error': 'Email and name are required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Check if user already exists
+        existing_user = check_user_by_email(email)
+        if existing_user:
+            if hasattr(existing_user, 'role') and existing_user.role.role == 'agent':
+                return Response({
+                    'error': 'Agent with this email already exists',
+                    'user_id': existing_user.id
+                }, status=status.HTTP_400_BAD_REQUEST)
+            else:
+                return Response({
+                    'error': f'User with this email exists but is not an agent (current role: {existing_user.role.role})'
+                }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Create agent account
+        user, password = create_user_account(
+            email=email,
+            name=name,
+            role_type='agent',
+            phone=phone,
+            address=address
+        )
+        
+        if user:
+            # Send email with credentials
+            EmailService.send_account_credentials(
+                email=email,
+                username=user.username,
+                password=password,
+                user_type='agent',
+                name=name
+            )
+            
+            return Response({
+                'success': True,
+                'message': 'Agent account created successfully. Credentials sent via email.',
+                'user': {
+                    'id': user.id,
+                    'username': user.username,
+                    'email': user.email,
+                    'name': f"{user.first_name} {user.last_name}".strip() or user.username
+                }
+            }, status=status.HTTP_201_CREATED)
+        else:
+            return Response({
+                'error': 'Failed to create agent account'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
