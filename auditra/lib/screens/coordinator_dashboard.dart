@@ -6438,6 +6438,63 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
               children: [
                 // Spacing for priority label
                 const SizedBox(height: 20),
+                // Show MD/GM rejection status if rejected
+                if (project.mdGmApprovalStatus == 'rejected') ...[
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    margin: const EdgeInsets.only(bottom: 12),
+                    decoration: BoxDecoration(
+                      color: Colors.red[50],
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.red[200]!),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(Icons.cancel, color: Colors.red[700], size: 20),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Project Rejected by MD/GM',
+                                style: TextStyle(
+                                  color: Colors.red[900],
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        if (project.mdGmRejectionReason != null && project.mdGmRejectionReason!.isNotEmpty) ...[
+                          const SizedBox(height: 8),
+                          Text(
+                            'Reason: ${project.mdGmRejectionReason}',
+                            style: TextStyle(
+                              color: Colors.red[800],
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: 12),
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton.icon(
+                            onPressed: () => _recreateProject(project),
+                            icon: const Icon(Icons.add_circle_outline, size: 18),
+                            label: const Text('Recreate Project'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.blue[700],
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
                 // Top row: project name + status aligned with edit/delete icons
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.center,
