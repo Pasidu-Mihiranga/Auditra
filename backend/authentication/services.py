@@ -82,6 +82,9 @@ This is an automated message. Please do not reply to this email.
         
         try:
             logger.info(f"Attempting to send email to {email} for {user_type} {username}")
+            logger.info(f"Using email backend: {settings.EMAIL_BACKEND}")
+            logger.info(f"From email: {settings.DEFAULT_FROM_EMAIL}")
+            
             send_mail(
                 subject=subject,
                 message=plain_message,
