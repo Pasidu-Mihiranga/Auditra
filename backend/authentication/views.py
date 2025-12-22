@@ -353,7 +353,9 @@ class CreateClientAccountView(APIView):
                     except Exception as e:
                         logger.error(f"Exception in async email send for {email}: {e}", exc_info=True)
                 
-                Thread(target=send_email_async, daemon=True).start()
+                # Use non-daemon thread to ensure email is sent
+                email_thread = Thread(target=send_email_async, daemon=False)
+                email_thread.start()
                 logger.info(f"Started async email thread for client {email}")
             except Exception as e:
                 # Log error but don't fail the request
@@ -444,7 +446,9 @@ class CreateAgentAccountView(APIView):
                     except Exception as e:
                         logger.error(f"Exception in async email send for {email}: {e}", exc_info=True)
                 
-                Thread(target=send_email_async, daemon=True).start()
+                # Use non-daemon thread to ensure email is sent
+                email_thread = Thread(target=send_email_async, daemon=False)
+                email_thread.start()
                 logger.info(f"Started async email thread for agent {email}")
             except Exception as e:
                 # Log error but don't fail the request
