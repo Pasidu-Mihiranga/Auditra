@@ -311,6 +311,44 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
     }
   }
 
+  Future<void> _recreateProject(Project rejectedProject) async {
+    // Show confirmation dialog
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Recreate Project'),
+        content: Text(
+          'Do you want to create a new project based on "${rejectedProject.title}"? '
+          'You will be taken to the project creation form where you can review and modify the details.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.blue[700]),
+            child: const Text('Recreate'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    // Navigate to create project screen
+    final result = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (context) => const CreateProjectScreen(),
+      ),
+    );
+
+    if (result == true) {
+      await _loadProjects();
+    }
+  }
+
   Future<void> _editProject(Project project) async {
     final titleController = TextEditingController(text: project.title);
     final descriptionController = TextEditingController(text: project.description ?? '');
