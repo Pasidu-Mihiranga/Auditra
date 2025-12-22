@@ -2,8 +2,12 @@ from rest_framework import status, generics, serializers
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.decorators import api_view, permission_classes
 from django.contrib.auth.models import User
 from django.db.models import Q, Count, Case, When, IntegerField, F
+from django.db import transaction
+from django.utils import timezone
+from django.shortcuts import get_object_or_404
 from .models import Project, ProjectDocument
 from .serializers import (
     ProjectSerializer,
@@ -658,4 +662,84 @@ class UserAssignedProjectsView(APIView):
                 'full_name': f"{user.first_name} {user.last_name}".strip() or user.username,
             }
         }, status=status.HTTP_200_OK)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+@transaction.atomic
+def md_gm_approve_project(request, pk):
+    """Approve a project - Only MD/GM can do this"""
+    project = get_object_or_404(Project, pk=pk)
+    
+    # Check if user is MD/GM
+    if not hasattr(request.user, 'role') or request.user.role.role != 'md_gm':
+        return Response(
+            {'error': 'Only MD/GM can approve projects.'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+    
+    # Check if project has all valuations approved
+    total_valuations = project.valuations.count()
+    approved_valuations = project.valuations.filter(status='approved').count()
+    
+    if total_valuations == 0:
+        return Response(
+            {'error': 'Project must have at least one approved valuation before MD/GM can approve it.'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    if approved_valuations != total_valuations:
+        return Response(
+            {'error': 'All valuations must be approved by Senior Valuer before MD/GM can approve the project.'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    # Approve the project
+    project.md_gm_approval_status = 'approved'
+    project.md_gm_approved_at = timezone.now()
+    project.md_gm_rejection_reason = ''  # Clear any previous rejection reason
+    project.md_gm_rejected_at = None
+    project.save(update_fields=['md_gm_approval_status', 'md_gm_approved_at', 'md_gm_rejection_reason', 'md_gm_rejected_at', 'updated_at'])
+    
+    serializer = ProjectSerializer(project, context={'request': request})
+    return Response({
+        **serializer.data,
+        'message': 'Project approved successfully.'
+    }, status=status.HTTP_200_OK)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+@transaction.atomic
+def md_gm_reject_project(request, pk):
+    """Reject a project - Only MD/GM can do this"""
+    project = get_object_or_404(Project, pk=pk)
+    
+    # Check if user is MD/GM
+    if not hasattr(request.user, 'role') or request.user.role.role != 'md_gm':
+        return Response(
+            {'error': 'Only MD/GM can reject projects.'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+    
+    # Get rejection reason from request
+    rejection_reason = request.data.get('rejection_reason', '').strip()
+    if not rejection_reason:
+        return Response(
+            {'error': 'Rejection reason is required.'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    # Reject the project
+    project.md_gm_approval_status = 'rejected'
+    project.md_gm_rejection_reason = rejection_reason
+    project.md_gm_rejected_at = timezone.now()
+    project.md_gm_approved_at = None  # Clear any previous approval
+    project.save(update_fields=['md_gm_approval_status', 'md_gm_rejection_reason', 'md_gm_rejected_at', 'md_gm_approved_at', 'updated_at'])
+    
+    serializer = ProjectSerializer(project, context={'request': request})
+    return Response({
+        **serializer.data,
+        'message': 'Project rejected successfully.'
+    }, status=status.HTTP_200_OK)
 

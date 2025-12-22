@@ -2333,5 +2333,74 @@ class ApiService {
       return {'success': false, 'message': 'Connection error: $e'};
     }
   }
+  
+  // MD/GM Project Approval/Rejection
+  static Future<Map<String, dynamic>> approveProjectByMDGM(int projectId) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('token');
+      
+      if (token == null) {
+        return {'success': false, 'message': 'Not authenticated'};
+      }
+      
+      final response = await http.post(
+        Uri.parse('$baseUrl/projects/$projectId/md-gm-approve/'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Token $token',
+        },
+      ).timeout(const Duration(seconds: 10));
+      
+      final data = _safeParseJsonResponse(response);
+      if (data == null) {
+        return {'success': false, 'message': _getHtmlErrorMessage(response)};
+      }
+      
+      if (response.statusCode == 200) {
+        return {'success': true, 'data': data, 'message': data['message'] ?? 'Project approved successfully'};
+      } else {
+        return {'success': false, 'message': data['error'] ?? data['detail'] ?? 'Failed to approve project'};
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'Error: ${e.toString()}'};
+    }
+  }
+  
+  static Future<Map<String, dynamic>> rejectProjectByMDGM({
+    required int projectId,
+    required String rejectionReason,
+  }) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('token');
+      
+      if (token == null) {
+        return {'success': false, 'message': 'Not authenticated'};
+      }
+      
+      final response = await http.post(
+        Uri.parse('$baseUrl/projects/$projectId/md-gm-reject/'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Token $token',
+        },
+        body: jsonEncode({'rejection_reason': rejectionReason}),
+      ).timeout(const Duration(seconds: 10));
+      
+      final data = _safeParseJsonResponse(response);
+      if (data == null) {
+        return {'success': false, 'message': _getHtmlErrorMessage(response)};
+      }
+      
+      if (response.statusCode == 200) {
+        return {'success': true, 'data': data, 'message': data['message'] ?? 'Project rejected successfully'};
+      } else {
+        return {'success': false, 'message': data['error'] ?? data['detail'] ?? 'Failed to reject project'};
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'Error: ${e.toString()}'};
+    }
+  }
 }
 

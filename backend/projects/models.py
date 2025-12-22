@@ -80,6 +80,24 @@ class Project(models.Model):
     )
     start_date = models.DateField(null=True, blank=True)
     end_date = models.DateField(null=True, blank=True)
+    # MD/GM approval fields
+    md_gm_approval_status = models.CharField(
+        max_length=20,
+        choices=[
+            ('pending', 'Pending'),
+            ('approved', 'Approved'),
+            ('rejected', 'Rejected'),
+        ],
+        default='pending',
+        help_text='MD/GM approval status for the project'
+    )
+    md_gm_rejection_reason = models.TextField(
+        blank=True,
+        null=True,
+        help_text='Reason for rejection by MD/GM (if rejected)'
+    )
+    md_gm_approved_at = models.DateTimeField(null=True, blank=True)
+    md_gm_rejected_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     

@@ -19,5 +19,7 @@ urlpatterns = [
     path('users/<int:user_id>/projects/<str:role_type>/', views.UserAssignedProjectsView.as_view(), name='user-assigned-projects'),
     path('documents/', views.ProjectDocumentView.as_view(), name='project-document-create'),
     path('documents/<int:pk>/', views.ProjectDocumentDeleteView.as_view(), name='project-document-delete'),
+    path('<int:pk>/md-gm-approve/', views.md_gm_approve_project, name='md-gm-approve-project'),
+    path('<int:pk>/md-gm-reject/', views.md_gm_reject_project, name='md-gm-reject-project'),
 ]
 
