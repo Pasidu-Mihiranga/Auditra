@@ -2338,7 +2338,7 @@ class ApiService {
   static Future<Map<String, dynamic>> approveProjectByMDGM(int projectId) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString('token');
+      final token = prefs.getString('access_token');
       
       if (token == null) {
         return {'success': false, 'message': 'Not authenticated'};
@@ -2348,7 +2348,7 @@ class ApiService {
         Uri.parse('$baseUrl/projects/$projectId/md-gm-approve/'),
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': 'Token $token',
+          'Authorization': 'Bearer $token',
         },
       ).timeout(const Duration(seconds: 10));
       
@@ -2373,7 +2373,7 @@ class ApiService {
   }) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString('token');
+      final token = prefs.getString('access_token');
       
       if (token == null) {
         return {'success': false, 'message': 'Not authenticated'};
@@ -2383,7 +2383,7 @@ class ApiService {
         Uri.parse('$baseUrl/projects/$projectId/md-gm-reject/'),
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': 'Token $token',
+          'Authorization': 'Bearer $token',
         },
         body: jsonEncode({'rejection_reason': rejectionReason}),
       ).timeout(const Duration(seconds: 10));
