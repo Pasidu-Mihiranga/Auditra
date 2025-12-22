@@ -333,20 +333,33 @@ class CreateClientAccountView(APIView):
             # Send email with credentials asynchronously (don't wait for it)
             try:
                 from threading import Thread
+                import logging
+                logger = logging.getLogger(__name__)
+                
                 def send_email_async():
-                    EmailService.send_account_credentials(
-                        email=email,
-                        username=user.username,
-                        password=password,
-                        user_type='client',
-                        name=name
-                    )
+                    try:
+                        logger.info(f"Starting async email send for client {email}")
+                        result = EmailService.send_account_credentials(
+                            email=email,
+                            username=user.username,
+                            password=password,
+                            user_type='client',
+                            name=name
+                        )
+                        if result:
+                            logger.info(f"Email sent successfully to {email}")
+                        else:
+                            logger.error(f"Email sending failed for {email}")
+                    except Exception as e:
+                        logger.error(f"Exception in async email send for {email}: {e}", exc_info=True)
+                
                 Thread(target=send_email_async, daemon=True).start()
+                logger.info(f"Started async email thread for client {email}")
             except Exception as e:
                 # Log error but don't fail the request
                 import logging
                 logger = logging.getLogger(__name__)
-                logger.error(f"Failed to send email asynchronously: {e}")
+                logger.error(f"Failed to start email thread: {e}", exc_info=True)
             
             return Response({
                 'success': True,
@@ -411,20 +424,33 @@ class CreateAgentAccountView(APIView):
             # Send email with credentials asynchronously (don't wait for it)
             try:
                 from threading import Thread
+                import logging
+                logger = logging.getLogger(__name__)
+                
                 def send_email_async():
-                    EmailService.send_account_credentials(
-                        email=email,
-                        username=user.username,
-                        password=password,
-                        user_type='agent',
-                        name=name
-                    )
+                    try:
+                        logger.info(f"Starting async email send for agent {email}")
+                        result = EmailService.send_account_credentials(
+                            email=email,
+                            username=user.username,
+                            password=password,
+                            user_type='agent',
+                            name=name
+                        )
+                        if result:
+                            logger.info(f"Email sent successfully to {email}")
+                        else:
+                            logger.error(f"Email sending failed for {email}")
+                    except Exception as e:
+                        logger.error(f"Exception in async email send for {email}: {e}", exc_info=True)
+                
                 Thread(target=send_email_async, daemon=True).start()
+                logger.info(f"Started async email thread for agent {email}")
             except Exception as e:
                 # Log error but don't fail the request
                 import logging
                 logger = logging.getLogger(__name__)
-                logger.error(f"Failed to send email asynchronously: {e}")
+                logger.error(f"Failed to start email thread: {e}", exc_info=True)
             
             return Response({
                 'success': True,

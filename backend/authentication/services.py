@@ -5,6 +5,9 @@ from django.core.mail import send_mail
 from django.conf import settings
 from django.template.loader import render_to_string
 from django.utils.html import strip_tags
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class EmailService:
@@ -78,6 +81,18 @@ This is an automated message. Please do not reply to this email.
         """
         
         try:
+            # Check email configuration
+            if not settings.EMAIL_HOST_USER or not settings.EMAIL_HOST_PASSWORD:
+                logger.error(f"Email configuration missing: EMAIL_HOST_USER={bool(settings.EMAIL_HOST_USER)}, EMAIL_HOST_PASSWORD={'*' * len(settings.EMAIL_HOST_PASSWORD) if settings.EMAIL_HOST_PASSWORD else 'NOT SET'}")
+                return False
+            
+            if not settings.DEFAULT_FROM_EMAIL:
+                logger.error("DEFAULT_FROM_EMAIL is not set")
+                return False
+            
+            logger.info(f"Attempting to send email to {email} for {user_type} {username}")
+            logger.debug(f"Email config: HOST={settings.EMAIL_HOST}, PORT={settings.EMAIL_PORT}, FROM={settings.DEFAULT_FROM_EMAIL}")
+            
             send_mail(
                 subject=subject,
                 message=plain_message,
@@ -86,9 +101,13 @@ This is an automated message. Please do not reply to this email.
                 html_message=html_message,
                 fail_silently=False,
             )
+            logger.info(f"Successfully sent email to {email} for {user_type} {username}")
             return True
         except Exception as e:
-            # Log error but don't fail the request
-            print(f"Error sending email to {email}: {str(e)}")
+            # Log error with full details
+            logger.error(f"Error sending email to {email}: {str(e)}", exc_info=True)
+            print(f"ERROR sending email to {email}: {str(e)}")
+            import traceback
+            traceback.print_exc()
             return False
 
