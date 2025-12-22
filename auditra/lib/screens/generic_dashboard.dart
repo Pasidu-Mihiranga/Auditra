@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:fl_chart/fl_chart.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:printing/printing.dart';
 import 'dart:math' as math;
 import '../services/api_service.dart';
 import '../services/pdf_service.dart';
@@ -57,7 +59,8 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
     return widget.role == 'client' || 
            widget.role == 'agent' || 
            widget.role == 'accessor' || 
-           widget.role == 'senior_valuer';
+           widget.role == 'senior_valuer' ||
+           widget.role == 'md_gm';
   }
 
   @override
@@ -886,6 +889,12 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
   }
 
   Future<void> _viewProjectDetails(Project project) async {
+    // For senior valuer, show reviewed valuations
+    if (widget.role == 'senior_valuer') {
+      await _showSeniorValuerProjectDetails(project);
+      return;
+    }
+    
     await showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -951,6 +960,353 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
         ],
       ),
     );
+  }
+
+  Future<void> _showSeniorValuerProjectDetails(Project project) async {
+    // Load reviewed valuations for this project
+    final result = await ApiService.getReviewedValuationsForSeniorValuer(projectId: project.id);
+    List<Valuation> reviewedValuations = [];
+    
+    if (result['success'] && result['data'] != null) {
+      final valuationsList = result['data'] as List<dynamic>;
+      reviewedValuations = valuationsList
+          .map((v) => Valuation.fromJson(v))
+          .toList();
+    }
+    
+    if (!mounted) return;
+    
+    await showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(project.title),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (project.description != null) ...[
+                const Text(
+                  'Description:',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 4),
+                Text(project.description!),
+                const SizedBox(height: 16),
+              ],
+              const Divider(),
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.blue[50],
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.blue[200]!),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.info_outline, color: Colors.blue[700], size: 20),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'These valuations have been approved by the Assessor and are pending your final approval.',
+                        style: TextStyle(
+                          color: Colors.blue[900],
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                'Reviewed Valuations (Pending Your Approval):',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              ),
+              const SizedBox(height: 12),
+              if (reviewedValuations.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.all(16.0),
+                  child: Center(
+                    child: Text(
+                      'No reviewed valuations available',
+                      style: TextStyle(color: Colors.grey),
+                    ),
+                  ),
+                )
+              else
+                ...reviewedValuations.map((valuation) => Card(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      child: ListTile(
+                        title: Text(valuation.categoryDisplay),
+                        subtitle: Text(
+                          'Field Officer: ${valuation.fieldOfficerName ?? valuation.fieldOfficerUsername}\n'
+                          'Status: ${valuation.statusDisplay}',
+                        ),
+                        trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                        onTap: () {
+                          Navigator.of(context).pop();
+                          _viewValuationPDFAndApprove(valuation, project);
+                        },
+                      ),
+                    )),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _viewValuationPDFAndApprove(Valuation valuation, Project project) async {
+    // Show loading while generating PDF
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(
+        child: Card(
+          child: Padding(
+            padding: EdgeInsets.all(20.0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularProgressIndicator(),
+                SizedBox(height: 16),
+                Text('Generating PDF report...'),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+
+    try {
+      // Generate PDF
+      final pdfFile = await PdfService.generateValuationReport(
+        valuation: valuation,
+        project: project,
+      );
+
+      // Close loading dialog
+      if (!mounted) return;
+      Navigator.of(context).pop();
+
+      // Show PDF viewer with Accept/Reject buttons
+      final rejectionReasonController = TextEditingController();
+      
+      if (!mounted) return;
+      await showDialog(
+        context: context,
+        builder: (context) => StatefulBuilder(
+          builder: (context, setDialogState) => AlertDialog(
+            title: Text('${valuation.categoryDisplay} Valuation Report'),
+            content: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.blue[50],
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.blue[200]!),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.info_outline, color: Colors.blue[700], size: 20),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Please review the PDF report and approve or reject the valuation.',
+                            style: TextStyle(
+                              color: Colors.blue[900],
+                              fontSize: 13,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: () async {
+                        // View PDF using printing package
+                        final bytes = await pdfFile.readAsBytes();
+                        await Printing.layoutPdf(
+                          onLayout: (format) async => bytes,
+                        );
+                      },
+                      icon: const Icon(Icons.picture_as_pdf),
+                      label: const Text('View PDF Report'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.blue[700],
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  const Divider(),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Rejection Reason (if rejecting):',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: rejectionReasonController,
+                    decoration: const InputDecoration(
+                      labelText: 'Rejection Reason',
+                      hintText: 'Enter reason for rejection (required if rejecting)...',
+                      border: OutlineInputBorder(),
+                    ),
+                    maxLines: 3,
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton(
+                onPressed: () async {
+                  final rejectionReason = rejectionReasonController.text.trim();
+                  if (rejectionReason.isEmpty) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Please provide a rejection reason'),
+                        backgroundColor: Colors.orange,
+                      ),
+                    );
+                    return;
+                  }
+
+                  // Show loading
+                  if (!mounted) return;
+                  showDialog(
+                    context: context,
+                    barrierDismissible: false,
+                    builder: (context) => const Center(child: CircularProgressIndicator()),
+                  );
+
+                  final result = await ApiService.rejectValuationBySeniorValuer(
+                    valuationId: valuation.id,
+                    rejectionReason: rejectionReason,
+                  );
+
+                  if (!mounted) return;
+                  Navigator.of(context).pop(); // Close loading
+                  Navigator.of(context).pop(); // Close dialog
+
+                  if (result['success']) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Valuation rejected successfully'),
+                        backgroundColor: Colors.orange,
+                      ),
+                    );
+                    _loadProjects();
+                  } else {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(result['message'] ?? 'Failed to reject valuation'),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                  }
+                },
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                child: const Text('Reject'),
+              ),
+              ElevatedButton(
+                onPressed: () async {
+                  // Show confirmation
+                  final confirm = await showDialog<bool>(
+                    context: context,
+                    builder: (context) => AlertDialog(
+                      title: const Text('Approve Valuation'),
+                      content: Text('Are you sure you want to approve this ${valuation.categoryDisplay} valuation?'),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.of(context).pop(false),
+                          child: const Text('Cancel'),
+                        ),
+                        ElevatedButton(
+                          onPressed: () => Navigator.of(context).pop(true),
+                          style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+                          child: const Text('Approve'),
+                        ),
+                      ],
+                    ),
+                  );
+
+                  if (confirm != true) return;
+
+                  // Show loading
+                  if (!mounted) return;
+                  showDialog(
+                    context: context,
+                    barrierDismissible: false,
+                    builder: (context) => const Center(child: CircularProgressIndicator()),
+                  );
+
+                  final result = await ApiService.approveValuationBySeniorValuer(valuation.id);
+
+                  if (!mounted) return;
+                  Navigator.of(context).pop(); // Close loading
+                  Navigator.of(context).pop(); // Close dialog
+
+                  if (result['success']) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Valuation approved successfully'),
+                        backgroundColor: Colors.green,
+                      ),
+                    );
+                    _loadProjects();
+                  } else {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(result['message'] ?? 'Failed to approve valuation'),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                  }
+                },
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+                child: const Text('Accept'),
+              ),
+            ],
+          ),
+        ),
+      );
+    } catch (e) {
+      // Close loading dialog if still open
+      if (mounted) {
+        Navigator.of(context).pop();
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error generating PDF: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   Widget _buildTodayAttendanceCard() {

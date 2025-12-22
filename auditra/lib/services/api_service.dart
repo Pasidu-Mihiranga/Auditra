@@ -76,9 +76,24 @@ class ApiService {
           'first_name': firstName ?? '',
           'last_name': lastName ?? '',
         }),
+      ).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          throw Exception('Connection timeout. Please check if the backend server is running.');
+        },
       );
 
-      final data = jsonDecode(response.body);
+      // Check if response is HTML (error page) before parsing JSON
+      final parsedData = _safeParseJsonResponse(response);
+      if (parsedData == null) {
+        // HTML response - server error
+        return {
+          'success': false,
+          'message': _getHtmlErrorMessage(response),
+        };
+      }
+
+      final data = parsedData;
 
       if (response.statusCode == 201) {
         // Save tokens
@@ -90,8 +105,47 @@ class ApiService {
         
         return {'success': true, 'data': data};
       } else {
-        return {'success': false, 'message': data.toString()};
+        // Handle validation errors
+        String errorMessage = 'Registration failed';
+        if (data.containsKey('username')) {
+          errorMessage = 'Username: ${data['username']}';
+        } else if (data.containsKey('email')) {
+          errorMessage = 'Email: ${data['email']}';
+        } else if (data.containsKey('password')) {
+          errorMessage = 'Password: ${data['password']}';
+        } else if (data.containsKey('non_field_errors')) {
+          errorMessage = data['non_field_errors'].toString();
+        } else {
+          errorMessage = data.toString();
+        }
+        return {'success': false, 'message': errorMessage};
       }
+    } on SocketException catch (e) {
+      String errorMsg = 'Cannot connect to server.\n\n';
+      if (e.message.contains('Network is unreachable') || 
+          e.message.contains('Connection failed') ||
+          e.message.contains('Failed host lookup')) {
+        errorMsg += 'Please check:\n\n';
+        errorMsg += '1. Backend server is running:\n';
+        errorMsg += '   Run: python manage.py runserver\n\n';
+        errorMsg += '2. Correct IP address:\n';
+        errorMsg += '   • Android Emulator: 10.0.2.2:8000\n';
+        errorMsg += '   • iOS Simulator: localhost:8000\n';
+        errorMsg += '   • Physical Device: Your PC IP (e.g., 192.168.1.100:8000)\n\n';
+        errorMsg += '3. Update baseUrl in:\n';
+        errorMsg += '   auditra/lib/services/api_service.dart\n\n';
+        errorMsg += 'Current server: $baseUrl';
+      } else {
+        errorMsg += 'Error: ${e.message}\n\n';
+        errorMsg += 'Please ensure the backend server is running.';
+      }
+      return {'success': false, 'message': errorMsg};
+    } on HttpException catch (e) {
+      return {'success': false, 'message': 'HTTP error: ${e.message}'};
+    } on FormatException catch (e) {
+      return {'success': false, 'message': 'Invalid server response: ${e.message}'};
+    } on Exception catch (e) {
+      return {'success': false, 'message': e.toString()};
     } catch (e) {
       return {'success': false, 'message': 'Connection error: $e'};
     }
@@ -110,9 +164,24 @@ class ApiService {
           'username': username,
           'password': password,
         }),
+      ).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          throw Exception('Connection timeout. Please check if the backend server is running.');
+        },
       );
 
-      final data = jsonDecode(response.body);
+      // Check if response is HTML (error page) before parsing JSON
+      final parsedData = _safeParseJsonResponse(response);
+      if (parsedData == null) {
+        // HTML response - server error
+        return {
+          'success': false,
+          'message': _getHtmlErrorMessage(response),
+        };
+      }
+
+      final data = parsedData;
 
       if (response.statusCode == 200) {
         // Save tokens
@@ -124,8 +193,45 @@ class ApiService {
         
         return {'success': true, 'data': data};
       } else {
-        return {'success': false, 'message': data['error'] ?? 'Login failed'};
+        // Handle validation errors
+        String errorMessage = 'Login failed';
+        if (data.containsKey('error')) {
+          errorMessage = data['error'].toString();
+        } else if (data.containsKey('detail')) {
+          errorMessage = data['detail'].toString();
+        } else if (data.containsKey('non_field_errors')) {
+          errorMessage = data['non_field_errors'].toString();
+        } else {
+          errorMessage = data.toString();
+        }
+        return {'success': false, 'message': errorMessage};
       }
+    } on SocketException catch (e) {
+      String errorMsg = 'Cannot connect to server.\n\n';
+      if (e.message.contains('Network is unreachable') || 
+          e.message.contains('Connection failed') ||
+          e.message.contains('Failed host lookup')) {
+        errorMsg += 'Please check:\n\n';
+        errorMsg += '1. Backend server is running:\n';
+        errorMsg += '   Run: python manage.py runserver\n\n';
+        errorMsg += '2. Correct IP address:\n';
+        errorMsg += '   • Android Emulator: 10.0.2.2:8000\n';
+        errorMsg += '   • iOS Simulator: localhost:8000\n';
+        errorMsg += '   • Physical Device: Your PC IP (e.g., 192.168.1.100:8000)\n\n';
+        errorMsg += '3. Update baseUrl in:\n';
+        errorMsg += '   auditra/lib/services/api_service.dart\n\n';
+        errorMsg += 'Current server: $baseUrl';
+      } else {
+        errorMsg += 'Error: ${e.message}\n\n';
+        errorMsg += 'Please ensure the backend server is running.';
+      }
+      return {'success': false, 'message': errorMsg};
+    } on HttpException catch (e) {
+      return {'success': false, 'message': 'HTTP error: ${e.message}'};
+    } on FormatException catch (e) {
+      return {'success': false, 'message': 'Invalid server response: ${e.message}'};
+    } on Exception catch (e) {
+      return {'success': false, 'message': e.toString()};
     } catch (e) {
       return {'success': false, 'message': 'Connection error: $e'};
     }
@@ -2082,6 +2188,146 @@ class ApiService {
       } else {
         final data = response.body.isNotEmpty ? jsonDecode(response.body) : {};
         return {'success': false, 'message': data['detail'] ?? 'Failed to delete valuation'};
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'Connection error: $e'};
+    }
+  }
+
+  // Senior Valuer methods
+  static Future<Map<String, dynamic>> getReviewedValuationsForSeniorValuer({int? projectId}) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token');
+
+      if (token == null) {
+        return {'success': false, 'message': 'Not authenticated'};
+      }
+
+      String url = '$baseUrl/valuations/senior-valuer/reviewed/';
+      if (projectId != null) {
+        url += '?project=$projectId';
+      }
+
+      final response = await http.get(
+        Uri.parse(url),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      final data = jsonDecode(response.body);
+
+      if (response.statusCode == 200) {
+        return {'success': true, 'data': data};
+      } else {
+        return {'success': false, 'message': data['error'] ?? data['detail'] ?? 'Failed to load reviewed valuations'};
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'Connection error: $e'};
+    }
+  }
+
+  static Future<Map<String, dynamic>> submitSeniorValuerProposal({
+    required int valuationId,
+    String? comments,
+    String? finalReportPath,
+  }) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token');
+
+      if (token == null) {
+        return {'success': false, 'message': 'Not authenticated'};
+      }
+
+      final request = http.MultipartRequest(
+        'POST',
+        Uri.parse('$baseUrl/valuations/$valuationId/submit-proposal/'),
+      );
+
+      request.headers['Authorization'] = 'Bearer $token';
+      
+      if (comments != null && comments.isNotEmpty) {
+        request.fields['senior_valuer_comments'] = comments;
+      }
+
+      if (finalReportPath != null && finalReportPath.isNotEmpty) {
+        final file = await http.MultipartFile.fromPath('final_report', finalReportPath);
+        request.files.add(file);
+      }
+
+      final streamedResponse = await request.send();
+      final response = await http.Response.fromStream(streamedResponse);
+      final data = jsonDecode(response.body);
+
+      if (response.statusCode == 200) {
+        return {'success': true, 'data': data};
+      } else {
+        return {'success': false, 'message': data['error'] ?? data['detail'] ?? 'Failed to submit proposal'};
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'Connection error: $e'};
+    }
+  }
+
+  static Future<Map<String, dynamic>> approveValuationBySeniorValuer(int valuationId) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token');
+
+      if (token == null) {
+        return {'success': false, 'message': 'Not authenticated'};
+      }
+
+      final response = await http.post(
+        Uri.parse('$baseUrl/valuations/$valuationId/approve/'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      final data = jsonDecode(response.body);
+
+      if (response.statusCode == 200) {
+        return {'success': true, 'data': data};
+      } else {
+        return {'success': false, 'message': data['error'] ?? data['detail'] ?? 'Failed to approve valuation'};
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'Connection error: $e'};
+    }
+  }
+
+  static Future<Map<String, dynamic>> rejectValuationBySeniorValuer({
+    required int valuationId,
+    required String rejectionReason,
+  }) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token');
+
+      if (token == null) {
+        return {'success': false, 'message': 'Not authenticated'};
+      }
+
+      final response = await http.post(
+        Uri.parse('$baseUrl/valuations/$valuationId/senior-valuer-reject/'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({'rejection_reason': rejectionReason}),
+      );
+
+      final data = jsonDecode(response.body);
+
+      if (response.statusCode == 200) {
+        return {'success': true, 'data': data};
+      } else {
+        return {'success': false, 'message': data['error'] ?? data['detail'] ?? 'Failed to approve valuation'};
       }
     } catch (e) {
       return {'success': false, 'message': 'Connection error: $e'};

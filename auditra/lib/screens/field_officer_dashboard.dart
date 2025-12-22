@@ -1130,14 +1130,6 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
       return const SizedBox.shrink();
     }
     
-    // If online and there are unsynced items, trigger sync
-    if (isOnline && unsyncedValuations.isNotEmpty) {
-      // Trigger sync after a short delay to avoid blocking UI
-      Future.delayed(const Duration(milliseconds: 500), () {
-        SyncEngine.syncAll(silent: true);
-      });
-    }
-    
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
       padding: const EdgeInsets.all(16),
@@ -1172,30 +1164,14 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
             ],
           ),
           const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  isOnline 
-                    ? 'Syncing reports... They will be submitted automatically.'
-                    : 'Reports saved offline. They will be submitted when internet connects.',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.orange[800],
-                  ),
-                ),
-              ),
-              if (isOnline && unsyncedValuations.isNotEmpty)
-                IconButton(
-                  icon: const Icon(Icons.refresh, size: 20),
-                  color: Colors.orange[700],
-                  onPressed: () {
-                    SyncEngine.syncAll();
-                    setState(() {}); // Refresh UI
-                  },
-                  tooltip: 'Force sync now',
-                ),
-            ],
+          Text(
+            isOnline 
+              ? 'Syncing reports... They will be submitted automatically.'
+              : 'Reports saved offline. They will be submitted when internet connects.',
+            style: TextStyle(
+              fontSize: 14,
+              color: Colors.orange[800],
+            ),
           ),
           const SizedBox(height: 12),
           ...unsyncedValuations.take(3).map((valuation) => Padding(
@@ -1317,105 +1293,6 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
                   ],
                 ),
               ],
-              // Valuation status indicators
-              if (_hasApprovedValuation(project) || _hasRejectedValuation(project) || _hasReviewedValuation(project)) ...[
-                const SizedBox(height: 12),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    if (_hasFullyApprovedValuation(project))
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: Colors.green[100],
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(color: Colors.green[300]!),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.check_circle, size: 16, color: Colors.green[700]),
-                            const SizedBox(width: 6),
-                            Text(
-                              'Valuation Approved',
-                              style: TextStyle(
-                                color: Colors.green[700],
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    if (_hasReviewedValuation(project))
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: Colors.blue[100],
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(color: Colors.blue[300]!),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.visibility, size: 16, color: Colors.blue[700]),
-                            const SizedBox(width: 6),
-                            Text(
-                              'Reviewed (Pending Approval)',
-                              style: TextStyle(
-                                color: Colors.blue[700],
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    if (_hasRejectedValuation(project))
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: Colors.red[100],
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(color: Colors.red[300]!),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.cancel, size: 16, color: Colors.red[700]),
-                            const SizedBox(width: 6),
-                            Text(
-                              'Valuation Rejected',
-                              style: TextStyle(
-                                color: Colors.red[700],
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                  ],
-                ),
-              ],
-              // Assessor Notes button
-              if (_hasApprovedValuation(project) || _hasRejectedValuation(project) || _hasReviewedValuation(project)) ...[
-                const SizedBox(height: 8),
-                SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton.icon(
-                    onPressed: () => _showAssessorNotes(project),
-                    icon: const Icon(Icons.note, size: 18),
-                    label: const Text('Assessor Notes'),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: Colors.purple[700],
-                      side: BorderSide(color: Colors.purple[300]!),
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                    ),
-                  ),
-                ),
-              ],
                 const SizedBox(height: 16),
                 // Action buttons
                       Row(
@@ -1454,7 +1331,7 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
                   child: ElevatedButton.icon(
                     onPressed: () => _submitReportsToAccessor(project),
                     icon: const Icon(Icons.send, size: 18),
-                    label: Text(_hasRejectedValuation(project) ? 'Resubmit to Accessor' : 'Submit to Accessor'),
+                    label: const Text('Submit to Accessor'),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.teal[700],
                       foregroundColor: Colors.white,
@@ -2003,12 +1880,7 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
                               Padding(
                                 padding: EdgeInsets.all(isSmallScreen ? 12 : 16),
                                 child: Column(
-                                  children: (() {
-                                    // Sort valuations by date (newest first) to show all reports including historical ones
-                                    final sortedValuations = List<Valuation>.from(finalProject.valuations);
-                                    sortedValuations.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-                                    return sortedValuations;
-                                  })().map((valuation) => Padding(
+                                  children: finalProject.valuations.map((valuation) => Padding(
                                     padding: const EdgeInsets.only(bottom: 12),
                                     child: Card(
                                       elevation: 2,
@@ -2017,9 +1889,209 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
                                       ),
                                       child: Padding(
                                         padding: EdgeInsets.all(isSmallScreen ? 12 : 16),
-                                        child: _isHistoricalReport(valuation.status)
-                                            ? _buildHistoricalReportCard(valuation, finalProject, isSmallScreen)
-                                            : _buildCurrentReportCard(valuation, finalProject, isSmallScreen),
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Row(
+                                              children: [
+                                                Container(
+                                                  width: 48,
+                                                  height: 48,
+                                                  decoration: BoxDecoration(
+                                                    color: _getValuationStatusColor(valuation.status).withOpacity(0.15),
+                                                    borderRadius: BorderRadius.circular(12),
+                                                  ),
+                                                  child: Center(
+                                                    child: Icon(
+                                                      Icons.description,
+                                                      color: _getValuationStatusColor(valuation.status),
+                                                      size: 24,
+                                                    ),
+                                                  ),
+                                                ),
+                                                const SizedBox(width: 12),
+                                                Expanded(
+                                                  child: Column(
+                                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                                    children: [
+                                                      Text(
+                                                        valuation.categoryDisplay,
+                                                        style: const TextStyle(
+                                                          fontWeight: FontWeight.w600,
+                                                          fontSize: 16,
+                                                        ),
+                                                      ),
+                                                      const SizedBox(height: 6),
+                                                      Container(
+                                                        padding: const EdgeInsets.symmetric(
+                                                          horizontal: 10,
+                                                          vertical: 4,
+                                                        ),
+                                                        decoration: BoxDecoration(
+                                                          color: _getValuationStatusColor(valuation.status).withOpacity(0.2),
+                                                          borderRadius: BorderRadius.circular(6),
+                                                        ),
+                                                        child: Text(
+                                                          valuation.status == 'draft' ? 'Saved' : valuation.statusDisplay,
+                                                          style: TextStyle(
+                                                            fontSize: 12,
+                                                            fontWeight: FontWeight.w500,
+                                                            color: _getValuationStatusColor(valuation.status),
+                                                          ),
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                            const SizedBox(height: 12),
+                                            Row(
+                                              children: [
+                                                Icon(Icons.calendar_today, size: 14, color: Colors.grey[600]),
+                                                const SizedBox(width: 6),
+                                                Text(
+                                                  'Created: ${DateFormat('MMM dd, yyyy').format(valuation.createdAt)}',
+                                                  style: TextStyle(
+                                                    fontSize: 12,
+                                                    color: Colors.grey[600],
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                            // Assessor and Senior Valuer Status
+                                            if (valuation.status != 'draft' && valuation.status != 'submitted') ...[
+                                              const SizedBox(height: 12),
+                                              const Divider(height: 1),
+                                              const SizedBox(height: 12),
+                                              _buildReviewerStatusSection(valuation),
+                                            ],
+                                            const SizedBox(height: 12),
+                                            // Action buttons row
+                                            Row(
+                                              mainAxisAlignment: MainAxisAlignment.end,
+                                              children: [
+                                                Container(
+                                                  decoration: BoxDecoration(
+                                                    color: Colors.orange[50],
+                                                    borderRadius: BorderRadius.circular(8),
+                                                  ),
+                                                  child: IconButton(
+                                                    icon: const Icon(Icons.article, size: 20),
+                                                    color: Colors.orange[700],
+                                                    tooltip: 'Generate PDF Report',
+                                                    padding: const EdgeInsets.all(8),
+                                                    constraints: const BoxConstraints(
+                                                      minWidth: 40,
+                                                      minHeight: 40,
+                                                    ),
+                                                    onPressed: () async {
+                                                      await _generatePdfReport(valuation, finalProject);
+                                                    },
+                                                  ),
+                                                ),
+                                                // Show edit button if valuation can be edited (within 2 days of creation) and not rejected
+                                                if (_canEditValuation(valuation) && valuation.status != 'rejected') ...[
+                                                  const SizedBox(width: 8),
+                                                  Container(
+                                                    decoration: BoxDecoration(
+                                                      color: Colors.blue[50],
+                                                      borderRadius: BorderRadius.circular(8),
+                                                    ),
+                                                    child: IconButton(
+                                                      icon: const Icon(Icons.edit_outlined, size: 20),
+                                                      color: Colors.blue[700],
+                                                      tooltip: 'Edit Report',
+                                                      padding: const EdgeInsets.all(8),
+                                                      constraints: const BoxConstraints(
+                                                        minWidth: 40,
+                                                        minHeight: 40,
+                                                      ),
+                                                      onPressed: () async {
+                                                        Navigator.of(context).pop();
+                                                        final result = await Navigator.of(context).push(
+                                                          MaterialPageRoute(
+                                                            builder: (_) => ValuationFormScreen(
+                                                              project: finalProject,
+                                                              existingValuation: valuation,
+                                                            ),
+                                                          ),
+                                                        );
+                                                        // Refresh projects when form returns (valuation saved/submitted)
+                                                        if (result == true) {
+                                                          _loadProjects();
+                                                        }
+                                                      },
+                                                    ),
+                                                  ),
+                                                ],
+                                                // Show delete button if valuation was created within 2 days
+                                                if (_canDeleteValuation(valuation)) ...[
+                                                  const SizedBox(width: 8),
+                                                  Container(
+                                                    decoration: BoxDecoration(
+                                                      color: Colors.red[50],
+                                                      borderRadius: BorderRadius.circular(8),
+                                                    ),
+                                                    child: IconButton(
+                                                      icon: const Icon(Icons.delete_outline, size: 20),
+                                                      color: Colors.red[700],
+                                                      tooltip: 'Delete Report',
+                                                      padding: const EdgeInsets.all(8),
+                                                      constraints: const BoxConstraints(
+                                                        minWidth: 40,
+                                                        minHeight: 40,
+                                                      ),
+                                                      onPressed: () async {
+                                                        await _deleteValuation(valuation, finalProject);
+                                                      },
+                                                    ),
+                                                  ),
+                                                ],
+                                              ],
+                                            ),
+                                            // Show "Update the report" button for rejected valuations (full-width button)
+                                            if (valuation.status == 'rejected') ...[
+                                              const SizedBox(height: 12),
+                                              SizedBox(
+                                                width: double.infinity,
+                                                child: ElevatedButton.icon(
+                                                  onPressed: () async {
+                                                    Navigator.of(context).pop();
+                                                    final result = await Navigator.of(context).push(
+                                                      MaterialPageRoute(
+                                                        builder: (_) => ValuationFormScreen(
+                                                          project: finalProject,
+                                                          existingValuation: valuation,
+                                                        ),
+                                                      ),
+                                                    );
+                                                    // Refresh projects when form returns (valuation saved/submitted)
+                                                    if (result == true) {
+                                                      _loadProjects();
+                                                    }
+                                                  },
+                                                  icon: const Icon(Icons.update, size: 20),
+                                                  label: const Text(
+                                                    'Update the report',
+                                                    style: TextStyle(
+                                                      fontSize: 14,
+                                                      fontWeight: FontWeight.w600,
+                                                    ),
+                                                  ),
+                                                  style: ElevatedButton.styleFrom(
+                                                    backgroundColor: Colors.green[700],
+                                                    foregroundColor: Colors.white,
+                                                    padding: const EdgeInsets.symmetric(vertical: 12),
+                                                    shape: RoundedRectangleBorder(
+                                                      borderRadius: BorderRadius.circular(8),
+                                                    ),
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          ],
+                                        ),
                                       ),
                                     ),
                                   )).toList(),
@@ -2175,22 +2247,213 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
     );
   }
 
+  /// Build reviewer status section showing assessor and senior valuer status
+  Widget _buildReviewerStatusSection(Valuation valuation) {
+    // Determine assessor status
+    // Logic: If status is 'reviewed' or 'approved', assessor accepted
+    // If status is 'rejected' and has senior_valuer_comments, assessor accepted (it reached senior valuer)
+    // If status is 'rejected' and no senior_valuer_comments, assessor rejected
+    String assessorStatus;
+    Color assessorStatusColor;
+    IconData assessorStatusIcon;
+    String? assessorRejectionReason;
+    
+    final hasSeniorValuerComments = valuation.seniorValuerComments != null && 
+                                     valuation.seniorValuerComments!.isNotEmpty;
+    
+    if (valuation.status == 'reviewed' || valuation.status == 'approved') {
+      assessorStatus = 'Accepted';
+      assessorStatusColor = Colors.green;
+      assessorStatusIcon = Icons.check_circle;
+    } else if (valuation.status == 'rejected') {
+      if (hasSeniorValuerComments) {
+        // Reached senior valuer, so assessor accepted it first
+        assessorStatus = 'Accepted';
+        assessorStatusColor = Colors.green;
+        assessorStatusIcon = Icons.check_circle;
+      } else {
+        // Rejected by assessor (never reached senior valuer)
+        assessorStatus = 'Rejected';
+        assessorStatusColor = Colors.red;
+        assessorStatusIcon = Icons.cancel;
+        assessorRejectionReason = valuation.rejectionReason;
+      }
+    } else {
+      assessorStatus = 'Pending';
+      assessorStatusColor = Colors.orange;
+      assessorStatusIcon = Icons.pending;
+    }
+    
+    // Determine senior valuer status
+    // Logic: If status is 'approved', senior valuer accepted
+    // If status is 'reviewed', pending senior valuer review
+    // If status is 'rejected' and has senior_valuer_comments, senior valuer rejected
+    // Otherwise, not applicable (never reached senior valuer)
+    String seniorValuerStatus;
+    Color seniorValuerStatusColor;
+    IconData seniorValuerStatusIcon;
+    String? seniorValuerRejectionReason;
+    
+    if (valuation.status == 'approved') {
+      seniorValuerStatus = 'Accepted';
+      seniorValuerStatusColor = Colors.green;
+      seniorValuerStatusIcon = Icons.check_circle;
+    } else if (valuation.status == 'reviewed') {
+      seniorValuerStatus = 'Pending Review';
+      seniorValuerStatusColor = Colors.blue;
+      seniorValuerStatusIcon = Icons.pending;
+    } else if (valuation.status == 'rejected' && hasSeniorValuerComments) {
+      // Rejected by senior valuer (it was reviewed first, so assessor accepted)
+      seniorValuerStatus = 'Rejected';
+      seniorValuerStatusColor = Colors.red;
+      seniorValuerStatusIcon = Icons.cancel;
+      seniorValuerRejectionReason = valuation.rejectionReason;
+    } else {
+      seniorValuerStatus = 'Not Applicable';
+      seniorValuerStatusColor = Colors.grey;
+      seniorValuerStatusIcon = Icons.remove_circle_outline;
+    }
+    
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Review Status:',
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.bold,
+            color: Colors.black87,
+          ),
+        ),
+        const SizedBox(height: 8),
+        // Assessor Status
+        Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: assessorStatusColor.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: assessorStatusColor.withOpacity(0.3)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(assessorStatusIcon, size: 16, color: assessorStatusColor),
+                  const SizedBox(width: 6),
+                  const Text(
+                    'Assessor:',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    assessorStatus,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: assessorStatusColor,
+                    ),
+                  ),
+                ],
+              ),
+              if (assessorRejectionReason != null && assessorRejectionReason!.isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Padding(
+                  padding: const EdgeInsets.only(left: 22),
+                  child: Text(
+                    'Reason: $assessorRejectionReason',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Colors.red[700],
+                      fontStyle: FontStyle.italic,
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+        const SizedBox(height: 8),
+        // Senior Valuer Status
+        Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: seniorValuerStatusColor.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: seniorValuerStatusColor.withOpacity(0.3)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(seniorValuerStatusIcon, size: 16, color: seniorValuerStatusColor),
+                  const SizedBox(width: 6),
+                  const Text(
+                    'Senior Valuer:',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    seniorValuerStatus,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: seniorValuerStatusColor,
+                    ),
+                  ),
+                ],
+              ),
+              if (seniorValuerRejectionReason != null && seniorValuerRejectionReason!.isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Padding(
+                  padding: const EdgeInsets.only(left: 22),
+                  child: Text(
+                    'Reason: $seniorValuerRejectionReason',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Colors.red[700],
+                      fontStyle: FontStyle.italic,
+                    ),
+                  ),
+                ),
+              ],
+              if (valuation.seniorValuerComments != null && 
+                  valuation.seniorValuerComments!.isNotEmpty && 
+                  valuation.status != 'rejected') ...[
+                const SizedBox(height: 6),
+                Padding(
+                  padding: const EdgeInsets.only(left: 22),
+                  child: Text(
+                    'Comments: ${valuation.seniorValuerComments}',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Colors.blue[700],
+                      fontStyle: FontStyle.italic,
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
   /// Check if a valuation can be edited (created within 2 days)
   bool _canEditValuation(Valuation valuation) {
-    // Rejected valuations can always be edited
-    if (valuation.status == 'rejected') {
-      return true;
-    }
-    
-    // Reviewed and approved valuations cannot be edited
-    if (valuation.status == 'reviewed' || valuation.status == 'approved') {
-      return false;
-    }
-    
-    // For draft and submitted, allow editing if created within 2 days (48 hours)
     final now = DateTime.now();
     final createdAt = valuation.createdAt;
     final difference = now.difference(createdAt);
+    
+    // Allow editing if created within 2 days (48 hours)
     return difference.inDays < 2;
   }
 
@@ -2312,471 +2575,7 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
     }
   }
 
-  bool _hasApprovedValuation(Project project) {
-    // Check for approved (by senior valuer) or reviewed (by accessor)
-    return project.valuations.any((v) => v.status == 'approved' || v.status == 'reviewed');
-  }
-  
-  bool _hasReviewedValuation(Project project) {
-    // Check for reviewed status (accepted by accessor, pending senior valuer approval)
-    return project.valuations.any((v) => v.status == 'reviewed');
-  }
-  
-  bool _hasFullyApprovedValuation(Project project) {
-    // Check for fully approved (by senior valuer)
-    return project.valuations.any((v) => v.status == 'approved');
-  }
 
-  bool _hasRejectedValuation(Project project) {
-    return project.valuations.any((v) => v.status == 'rejected');
-  }
-
-  bool _isHistoricalReport(String status) {
-    // Historical reports are those that have been reviewed, approved, or rejected
-    return status == 'reviewed' || status == 'approved' || status == 'rejected';
-  }
-
-  Widget _buildHistoricalReportCard(Valuation valuation, Project project, bool isSmallScreen) {
-    final isAccepted = valuation.status == 'approved' || valuation.status == 'reviewed';
-    
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Container(
-              width: 48,
-              height: 48,
-              decoration: BoxDecoration(
-                color: isAccepted ? Colors.green[50] : Colors.red[50],
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Center(
-                child: Icon(
-                  isAccepted ? Icons.check_circle : Icons.cancel,
-                  color: isAccepted ? Colors.green[700] : Colors.red[700],
-                  size: 24,
-                ),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    valuation.categoryDisplay,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 16,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: isAccepted ? Colors.green[100] : Colors.red[100],
-                      borderRadius: BorderRadius.circular(6),
-                      border: Border.all(
-                        color: isAccepted ? Colors.green[300]! : Colors.red[300]!,
-                      ),
-                    ),
-                    child: Text(
-                      isAccepted ? 'Accepted' : 'Rejected',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: isAccepted ? Colors.green[700] : Colors.red[700],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        // Only show View Report button for historical reports
-        SizedBox(
-          width: double.infinity,
-          child: ElevatedButton.icon(
-            onPressed: () async {
-              await _generatePdfReport(valuation, project);
-            },
-            icon: const Icon(Icons.picture_as_pdf, size: 18),
-            label: const Text('View Report'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.blue[700],
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildCurrentReportCard(Valuation valuation, Project project, bool isSmallScreen) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Container(
-              width: 48,
-              height: 48,
-              decoration: BoxDecoration(
-                color: _getValuationStatusColor(valuation.status).withOpacity(0.15),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Center(
-                child: Icon(
-                  Icons.description,
-                  color: _getValuationStatusColor(valuation.status),
-                  size: 24,
-                ),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    valuation.categoryDisplay,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 16,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: _getValuationStatusColor(valuation.status).withOpacity(0.2),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Text(
-                      valuation.status == 'draft' ? 'Saved' : valuation.statusDisplay,
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
-                        color: _getValuationStatusColor(valuation.status),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        Row(
-          children: [
-            Icon(Icons.calendar_today, size: 14, color: Colors.grey[600]),
-            const SizedBox(width: 6),
-            Text(
-              'Created: ${DateFormat('MMM dd, yyyy').format(valuation.createdAt)}',
-              style: TextStyle(
-                fontSize: 12,
-                color: Colors.grey[600],
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        // Action buttons row
-        Row(
-          mainAxisAlignment: MainAxisAlignment.end,
-          children: [
-            Container(
-              decoration: BoxDecoration(
-                color: Colors.orange[50],
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: IconButton(
-                icon: const Icon(Icons.article, size: 20),
-                color: Colors.orange[700],
-                tooltip: 'Generate PDF Report',
-                padding: const EdgeInsets.all(8),
-                constraints: const BoxConstraints(
-                  minWidth: 40,
-                  minHeight: 40,
-                ),
-                onPressed: () async {
-                  await _generatePdfReport(valuation, project);
-                },
-              ),
-            ),
-            // Show edit button if valuation can be edited (within 2 days of creation)
-            if (_canEditValuation(valuation)) ...[
-              const SizedBox(width: 8),
-              Container(
-                decoration: BoxDecoration(
-                  color: Colors.blue[50],
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: IconButton(
-                  icon: const Icon(Icons.edit_outlined, size: 20),
-                  color: Colors.blue[700],
-                  tooltip: 'Edit Report',
-                  padding: const EdgeInsets.all(8),
-                  constraints: const BoxConstraints(
-                    minWidth: 40,
-                    minHeight: 40,
-                  ),
-                  onPressed: () async {
-                    Navigator.of(context).pop();
-                    final result = await Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => ValuationFormScreen(
-                          project: project,
-                          existingValuation: valuation,
-                        ),
-                      ),
-                    );
-                    // Refresh projects when form returns (valuation saved/submitted)
-                    if (result == true) {
-                      _loadProjects();
-                    }
-                  },
-                ),
-              ),
-            ],
-            // Show delete button if valuation was created within 2 days
-            if (_canDeleteValuation(valuation)) ...[
-              const SizedBox(width: 8),
-              Container(
-                decoration: BoxDecoration(
-                  color: Colors.red[50],
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: IconButton(
-                  icon: const Icon(Icons.delete_outline, size: 20),
-                  color: Colors.red[700],
-                  tooltip: 'Delete Report',
-                  padding: const EdgeInsets.all(8),
-                  constraints: const BoxConstraints(
-                    minWidth: 40,
-                    minHeight: 40,
-                  ),
-                  onPressed: () async {
-                    await _deleteValuation(valuation, project);
-                  },
-                ),
-              ),
-            ],
-          ],
-        ),
-      ],
-    );
-  }
-
-  Future<void> _showAssessorNotes(Project project) async {
-    // Fetch fresh project data to ensure we have the latest valuation statuses
-    final projectResult = await ApiService.getProject(project.id);
-    Project? updatedProject = project;
-    
-    if (projectResult['success'] && projectResult['data'] != null) {
-      try {
-        updatedProject = Project.fromJson(projectResult['data']);
-      } catch (e) {
-        print('Error parsing updated project in assessor notes: $e');
-      }
-    }
-    
-    final finalProject = updatedProject ?? project;
-    final reviewedValuations = finalProject.valuations.where((v) => v.status == 'reviewed').toList();
-    final approvedValuations = finalProject.valuations.where((v) => v.status == 'approved').toList();
-    final rejectedValuations = finalProject.valuations.where((v) => v.status == 'rejected').toList();
-
-    await showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Assessor Notes'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (reviewedValuations.isNotEmpty) ...[
-                const Text(
-                  'Reviewed Valuations (Pending Senior Valuer Approval):',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.blue),
-                ),
-                const SizedBox(height: 8),
-                ...reviewedValuations.map((v) => Padding(
-                      padding: const EdgeInsets.only(bottom: 12),
-                      child: Card(
-                        color: Colors.blue[50],
-                        child: Padding(
-                          padding: const EdgeInsets.all(12),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                v.categoryDisplay,
-                                style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue[900]),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                'Status: ${v.statusDisplay}',
-                                style: TextStyle(color: Colors.blue[700], fontSize: 12),
-                              ),
-                              if (v.createdAt != null) ...[
-                                const SizedBox(height: 4),
-                                Text(
-                                  'Date: ${DateFormat('MMM dd, yyyy').format(v.createdAt)}',
-                                  style: TextStyle(color: Colors.blue[700], fontSize: 12),
-                                ),
-                              ],
-                            ],
-                          ),
-                        ),
-                      ),
-                    )),
-                const SizedBox(height: 16),
-              ],
-              if (approvedValuations.isNotEmpty) ...[
-                const Text(
-                  'Approved Valuations (By Senior Valuer):',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.green),
-                ),
-                const SizedBox(height: 8),
-                ...approvedValuations.map((v) => Padding(
-                      padding: const EdgeInsets.only(bottom: 12),
-                      child: Card(
-                        color: Colors.green[50],
-                        child: Padding(
-                          padding: const EdgeInsets.all(12),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                v.categoryDisplay,
-                                style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green[900]),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                'Status: ${v.statusDisplay}',
-                                style: TextStyle(color: Colors.green[700], fontSize: 12),
-                              ),
-                              if (v.createdAt != null) ...[
-                                const SizedBox(height: 4),
-                                Text(
-                                  'Date: ${DateFormat('MMM dd, yyyy').format(v.createdAt)}',
-                                  style: TextStyle(color: Colors.green[700], fontSize: 12),
-                                ),
-                              ],
-                            ],
-                          ),
-                        ),
-                      ),
-                    )),
-                const SizedBox(height: 16),
-              ],
-              if (rejectedValuations.isNotEmpty) ...[
-                const Text(
-                  'Rejected Valuations:',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.red),
-                ),
-                const SizedBox(height: 8),
-                ...rejectedValuations.map((v) => Padding(
-                      padding: const EdgeInsets.only(bottom: 12),
-                      child: Card(
-                        color: Colors.red[50],
-                        child: Padding(
-                          padding: const EdgeInsets.all(12),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                v.categoryDisplay,
-                                style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red[900]),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                'Status: ${v.statusDisplay}',
-                                style: TextStyle(color: Colors.red[700], fontSize: 12),
-                              ),
-                              if (v.rejectionReason != null && v.rejectionReason!.isNotEmpty) ...[
-                                const SizedBox(height: 8),
-                                Text(
-                                  'Reason:',
-                                  style: TextStyle(fontWeight: FontWeight.w600, color: Colors.red[900], fontSize: 12),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  v.rejectionReason!,
-                                  style: TextStyle(color: Colors.red[700], fontSize: 12),
-                                ),
-                              ],
-                              if (v.createdAt != null) ...[
-                                const SizedBox(height: 4),
-                                Text(
-                                  'Date: ${DateFormat('MMM dd, yyyy').format(v.createdAt)}',
-                                  style: TextStyle(color: Colors.red[700], fontSize: 12),
-                                ),
-                              ],
-                              const SizedBox(height: 12),
-                              // Update Report button for rejected valuations
-                              SizedBox(
-                                width: double.infinity,
-                                child: ElevatedButton.icon(
-                                  onPressed: () {
-                                    Navigator.of(context).pop(); // Close assessor notes dialog
-                                    Navigator.of(context).push(
-                                      MaterialPageRoute(
-                                        builder: (_) => ValuationFormScreen(
-                                          project: finalProject,
-                                          existingValuation: v,
-                                        ),
-                                      ),
-                                    ).then((result) {
-                                      // Refresh projects when form returns (valuation updated)
-                                      if (result == true && mounted) {
-                                        _loadProjects();
-                                      }
-                                    });
-                                  },
-                                  icon: const Icon(Icons.edit, size: 18),
-                                  label: const Text('Update Report'),
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.orange[700],
-                                    foregroundColor: Colors.white,
-                                    padding: const EdgeInsets.symmetric(vertical: 10),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    )),
-              ],
-              if (reviewedValuations.isEmpty && approvedValuations.isEmpty && rejectedValuations.isEmpty)
-                const Text('No assessor notes available yet.'),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Close'),
-          ),
-        ],
-      ),
-    );
-  }
 
   Future<void> _submitReportsToAccessor(Project project) async {
     // Check if accessor is assigned
@@ -2806,36 +2605,15 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
     
     final finalProject = updatedProject ?? project;
     
-    // Filter draft valuations (including rejected valuations that have been updated to draft)
+    // Filter draft valuations
     final draftValuations = finalProject.valuations.where((v) => v.status == 'draft').toList();
     
-    // Also include rejected valuations that can be resubmitted
-    // (These will be changed to draft when updated, but we check here to show appropriate message)
-    final rejectedValuations = finalProject.valuations.where((v) => v.status == 'rejected').toList();
-    
-    if (draftValuations.isEmpty && rejectedValuations.isEmpty) {
+    if (draftValuations.isEmpty) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('No reports to submit. All reports are already submitted or need to be updated first.'),
+            content: Text('No draft reports to submit. All reports are already submitted.'),
             backgroundColor: Colors.orange,
-          ),
-        );
-      }
-      return;
-    }
-    
-    // If there are rejected valuations but no drafts, inform user they need to update first
-    if (draftValuations.isEmpty && rejectedValuations.isNotEmpty) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Please update the rejected report(s) first before resubmitting. '
-              'Click "Update Report" in the Assessor Notes to edit them.'
-            ),
-            backgroundColor: Colors.orange,
-            duration: const Duration(seconds: 4),
           ),
         );
       }
@@ -2843,17 +2621,13 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
     }
 
     // Show confirmation dialog
-    final isResubmit = _hasRejectedValuation(finalProject);
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text(isResubmit ? 'Resubmit Reports to Accessor' : 'Submit Reports to Accessor'),
+        title: const Text('Submit Reports to Accessor'),
         content: Text(
-          isResubmit
-            ? 'Are you sure you want to resubmit ${draftValuations.length} updated report(s) to ${finalProject.assignedAccessorName ?? finalProject.assignedAccessorUsername ?? 'the accessor'} for review?\n\n'
-              'The updated reports will be sent to the accessor for review.'
-            : 'Are you sure you want to submit ${draftValuations.length} report(s) to ${finalProject.assignedAccessorName ?? finalProject.assignedAccessorUsername ?? 'the accessor'} for review?\n\n'
-              'Once submitted, you will not be able to edit these reports.',
+          'Are you sure you want to submit ${draftValuations.length} report(s) to ${finalProject.assignedAccessorName ?? finalProject.assignedAccessorUsername ?? 'the accessor'} for review?\n\n'
+          'Once submitted, you will not be able to edit these reports.',
         ),
         actions: [
           TextButton(

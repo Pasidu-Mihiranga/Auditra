@@ -735,6 +735,53 @@ class _AccessorDashboardState extends State<AccessorDashboard> with TickerProvid
           ],
         ),
         const SizedBox(height: 12),
+        // Show senior valuer rejection reason if rejected by senior valuer
+        // Since this is in historical reports, if status is 'rejected', it means assessor accepted it
+        // and it reached senior valuer, so the rejection is from senior valuer
+        if (valuation.status == 'rejected' && 
+            valuation.rejectionReason != null &&
+            valuation.rejectionReason!.isNotEmpty) ...[
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.red[50],
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.red[200]!),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.person_outline, size: 16, color: Colors.red[700]),
+                    const SizedBox(width: 6),
+                    Text(
+                      'Senior Valuer Rejection:',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.red[700],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Padding(
+                  padding: const EdgeInsets.only(left: 22),
+                  child: Text(
+                    valuation.rejectionReason!,
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Colors.red[700],
+                      fontStyle: FontStyle.italic,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+        ],
         // Only show View Report button for historical reports
         SizedBox(
           width: double.infinity,
@@ -1353,11 +1400,75 @@ class _AccessorDashboardState extends State<AccessorDashboard> with TickerProvid
   }
 
   Future<void> _acceptValuation(Valuation valuation, Project project) async {
+    // Check if project has assigned senior valuer
+    String? seniorValuerName;
+    if (project.assignedSeniorValuerId != null) {
+      seniorValuerName = project.assignedSeniorValuerName ?? 
+                         project.assignedSeniorValuerUsername;
+    }
+
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Accept Valuation'),
-        content: Text('Are you sure you want to accept this ${valuation.categoryDisplay} valuation?'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Are you sure you want to accept this ${valuation.categoryDisplay} valuation?'),
+            if (seniorValuerName != null) ...[
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.blue[50],
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.blue[200]!),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.info_outline, color: Colors.blue[700], size: 20),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'This valuation will be sent to Senior Valuer: $seniorValuerName for final approval.',
+                        style: TextStyle(
+                          color: Colors.blue[900],
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ] else ...[
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.orange[50],
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.orange[200]!),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.warning_amber_rounded, color: Colors.orange[700], size: 20),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Warning: No senior valuer assigned to this project. Please contact the coordinator.',
+                        style: TextStyle(
+                          color: Colors.orange[900],
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
@@ -1391,10 +1502,19 @@ class _AccessorDashboardState extends State<AccessorDashboard> with TickerProvid
       // Close all dialogs first
       Navigator.of(context).popUntil((route) => route.isFirst);
       
+      // Get message from response if available
+      String message = 'Valuation accepted successfully';
+      if (result['data'] != null && result['data']['message'] != null) {
+        message = result['data']['message'];
+      } else if (seniorValuerName != null) {
+        message = 'Valuation accepted and sent to Senior Valuer ($seniorValuerName) for final approval.';
+      }
+      
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Valuation accepted successfully'),
+        SnackBar(
+          content: Text(message),
           backgroundColor: Colors.green,
+          duration: const Duration(seconds: 4),
         ),
       );
       
@@ -1410,6 +1530,7 @@ class _AccessorDashboardState extends State<AccessorDashboard> with TickerProvid
         SnackBar(
           content: Text(result['message'] ?? 'Failed to accept valuation'),
           backgroundColor: Colors.red,
+          duration: const Duration(seconds: 4),
         ),
       );
     }

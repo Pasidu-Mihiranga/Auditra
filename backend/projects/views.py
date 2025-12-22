@@ -3,7 +3,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
 from django.contrib.auth.models import User
-from django.db.models import Q
+from django.db.models import Q, Count, Case, When, IntegerField, F
 from .models import Project, ProjectDocument
 from .serializers import (
     ProjectSerializer,
@@ -52,6 +52,28 @@ class ProjectListView(generics.ListCreateAPIView):
         # Senior valuers see only assigned projects
         elif hasattr(user, 'role') and user.role.role == 'senior_valuer':
             return Project.objects.filter(assigned_senior_valuer=user)
+        
+        # MD/GM see only projects where ALL valuations are approved by senior valuer
+        elif hasattr(user, 'role') and user.role.role == 'md_gm':
+            # Get all projects that have valuations
+            projects_with_valuations = Project.objects.filter(
+                valuations__isnull=False
+            ).distinct()
+            
+            # Filter to only projects where ALL valuations are approved
+            # This means: project has valuations AND all valuations have status 'approved'
+            queryset = projects_with_valuations.annotate(
+                total_valuations=Count('valuations'),
+                approved_valuations=Count(
+                    Case(
+                        When(valuations__status='approved', then=1),
+                        output_field=IntegerField()
+                    )
+                )
+            ).filter(
+                total_valuations__gt=0,  # Must have at least one valuation
+                total_valuations=F('approved_valuations')  # All valuations must be approved
+            ).distinct()
         
         # Admins see all projects
         elif user.is_staff or user.is_superuser:
@@ -108,6 +130,29 @@ class ProjectDetailView(generics.RetrieveUpdateDestroyAPIView):
         # Senior valuers can see assigned projects
         elif hasattr(user, 'role') and user.role.role == 'senior_valuer':
             return Project.objects.filter(assigned_senior_valuer=user)
+        
+        # MD/GM can see projects where ALL valuations are approved by senior valuer
+        elif hasattr(user, 'role') and user.role.role == 'md_gm':
+            from valuations.models import Valuation
+            
+            # Get all projects that have valuations
+            projects_with_valuations = Project.objects.filter(
+                valuations__isnull=False
+            ).distinct()
+            
+            # Filter to only projects where ALL valuations are approved
+            return projects_with_valuations.annotate(
+                total_valuations=Count('valuations'),
+                approved_valuations=Count(
+                    Case(
+                        When(valuations__status='approved', then=1),
+                        output_field=IntegerField()
+                    )
+                )
+            ).filter(
+                total_valuations__gt=0,  # Must have at least one valuation
+                total_valuations=F('approved_valuations')  # All valuations must be approved
+            ).distinct()
         
         # Admins can see all
         elif user.is_staff or user.is_superuser:

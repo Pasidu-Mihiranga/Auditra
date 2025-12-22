@@ -170,11 +170,20 @@ class ProjectSerializer(serializers.ModelSerializer):
         """Get valuations for this project"""
         # Import here to avoid circular import
         from valuations.serializers import ValuationSerializer
+        request = self.context.get('request')
+        
+        # Filter valuations based on user role
         valuations = obj.valuations.all().select_related('field_officer').prefetch_related('photos')
+        
+        # MD/GM should see all valuations for projects they receive
+        # (Projects are already filtered to only show those with all approved valuations)
+        # No need to filter valuations here - show all reports
+        
         return ValuationSerializer(valuations, many=True, context=self.context).data
     
     def get_valuations_count(self, obj):
         """Get count of valuations for this project"""
+        # MD/GM should see all valuations count for projects they receive
         return obj.valuations.count()
 
 

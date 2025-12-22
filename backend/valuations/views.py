@@ -162,7 +162,7 @@ class ValuationPhotoDetailView(generics.RetrieveDestroyAPIView):
 @permission_classes([IsAuthenticated])
 @transaction.atomic
 def accept_valuation(request, pk):
-    """Accept a valuation (change status to reviewed/approved)"""
+    """Accept a valuation (change status to reviewed) and send to senior valuer for approval"""
     valuation = get_object_or_404(Valuation, pk=pk)
     
     # Check if user is an accessor (has accessor role)
@@ -186,18 +186,32 @@ def accept_valuation(request, pk):
             status=status.HTTP_400_BAD_REQUEST
         )
     
+    # Check if project has an assigned senior valuer
+    if not valuation.project.assigned_senior_valuer:
+        return Response(
+            {'error': 'Cannot accept valuation: Project must have an assigned senior valuer before accepting. Please contact the coordinator to assign a senior valuer to this project.'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
     # Change status to reviewed (accessor acceptance - not final approval)
-    # Reports remain as reviewed until senior valuer approves them
+    # Reports are automatically sent to senior valuer for final approval
     valuation.status = 'reviewed'
     
     # Clear rejection reason if it exists
     valuation.rejection_reason = ''
     valuation.save(update_fields=['status', 'rejection_reason', 'updated_at'])
     
-    logger.info(f'Valuation {valuation.id} accepted by accessor {request.user.username} - status changed to reviewed')
+    senior_valuer_name = valuation.project.assigned_senior_valuer.get_full_name() or valuation.project.assigned_senior_valuer.username
+    logger.info(
+        f'Valuation {valuation.id} accepted by accessor {request.user.username} - '
+        f'status changed to reviewed and sent to senior valuer {senior_valuer_name} (ID: {valuation.project.assigned_senior_valuer.id})'
+    )
     
     serializer = ValuationSerializer(valuation, context={'request': request})
-    return Response(serializer.data, status=status.HTTP_200_OK)
+    return Response({
+        **serializer.data,
+        'message': f'Valuation accepted and sent to senior valuer ({senior_valuer_name}) for final approval.'
+    }, status=status.HTTP_200_OK)
 
 
 @api_view(['POST'])
@@ -247,6 +261,77 @@ def reject_valuation(request, pk):
     return Response(serializer.data, status=status.HTTP_200_OK)
 
 
+class SeniorValuerValuationListView(generics.ListAPIView):
+    """List reviewed valuations assigned to senior valuer"""
+    permission_classes = [IsAuthenticated]
+    serializer_class = ValuationSerializer
+    
+    def get_queryset(self):
+        user = self.request.user
+        
+        # Check if user is a senior valuer
+        if not hasattr(user, 'role') or user.role.role != 'senior_valuer':
+            return Valuation.objects.none()
+        
+        # Get reviewed valuations for projects assigned to this senior valuer
+        queryset = Valuation.objects.filter(
+            project__assigned_senior_valuer=user,
+            status='reviewed'
+        ).select_related('project', 'field_officer').prefetch_related('photos')
+        
+        project_id = self.request.query_params.get('project', None)
+        if project_id:
+            queryset = queryset.filter(project_id=project_id)
+        
+        return queryset
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+@transaction.atomic
+def senior_valuer_submit_proposal(request, pk):
+    """Submit senior valuer's proposal for a reviewed valuation"""
+    valuation = get_object_or_404(Valuation, pk=pk)
+    
+    # Check if user is a senior valuer
+    if not hasattr(request.user, 'role') or request.user.role.role != 'senior_valuer':
+        return Response(
+            {'error': 'Only senior valuers can submit proposals.'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+    
+    # Check if senior valuer is assigned to the project
+    if valuation.project.assigned_senior_valuer != request.user:
+        return Response(
+            {'error': 'You can only submit proposals for projects assigned to you.'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+    
+    # Only reviewed valuations can receive proposals
+    if valuation.status != 'reviewed':
+        return Response(
+            {'error': f'Only reviewed valuations can receive proposals. Current status: {valuation.status}'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    # Get proposal data from request
+    senior_valuer_comments = request.data.get('senior_valuer_comments', '').strip()
+    final_report = request.FILES.get('final_report', None)
+    
+    # Update valuation with senior valuer's proposal
+    if senior_valuer_comments:
+        valuation.senior_valuer_comments = senior_valuer_comments
+    if final_report:
+        valuation.final_report = final_report
+    
+    valuation.save(update_fields=['senior_valuer_comments', 'final_report', 'updated_at'])
+    
+    logger.info(f'Valuation {valuation.id} proposal submitted by senior valuer {request.user.username}')
+    
+    serializer = ValuationSerializer(valuation, context={'request': request})
+    return Response(serializer.data, status=status.HTTP_200_OK)
+
+
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 @transaction.atomic
@@ -280,6 +365,53 @@ def senior_valuer_approve_valuation(request, pk):
     valuation.save(update_fields=['status', 'updated_at'])
     
     logger.info(f'Valuation {valuation.id} approved by senior valuer {request.user.username}')
+    
+    serializer = ValuationSerializer(valuation, context={'request': request})
+    return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+@transaction.atomic
+def senior_valuer_reject_valuation(request, pk):
+    """Reject a valuation (change status to rejected) - Only senior valuer can do this"""
+    valuation = get_object_or_404(Valuation, pk=pk)
+    
+    # Check if user is a senior valuer (has senior_valuer role)
+    if not hasattr(request.user, 'role') or request.user.role.role != 'senior_valuer':
+        return Response(
+            {'error': 'Only senior valuers can reject valuations.'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+    
+    # Check if senior valuer is assigned to the project
+    if valuation.project.assigned_senior_valuer != request.user:
+        return Response(
+            {'error': 'You can only reject valuations for projects assigned to you.'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+    
+    # Only reviewed valuations can be rejected by senior valuer
+    if valuation.status != 'reviewed':
+        return Response(
+            {'error': f'Only reviewed valuations can be rejected. Current status: {valuation.status}'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    # Get rejection reason from request
+    rejection_reason = request.data.get('rejection_reason', '').strip()
+    if not rejection_reason:
+        return Response(
+            {'error': 'Rejection reason is required.'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    # Update valuation status and rejection reason
+    valuation.status = 'rejected'
+    valuation.rejection_reason = rejection_reason
+    valuation.save(update_fields=['status', 'rejection_reason', 'updated_at'])
+    
+    logger.info(f'Valuation {valuation.id} rejected by senior valuer {request.user.username}')
     
     serializer = ValuationSerializer(valuation, context={'request': request})
     return Response(serializer.data, status=status.HTTP_200_OK)
