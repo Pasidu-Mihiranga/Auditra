@@ -895,6 +895,12 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
       return;
     }
     
+    // For MD/GM, show all valuation reports
+    if (widget.role == 'md_gm') {
+      await _showMDGMProjectDetails(project);
+      return;
+    }
+    
     await showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -1058,6 +1064,259 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
             child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showMDGMProjectDetails(Project project) async {
+    // Get all valuations from the project (already loaded)
+    final valuations = project.valuations;
+    
+    if (!mounted) return;
+    
+    await showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(project.title),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (project.description != null) ...[
+                const Text(
+                  'Description:',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 4),
+                Text(project.description!),
+                const SizedBox(height: 16),
+              ],
+              const Divider(),
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.green[50],
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.green[200]!),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.info_outline, color: Colors.green[700], size: 20),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'All valuation reports for this project are shown below. All reports have been approved by the Senior Valuer.',
+                        style: TextStyle(
+                          color: Colors.green[900],
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Valuation Reports (${valuations.length}):',
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              ),
+              const SizedBox(height: 12),
+              if (valuations.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.all(16.0),
+                  child: Center(
+                    child: Text(
+                      'No valuation reports available',
+                      style: TextStyle(color: Colors.grey),
+                    ),
+                  ),
+                )
+              else
+                ...valuations.map((valuation) => Card(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      child: ListTile(
+                        title: Text(valuation.categoryDisplay),
+                        subtitle: Text(
+                          'Field Officer: ${valuation.fieldOfficerName ?? valuation.fieldOfficerUsername}\n'
+                          'Status: ${valuation.statusDisplay}\n'
+                          'Created: ${DateFormat('yyyy-MM-dd').format(valuation.createdAt)}',
+                        ),
+                        trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                        onTap: () {
+                          Navigator.of(context).pop();
+                          _viewValuationPDFForMDGM(valuation, project);
+                        },
+                      ),
+                    )),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _viewValuationPDFForMDGM(Valuation valuation, Project project) async {
+    // Show loading while generating PDF
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(
+        child: Card(
+          child: Padding(
+            padding: EdgeInsets.all(20.0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularProgressIndicator(),
+                SizedBox(height: 16),
+                Text('Generating PDF report...'),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+
+    try {
+      // Generate PDF
+      final pdfFile = await PdfService.generateValuationReport(
+        valuation: valuation,
+        project: project,
+      );
+
+      // Close loading dialog
+      if (!mounted) return;
+      Navigator.of(context).pop();
+
+      // Show PDF viewer (read-only for MD/GM)
+      if (!mounted) return;
+      await showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text('${valuation.categoryDisplay} Valuation Report'),
+          content: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.green[50],
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.green[200]!),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.info_outline, color: Colors.green[700], size: 20),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'This valuation report has been approved by the Senior Valuer.',
+                          style: TextStyle(
+                            color: Colors.green[900],
+                            fontSize: 13,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: () async {
+                      // View PDF using printing package
+                      final bytes = await pdfFile.readAsBytes();
+                      await Printing.layoutPdf(
+                        onLayout: (format) async => bytes,
+                      );
+                    },
+                    icon: const Icon(Icons.picture_as_pdf),
+                    label: const Text('View PDF Report'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue[700],
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                const Divider(),
+                const SizedBox(height: 16),
+                Text(
+                  'Report Details:',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                ),
+                const SizedBox(height: 8),
+                _buildReportDetailRow('Status', valuation.statusDisplay),
+                _buildReportDetailRow('Field Officer', valuation.fieldOfficerName ?? valuation.fieldOfficerUsername),
+                _buildReportDetailRow('Category', valuation.categoryDisplay),
+                _buildReportDetailRow('Created', DateFormat('yyyy-MM-dd HH:mm').format(valuation.createdAt)),
+                if (valuation.updatedAt != valuation.createdAt)
+                  _buildReportDetailRow('Last Updated', DateFormat('yyyy-MM-dd HH:mm').format(valuation.updatedAt)),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Close'),
+            ),
+          ],
+        ),
+      );
+    } catch (e) {
+      // Close loading dialog if still open
+      if (mounted) {
+        Navigator.of(context).pop();
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error generating PDF: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Widget _buildReportDetailRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4.0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 100,
+            child: Text(
+              '$label:',
+              style: TextStyle(
+                fontWeight: FontWeight.w500,
+                color: Colors.grey[700],
+                fontSize: 13,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(fontSize: 13),
+            ),
           ),
         ],
       ),
