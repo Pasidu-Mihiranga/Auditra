@@ -172,16 +172,13 @@ SIMPLE_JWT = {
 }
 
 # Email Configuration
-# Using Gmail SMTP with port 587 (TLS) - allowed by VPS provider
-EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-EMAIL_HOST = 'smtp.gmail.com'
-EMAIL_PORT = 587
-EMAIL_USE_TLS = True
-EMAIL_USE_SSL = False  # Use TLS, not SSL for port 587
-EMAIL_HOST_USER = config('EMAIL_HOST_USER', default='')
-# Gmail app passwords may have spaces - remove them
-EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD', default='').replace(' ', '')
-DEFAULT_FROM_EMAIL = config('DEFAULT_FROM_EMAIL', default=EMAIL_HOST_USER)
+# Using SendGrid API (works even when SMTP ports are blocked)
+EMAIL_BACKEND = 'sendgrid_backend.SendgridBackend'
+SENDGRID_API_KEY = config('SENDGRID_API_KEY', default='')
+DEFAULT_FROM_EMAIL = config('DEFAULT_FROM_EMAIL', default='auditra.auditing.erp@gmail.com')
 
-# Email timeout settings
-EMAIL_TIMEOUT = 30  # seconds - increased for reliability
+# SendGrid settings
+SENDGRID_SANDBOX_MODE_IN_DEBUG = False  # Set to True for testing without sending real emails
+
+# Email timeout settings (for SendGrid API calls)
+EMAIL_TIMEOUT = 30  # seconds
