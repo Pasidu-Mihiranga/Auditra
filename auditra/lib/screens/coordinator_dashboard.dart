@@ -347,6 +347,9 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
     );
 
     if (result == true) {
+      // Mark this project as recreated
+      _recreatedProjectIds.add(rejectedProject.id);
+      
       // Show success message
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
