@@ -160,3 +160,52 @@ class MyRoleView(APIView):
         return Response({
             'error': 'Role not found'
         }, status=status.HTTP_404_NOT_FOUND)
+
+
+class FirebaseCustomTokenView(APIView):
+    """Generate Firebase custom token for authenticated user"""
+    permission_classes = (IsAuthenticated,)
+    
+    def post(self, request):
+        try:
+            from chat.firebase_admin import create_custom_token
+            
+            user = request.user
+            user_id = user.id
+            
+            # Get user role for additional claims
+            role = None
+            role_display = None
+            if hasattr(user, 'role'):
+                role = user.role.role
+                role_display = user.role.get_role_display()
+            
+            # Create additional claims
+            additional_claims = {
+                'user_id': user_id,
+                'username': user.username,
+                'email': user.email,
+            }
+            if role:
+                additional_claims['role'] = role
+                additional_claims['role_display'] = role_display
+            
+            # Generate custom token
+            custom_token = create_custom_token(user_id, additional_claims)
+            
+            return Response({
+                'success': True,
+                'custom_token': custom_token,
+                'firebase_uid': f"django_{user_id}"
+            }, status=status.HTTP_200_OK)
+            
+        except FileNotFoundError as e:
+            return Response({
+                'success': False,
+                'message': 'Firebase not configured. Please set up Firebase service account.'
+            }, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        except Exception as e:
+            return Response({
+                'success': False,
+                'message': f'Failed to generate custom token: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

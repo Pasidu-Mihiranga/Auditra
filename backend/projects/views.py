@@ -90,7 +90,15 @@ class ProjectListView(generics.ListCreateAPIView):
         # Remove client_info and agent_info from request data if present
         # These are informational and not stored in the Project model
         # They can be assigned later using the assign endpoints
-        serializer.save(coordinator=self.request.user)
+        project = serializer.save(coordinator=self.request.user)
+        
+        # Create Firebase group chat for the project
+        try:
+            from chat.firebase_admin import create_project_group_chat
+            create_project_group_chat(project)
+        except Exception as e:
+            # Log error but don't fail project creation
+            print(f"Warning: Failed to create group chat for project {project.id}: {e}")
 
 
 class ProjectDetailView(generics.RetrieveUpdateDestroyAPIView):
@@ -188,6 +196,13 @@ class AssignFieldOfficerView(APIView):
         
         project.assigned_field_officer = field_officer
         project.save()
+        
+        # Add field officer to project group chat
+        try:
+            from chat.firebase_admin import add_member_to_group_chat
+            add_member_to_group_chat(project.id, field_officer.id, 'field_officer')
+        except Exception as e:
+            print(f"Warning: Failed to add field officer to group chat: {e}")
         
         return Response({
             'message': 'Field officer assigned successfully',
@@ -400,6 +415,13 @@ class AssignAccessorView(APIView):
         project.assigned_accessor = accessor
         project.save()
         
+        # Add accessor to project group chat
+        try:
+            from chat.firebase_admin import add_member_to_group_chat
+            add_member_to_group_chat(project.id, accessor.id, 'accessor')
+        except Exception as e:
+            print(f"Warning: Failed to add accessor to group chat: {e}")
+        
         return Response({
             'message': 'Accessor assigned successfully',
             'project': ProjectSerializer(project, context={'request': request}).data
@@ -432,6 +454,13 @@ class AssignSeniorValuerView(APIView):
         
         project.assigned_senior_valuer = senior_valuer
         project.save()
+        
+        # Add senior valuer to project group chat
+        try:
+            from chat.firebase_admin import add_member_to_group_chat
+            add_member_to_group_chat(project.id, senior_valuer.id, 'senior_valuer')
+        except Exception as e:
+            print(f"Warning: Failed to add senior valuer to group chat: {e}")
         
         return Response({
             'message': 'Senior valuer assigned successfully',

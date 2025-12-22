@@ -74,6 +74,12 @@ staticfiles/
 *.env
 !.env.example
 
+# Firebase Service Account Keys (Sensitive - DO NOT COMMIT)
+**/firebase-service-account.json
+**/*firebase-adminsdk*.json
+**/google-services.json
+**/GoogleService-Info.plist
+
 # IDE
 .vscode/
 .idea/

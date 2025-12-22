@@ -13,9 +13,17 @@ https://docs.djangoproject.com/en/5.0/ref/settings/
 from pathlib import Path
 from datetime import timedelta
 from decouple import config
+import os
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# Firebase configuration
+# Set FIREBASE_SERVICE_ACCOUNT_PATH environment variable or it will use default path
+FIREBASE_SERVICE_ACCOUNT_PATH = os.environ.get(
+    'FIREBASE_SERVICE_ACCOUNT_PATH',
+    str(BASE_DIR / 'auditra-6610c-firebase-adminsdk-fbsvc-ab10377663.json')
+)
 
 
 # Quick-start development settings - unsuitable for production

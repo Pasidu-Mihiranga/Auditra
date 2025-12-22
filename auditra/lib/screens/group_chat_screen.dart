@@ -6,36 +6,27 @@ import '../services/firebase_user_service.dart';
 import '../services/firebase_service.dart';
 import '../services/api_service.dart';
 
-class ChatScreen extends StatefulWidget {
+class GroupChatScreen extends StatefulWidget {
   final String chatId;
-  final String chatName;
-  final String? chatType; // 'group' or 'private'
-  final String? projectId;
-  final String? projectTitle;
-  final int? recipientId; // For private chats
-  final String? recipientName;
-  final String? recipientRole;
+  final String projectId;
+  final String projectTitle;
 
-  const ChatScreen({
+  const GroupChatScreen({
     super.key,
     required this.chatId,
-    required this.chatName,
-    this.chatType,
-    this.projectId,
-    this.projectTitle,
-    this.recipientId,
-    this.recipientName,
-    this.recipientRole,
+    required this.projectId,
+    required this.projectTitle,
   });
 
   @override
-  State<ChatScreen> createState() => _ChatScreenState();
+  State<GroupChatScreen> createState() => _GroupChatScreenState();
 }
 
-class _ChatScreenState extends State<ChatScreen> {
+class _GroupChatScreenState extends State<GroupChatScreen> {
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   Stream<QuerySnapshot>? _messagesStream;
+  DocumentSnapshot? _chatDoc;
   bool _isSending = false;
   String? _currentFirebaseUid;
   List<String> _unreadMessageIds = [];
@@ -70,6 +61,14 @@ class _ChatScreenState extends State<ChatScreen> {
         throw Exception('Failed to get Firebase UID');
       }
 
+      // Get chat document
+      final chatDoc = await FirebaseChatService.getChat(widget.chatId);
+      if (chatDoc != null) {
+        setState(() {
+          _chatDoc = chatDoc;
+        });
+      }
+
       // Set up real-time message stream
       setState(() {
         _messagesStream = FirebaseChatService.getChatMessagesStream(widget.chatId);
@@ -91,7 +90,6 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _markMessagesAsRead() async {
     try {
-      // Get unread messages
       final messagesSnapshot = await FirebaseChatService.firestore
           .collection('messages')
           .where('chatId', isEqualTo: widget.chatId)
@@ -130,7 +128,6 @@ class _ChatScreenState extends State<ChatScreen> {
 
       if (mounted) {
         _messageController.clear();
-        // Scroll to bottom after sending
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (_scrollController.hasClients) {
             _scrollController.animateTo(
@@ -190,6 +187,84 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  Widget _buildMemberList() {
+    if (_chatDoc == null || !_chatDoc!.exists) return const SizedBox.shrink();
+
+    final data = _chatDoc!.data();
+    if (data == null) return const SizedBox.shrink();
+    
+    final chatData = data as Map<String, dynamic>?;
+    if (chatData == null) return const SizedBox.shrink();
+    
+    final members = List<String>.from(chatData['members'] ?? []);
+    final memberRoles = Map<String, dynamic>.from(chatData['memberRoles'] ?? {});
+
+    return Drawer(
+      child: SafeArea(
+        child: Column(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.blue[600],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    widget.projectTitle,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Group Chat',
+                    style: TextStyle(
+                      color: Colors.white.withOpacity(0.8),
+                      fontSize: 14,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.all(16),
+                children: [
+                  const Text(
+                    'Members',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  ...members.map((memberUid) {
+                    final role = memberRoles[memberUid] ?? 'unknown';
+                    return ListTile(
+                      leading: CircleAvatar(
+                        backgroundColor: Colors.blue[100],
+                        child: Text(
+                          role.substring(0, 1).toUpperCase(),
+                          style: TextStyle(color: Colors.blue[700]),
+                        ),
+                      ),
+                      title: Text('User ${memberUid.split('_').last}'),
+                      subtitle: Text(role.replaceAll('_', ' ').toUpperCase()),
+                    );
+                  }),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -205,56 +280,30 @@ class _ChatScreenState extends State<ChatScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              widget.chatName,
+              widget.projectTitle,
               style: const TextStyle(
                 color: Colors.white,
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
               ),
             ),
-            if (widget.chatType == 'group' && widget.projectTitle != null)
-              Text(
-                widget.projectTitle!,
-                style: TextStyle(
-                  color: Colors.white.withOpacity(0.8),
-                  fontSize: 12,
-                ),
-              )
-            else if (widget.recipientRole != null)
-              Text(
-                widget.recipientRole!,
-                style: TextStyle(
-                  color: Colors.white.withOpacity(0.8),
-                  fontSize: 12,
-                ),
+            const Text(
+              'Group Chat',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 12,
               ),
+            ),
           ],
         ),
         actions: [
-          if (widget.projectTitle != null && widget.chatType != 'group')
-            Padding(
-              padding: const EdgeInsets.only(right: 8.0),
-              child: Center(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    widget.projectTitle!,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 11,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ),
-            ),
+          IconButton(
+            icon: const Icon(Icons.people, color: Colors.white),
+            onPressed: () => Scaffold.of(context).openEndDrawer(),
+          ),
         ],
       ),
+      endDrawer: _buildMemberList(),
       body: Column(
         children: [
           // Messages List
@@ -282,7 +331,7 @@ class _ChatScreenState extends State<ChatScreen> {
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
                                 Icon(
-                                  Icons.chat_bubble_outline,
+                                  Icons.group_outlined,
                                   size: 64,
                                   color: Colors.grey[400],
                                 ),
@@ -303,35 +352,6 @@ class _ChatScreenState extends State<ChatScreen> {
                                     color: Colors.grey[600],
                                   ),
                                 ),
-                                if (widget.projectTitle != null) ...[
-                                  const SizedBox(height: 24),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                                    decoration: BoxDecoration(
-                                      color: Colors.blue[50],
-                                      borderRadius: BorderRadius.circular(12),
-                                      border: Border.all(color: Colors.blue[200]!),
-                                    ),
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Icon(Icons.folder_outlined, size: 16, color: Colors.blue[700]),
-                                        const SizedBox(width: 8),
-                                        Flexible(
-                                          child: Text(
-                                            'Project: ${widget.projectTitle}',
-                                            style: TextStyle(
-                                              fontSize: 12,
-                                              color: Colors.blue[700],
-                                              fontWeight: FontWeight.w500,
-                                            ),
-                                            textAlign: TextAlign.center,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
                               ],
                             ),
                           ),
@@ -339,8 +359,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       }
 
                       final messages = snapshot.data!.docs;
-                      
-                      // Scroll to bottom when new messages arrive
+
                       WidgetsBinding.instance.addPostFrameCallback((_) {
                         if (_scrollController.hasClients) {
                           _scrollController.animateTo(
@@ -374,18 +393,17 @@ class _ChatScreenState extends State<ChatScreen> {
                                     ? CrossAxisAlignment.end
                                     : CrossAxisAlignment.start,
                                 children: [
-                                  if (!isMyMessage && widget.chatType == 'group')
-                                    Padding(
-                                      padding: const EdgeInsets.only(bottom: 4, left: 8),
-                                      child: Text(
-                                        message['senderName'] ?? 'Unknown',
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          color: Colors.grey[600],
-                                          fontWeight: FontWeight.w500,
-                                        ),
+                                  Padding(
+                                    padding: const EdgeInsets.only(bottom: 4, left: 8, right: 8),
+                                    child: Text(
+                                      message['senderName'] ?? 'Unknown',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.grey[600],
+                                        fontWeight: FontWeight.w500,
                                       ),
                                     ),
+                                  ),
                                   Container(
                                     padding: const EdgeInsets.symmetric(
                                       horizontal: 16,
@@ -517,3 +535,6 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 }
+
+
+

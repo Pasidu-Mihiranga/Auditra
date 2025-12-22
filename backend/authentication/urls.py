@@ -7,7 +7,8 @@ from .views import (
     AssignRoleView,
     AllUsersView,
     RoleListView,
-    MyRoleView
+    MyRoleView,
+    FirebaseCustomTokenView
 )
 
 urlpatterns = [
@@ -19,5 +20,6 @@ urlpatterns = [
     path('roles/', RoleListView.as_view(), name='roles'),
     path('assign-role/', AssignRoleView.as_view(), name='assign-role'),
     path('users/', AllUsersView.as_view(), name='all-users'),
+    path('firebase-custom-token/', FirebaseCustomTokenView.as_view(), name='firebase-custom-token'),
 ]
 

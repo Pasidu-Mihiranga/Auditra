@@ -2208,5 +2208,45 @@ class ApiService {
       return {'success': false, 'message': 'Connection error: $e'};
     }
   }
+
+  // Get Firebase custom token for authentication
+  static Future<Map<String, dynamic>> getFirebaseCustomToken() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token');
+
+      if (token == null) {
+        return {'success': false, 'message': 'Not authenticated'};
+      }
+
+      final response = await http.post(
+        Uri.parse('$baseUrl/auth/firebase-custom-token/'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      final data = _safeParseJsonResponse(response);
+      if (data == null) {
+        return {'success': false, 'message': _getHtmlErrorMessage(response)};
+      }
+
+      if (response.statusCode == 200) {
+        return {
+          'success': true,
+          'custom_token': data['custom_token'],
+          'firebase_uid': data['firebase_uid'],
+        };
+      } else {
+        return {
+          'success': false,
+          'message': data['message'] ?? data['detail'] ?? 'Failed to get Firebase custom token',
+        };
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'Connection error: $e'};
+    }
+  }
 }
 

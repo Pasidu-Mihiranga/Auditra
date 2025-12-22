@@ -18,6 +18,10 @@ import 'assign_users_screen.dart';
 import 'contact_assigned_users_screen.dart';
 import 'workflow_screen.dart';
 import 'view_project_details_screen.dart';
+import 'group_chat_screen.dart';
+import '../services/firebase_chat_service.dart';
+import '../services/firebase_service.dart';
+import '../services/firebase_user_service.dart';
 
 // Helper class to hold upload dialog state
 class _UploadDialogState {
@@ -7287,7 +7291,64 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
             ],
             // Cancel button for ongoing projects (before contact button)
             // Note: Cancel button is now in the description row above, so this section is removed
-            // Chat Button (for all project statuses: received/pending, ongoing, completed, cancelled)
+            // Group Chat Button (for all project statuses)
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: () => _openGroupChat(project),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green[700],
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  elevation: 2,
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.group, size: 18),
+                    const SizedBox(width: 8),
+                    const Text(
+                      'Group Chat',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                    if ((_projectUnreadCounts[project.id] ?? 0) > 0) ...[
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.green[100],
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: Colors.green[300]!,
+                            width: 1,
+                          ),
+                        ),
+                        child: Text(
+                          (_projectUnreadCounts[project.id] ?? 0) > 99 
+                              ? '99+' 
+                              : (_projectUnreadCounts[project.id] ?? 0).toString(),
+                          style: TextStyle(
+                            color: Colors.green[800],
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+            // Chat with Users Button (for private chats)
             const SizedBox(height: 8),
             SizedBox(
               width: double.infinity,
@@ -7302,44 +7363,20 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
                   ),
                   elevation: 2,
                 ),
-                child: Row(
+                child: const Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.chat, size: 18),
-                    const SizedBox(width: 8),
-                    const Text(
-                      'Chat',
+                    Icon(Icons.chat, size: 18),
+                    SizedBox(width: 8),
+                    Text(
+                      'Chat with Users',
                       style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w600,
                         letterSpacing: 0.5,
                       ),
                     ),
-                    if ((_projectUnreadCounts[project.id] ?? 0) > 0) ...[
-                      const SizedBox(width: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: Colors.blue[100],
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: Colors.blue[300]!,
-                            width: 1,
-                          ),
-                        ),
-                        child: Text(
-                          (_projectUnreadCounts[project.id] ?? 0) > 99 
-                              ? '99+' 
-                              : (_projectUnreadCounts[project.id] ?? 0).toString(),
-                          style: TextStyle(
-                            color: Colors.blue[800],
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                    ],
                   ],
                 ),
               ),
@@ -7389,6 +7426,37 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error opening email: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _openGroupChat(Project project) async {
+    try {
+      // Ensure Firebase authentication
+      if (!FirebaseService.isAuthenticated()) {
+        await FirebaseService.authenticateWithCustomToken();
+      }
+
+      final chatId = 'project_${project.id}';
+      
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => GroupChatScreen(
+            chatId: chatId,
+            projectId: project.id?.toString() ?? '',
+            projectTitle: project.title,
+          ),
+        ),
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error opening group chat: $e'),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     }

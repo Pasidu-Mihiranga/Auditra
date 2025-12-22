@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 import '../models/project_model.dart';
 import 'chat_screen.dart';
+import '../services/firebase_chat_service.dart';
+import '../services/firebase_user_service.dart';
+import '../services/firebase_service.dart';
+import '../services/api_service.dart';
 
 class ContactAssignedUsersScreen extends StatelessWidget {
   final Project project;
@@ -11,8 +15,8 @@ class ContactAssignedUsersScreen extends StatelessWidget {
   });
 
   void _openChat(BuildContext context, Map<String, dynamic> contact) async {
-    final userId = contact['userId'];
-    if (userId == null) {
+    final recipientUserId = contact['userId'];
+    if (recipientUserId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('User ID not available'),
@@ -22,19 +26,57 @@ class ContactAssignedUsersScreen extends StatelessWidget {
       return;
     }
 
-    await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => ChatScreen(
-          recipientId: userId,
-          recipientName: contact['name']!,
-          recipientUsername: contact['username']!,
-          recipientRole: contact['role'],
-          projectId: project.id,
-          projectTitle: project.title,
+    try {
+      // Ensure Firebase authentication
+      if (!FirebaseService.isAuthenticated()) {
+        await FirebaseService.authenticateWithCustomToken();
+      }
+
+      // Get current user ID
+      final currentUserId = await ApiService.getUserId();
+      if (currentUserId == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Failed to get current user ID'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
+      // Create or get private chat
+      final chatId = await FirebaseChatService.createPrivateChatIfNeeded(
+        userId1: currentUserId,
+        userId2: recipientUserId,
+        projectId: project.id?.toString(),
+        projectTitle: project.title,
+      );
+
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => ChatScreen(
+            chatId: chatId,
+            chatName: contact['name']!,
+            chatType: 'private',
+            projectId: project.id?.toString(),
+            projectTitle: project.title,
+            recipientId: recipientUserId,
+            recipientName: contact['name']!,
+            recipientRole: contact['role'],
+          ),
         ),
-      ),
-    );
+      );
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error opening chat: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   @override
