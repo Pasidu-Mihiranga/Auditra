@@ -431,8 +431,34 @@ class _AccessorDashboardState extends State<AccessorDashboard> with TickerProvid
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const SizedBox(height: 20), // Space for priority label
-                  // Show MD/GM rejection status if rejected
-                  if (project.mdGmApprovalStatus == 'rejected') ...[
+                  // Show MD/GM approval/rejection status
+                  if (project.mdGmApprovalStatus == 'approved') ...[
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      margin: const EdgeInsets.only(bottom: 12),
+                      decoration: BoxDecoration(
+                        color: Colors.green[50],
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.green[200]!),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.check_circle, color: Colors.green[700], size: 20),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Project Approved by MD/GM',
+                              style: TextStyle(
+                                color: Colors.green[900],
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ] else if (project.mdGmApprovalStatus == 'rejected') ...[
                     Container(
                       padding: const EdgeInsets.all(12),
                       margin: const EdgeInsets.only(bottom: 12),

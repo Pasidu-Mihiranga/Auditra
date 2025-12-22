@@ -727,49 +727,76 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const SizedBox(height: 20), // Space for priority label
-                  // Show MD/GM rejection status if rejected (for senior valuer and assessor)
-                  if ((widget.role == 'senior_valuer' || widget.role == 'accessor') && 
-                      project.mdGmApprovalStatus == 'rejected') ...[
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      margin: const EdgeInsets.only(bottom: 12),
-                      decoration: BoxDecoration(
-                        color: Colors.red[50],
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.red[200]!),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Icon(Icons.cancel, color: Colors.red[700], size: 20),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  'Project Rejected by MD/GM',
-                                  style: TextStyle(
-                                    color: Colors.red[900],
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.bold,
-                                  ),
+                  // Show MD/GM approval/rejection status (for senior valuer and assessor)
+                  if ((widget.role == 'senior_valuer' || widget.role == 'accessor')) ...[
+                    if (project.mdGmApprovalStatus == 'approved') ...[
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        margin: const EdgeInsets.only(bottom: 12),
+                        decoration: BoxDecoration(
+                          color: Colors.green[50],
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.green[200]!),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(Icons.check_circle, color: Colors.green[700], size: 20),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Project Approved by MD/GM',
+                                style: TextStyle(
+                                  color: Colors.green[900],
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.bold,
                                 ),
-                              ),
-                            ],
-                          ),
-                          if (project.mdGmRejectionReason != null && project.mdGmRejectionReason!.isNotEmpty) ...[
-                            const SizedBox(height: 8),
-                            Text(
-                              'Reason: ${project.mdGmRejectionReason}',
-                              style: TextStyle(
-                                color: Colors.red[800],
-                                fontSize: 12,
                               ),
                             ),
                           ],
-                        ],
+                        ),
                       ),
-                    ),
+                    ] else if (project.mdGmApprovalStatus == 'rejected') ...[
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        margin: const EdgeInsets.only(bottom: 12),
+                        decoration: BoxDecoration(
+                          color: Colors.red[50],
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.red[200]!),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Icon(Icons.cancel, color: Colors.red[700], size: 20),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    'Project Rejected by MD/GM',
+                                    style: TextStyle(
+                                      color: Colors.red[900],
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            if (project.mdGmRejectionReason != null && project.mdGmRejectionReason!.isNotEmpty) ...[
+                              const SizedBox(height: 8),
+                              Text(
+                                'Reason: ${project.mdGmRejectionReason}',
+                                style: TextStyle(
+                                  color: Colors.red[800],
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ],
                   ],
                   Row(
                     children: [
