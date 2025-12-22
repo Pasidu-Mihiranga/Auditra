@@ -49,9 +49,14 @@ class ProjectListView(generics.ListCreateAPIView):
         elif hasattr(user, 'role') and user.role.role == 'accessor':
             return Project.objects.filter(assigned_accessor=user)
         
-        # Senior valuers see only assigned projects
+        # Senior valuers see only assigned projects with valuations that have been reviewed (sent by assessor)
         elif hasattr(user, 'role') and user.role.role == 'senior_valuer':
-            return Project.objects.filter(assigned_senior_valuer=user)
+            # Filter projects assigned to senior valuer that have valuations with status 'reviewed'
+            # (accepted by assessor and sent to senior valuer)
+            return Project.objects.filter(
+                assigned_senior_valuer=user,
+                valuations__status='reviewed'
+            ).distinct()
         
         # MD/GM see only projects where ALL valuations are approved by senior valuer
         elif hasattr(user, 'role') and user.role.role == 'md_gm':
@@ -127,9 +132,13 @@ class ProjectDetailView(generics.RetrieveUpdateDestroyAPIView):
         elif hasattr(user, 'role') and user.role.role == 'accessor':
             return Project.objects.filter(assigned_accessor=user)
         
-        # Senior valuers can see assigned projects
+        # Senior valuers can see assigned projects with valuations that have been reviewed (sent by assessor)
         elif hasattr(user, 'role') and user.role.role == 'senior_valuer':
-            return Project.objects.filter(assigned_senior_valuer=user)
+            # Filter projects assigned to senior valuer that have valuations with status 'reviewed'
+            return Project.objects.filter(
+                assigned_senior_valuer=user,
+                valuations__status='reviewed'
+            ).distinct()
         
         # MD/GM can see projects where ALL valuations are approved by senior valuer
         elif hasattr(user, 'role') and user.role.role == 'md_gm':

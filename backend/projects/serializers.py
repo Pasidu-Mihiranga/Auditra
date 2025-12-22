@@ -175,6 +175,10 @@ class ProjectSerializer(serializers.ModelSerializer):
         # Filter valuations based on user role
         valuations = obj.valuations.all().select_related('field_officer').prefetch_related('photos')
         
+        # Senior valuer should only see reviewed valuations (sent by assessor)
+        if request and hasattr(request.user, 'role') and request.user.role.role == 'senior_valuer':
+            valuations = valuations.filter(status='reviewed')
+        
         # MD/GM should see all valuations for projects they receive
         # (Projects are already filtered to only show those with all approved valuations)
         # No need to filter valuations here - show all reports
@@ -183,6 +187,12 @@ class ProjectSerializer(serializers.ModelSerializer):
     
     def get_valuations_count(self, obj):
         """Get count of valuations for this project"""
+        request = self.context.get('request')
+        
+        # Senior valuer should only count reviewed valuations
+        if request and hasattr(request.user, 'role') and request.user.role.role == 'senior_valuer':
+            return obj.valuations.filter(status='reviewed').count()
+        
         # MD/GM should see all valuations count for projects they receive
         return obj.valuations.count()
 
