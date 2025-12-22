@@ -41,9 +41,12 @@ class ProjectListView(generics.ListCreateAPIView):
         elif hasattr(user, 'role') and user.role.role == 'field_officer':
             queryset = Project.objects.filter(assigned_field_officer=user)
         
-        # Clients see only assigned projects
+        # Clients see only assigned projects that have been approved by MD/GM
         elif hasattr(user, 'role') and user.role.role == 'client':
-            return Project.objects.filter(assigned_client=user)
+            return Project.objects.filter(
+                assigned_client=user,
+                md_gm_approval_status='approved'
+            )
         
         # Agents see only assigned projects
         elif hasattr(user, 'role') and user.role.role == 'agent':
@@ -124,9 +127,12 @@ class ProjectDetailView(generics.RetrieveUpdateDestroyAPIView):
         elif hasattr(user, 'role') and user.role.role == 'field_officer':
             return Project.objects.filter(assigned_field_officer=user)
         
-        # Clients can see assigned projects
+        # Clients can see assigned projects that have been approved by MD/GM
         elif hasattr(user, 'role') and user.role.role == 'client':
-            return Project.objects.filter(assigned_client=user)
+            return Project.objects.filter(
+                assigned_client=user,
+                md_gm_approval_status='approved'
+            )
         
         # Agents can see assigned projects
         elif hasattr(user, 'role') and user.role.role == 'agent':
