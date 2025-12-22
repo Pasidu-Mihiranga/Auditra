@@ -79,6 +79,8 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
   // Project state
   List<Project> _projects = [];
   bool _isLoadingProjects = false;
+  // Track projects that have been recreated (to hide recreate button)
+  Set<int> _recreatedProjectIds = {};
   bool _isCreatingProject = false;
   // Search and sort state for each tab
   final Map<int, TextEditingController> _searchControllers = {};
@@ -345,7 +347,31 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
     );
 
     if (result == true) {
+      // Show success message
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Row(
+              children: [
+                Icon(Icons.check_circle, color: Colors.white),
+                SizedBox(width: 8),
+                Expanded(child: Text('Project recreated successfully')),
+              ],
+            ),
+            backgroundColor: Colors.green,
+            behavior: SnackBarBehavior.floating,
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+      
+      // Refresh projects list
       await _loadProjects();
+      
+      // Force UI rebuild to hide the recreate button on the rejected project
+      if (mounted) {
+        setState(() {});
+      }
     }
   }
 
@@ -6476,8 +6502,8 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
               children: [
                 // Spacing for priority label
                 const SizedBox(height: 20),
-                // Show MD/GM rejection status if rejected
-                if (project.mdGmApprovalStatus == 'rejected') ...[
+                // Show MD/GM rejection status if rejected and not yet recreated
+                if (project.mdGmApprovalStatus == 'rejected' && !_recreatedProjectIds.contains(project.id)) ...[
                   Container(
                     padding: const EdgeInsets.all(12),
                     margin: const EdgeInsets.only(bottom: 12),
