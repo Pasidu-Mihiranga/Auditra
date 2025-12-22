@@ -173,7 +173,7 @@ SIMPLE_JWT = {
 
 # Email Configuration
 # Using SendGrid API (works even when SMTP ports are blocked)
-EMAIL_BACKEND = 'sendgrid_backend.SendgridBackend'
+EMAIL_BACKEND = 'sgbackend.SendGridBackend'
 SENDGRID_API_KEY = config('SENDGRID_API_KEY', default='')
 DEFAULT_FROM_EMAIL = config('DEFAULT_FROM_EMAIL', default='auditra.auditing.erp@gmail.com')
 
