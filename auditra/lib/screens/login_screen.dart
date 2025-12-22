@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 import 'register_screen.dart';
 import 'home_screen.dart';
+import 'change_password_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -44,6 +45,26 @@ class _LoginScreenState extends State<LoginScreen> {
       final role = await ApiService.getUserRole();
       
       if (!mounted) return;
+      
+      // Check if password change is required
+      final passwordChangeRequired = result['password_change_required'] ?? false;
+      
+      if (passwordChangeRequired) {
+        // Show password change screen (optional)
+        await Navigator.of(context).push<bool>(
+          MaterialPageRoute(
+            builder: (_) => ChangePasswordScreen(
+              isOptional: true,
+              onSuccess: () {
+                // Password changed successfully
+              },
+            ),
+          ),
+        );
+        
+        // If user skipped or changed password, proceed to dashboard
+        if (!mounted) return;
+      }
       
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(builder: (_) => HomeScreen(userRole: role ?? 'unassigned')),

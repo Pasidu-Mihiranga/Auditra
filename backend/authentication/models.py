@@ -32,6 +32,10 @@ class UserRole(models.Model):
     )
     assigned_at = models.DateTimeField(auto_now=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    password_changed = models.BooleanField(
+        default=False,
+        help_text='Whether the user has changed their password (for clients/agents)'
+    )
     
     class Meta:
         db_table = 'user_roles'

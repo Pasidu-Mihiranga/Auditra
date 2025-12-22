@@ -58,6 +58,11 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
            widget.role == 'senior_valuer';
   }
 
+  // Check if this role should see attendance tab (clients don't see attendance)
+  bool get _shouldShowAttendanceTab {
+    return _shouldShowProjects && widget.role != 'client';
+  }
+
   @override
   void initState() {
     super.initState();
@@ -76,21 +81,28 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
       }
     });
     
-    // Initialize main tab controller if this role should see projects
-    if (_shouldShowProjects) {
+    // Initialize main tab controller if this role should see projects with attendance tab
+    if (_shouldShowAttendanceTab) {
       _mainTabController = TabController(length: 2, vsync: this);
       _mainTabController!.addListener(() {
         if (!_mainTabController!.indexIsChanging && mounted) {
           setState(() {});
         }
       });
+    }
+    
+    // Load projects for roles that should see projects
+    if (_shouldShowProjects) {
       _loadProjects();
     }
     
     _loadUserData();
-    _loadTodayAttendance();
-    _loadSummary();
-    _startTimer();
+    // Only load attendance data if not a client (clients don't see attendance)
+    if (widget.role != 'client') {
+      _loadTodayAttendance();
+      _loadSummary();
+      _startTimer();
+    }
   }
 
   @override
@@ -615,7 +627,7 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
             tooltip: 'Logout',
           ),
         ],
-        bottom: _shouldShowProjects && _mainTabController != null
+        bottom: _shouldShowAttendanceTab && _mainTabController != null
             ? TabBar(
                 controller: _mainTabController,
                 tabs: const [
@@ -627,7 +639,7 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : _shouldShowProjects && _mainTabController != null
+          : _shouldShowAttendanceTab && _mainTabController != null
               ? TabBarView(
                   controller: _mainTabController,
                   children: [
@@ -635,7 +647,9 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
                     _buildProjectsTab(),
                   ],
                 )
-              : _buildDashboardBody(),
+              : widget.role == 'client'
+                  ? _buildProjectsTab()
+                  : _buildDashboardBody(),
     );
   }
 

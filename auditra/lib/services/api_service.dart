@@ -45,10 +45,10 @@ String _getHtmlErrorMessage(http.Response response) {
 }
 
 class ApiService {
-  // Change this to your computer's IP address when testing on physical device
-  // For emulator, use 10.0.2.2 (Android) or localhost (iOS)
-  // For physical device, use your computer's IP address (e.g., 'http://192.168.1.100:8000/api')
-  static const String baseUrl = 'http://10.0.2.2:8000/api';
+  // Production API URL - Update this to your VPS IP or domain
+  // For local development, use: 'http://10.0.2.2:8000/api' (Android emulator)
+  // For production VPS, use: 'http://152.42.240.220/api'
+  static const String baseUrl = 'http://152.42.240.220/api';
 
   /// Check if offline mode should be used (only for field officers)
   static Future<bool> _shouldUseOfflineMode() async {
@@ -77,7 +77,15 @@ class ApiService {
         }),
       );
 
-      final data = jsonDecode(response.body);
+      // Check if response is HTML (error page) before parsing JSON
+      final data = _safeParseJsonResponse(response);
+      if (data == null) {
+        // HTML response received
+        return {
+          'success': false,
+          'message': _getHtmlErrorMessage(response)
+        };
+      }
 
       if (response.statusCode == 201) {
         // Save tokens
@@ -89,7 +97,18 @@ class ApiService {
         
         return {'success': true, 'data': data};
       } else {
-        return {'success': false, 'message': data.toString()};
+        // Extract error message from response
+        String errorMsg = 'Registration failed';
+        if (data is Map<String, dynamic>) {
+          errorMsg = data['username']?.join(', ') ?? 
+                     data['email']?.join(', ') ?? 
+                     data['password']?.join(', ') ??
+                     data['detail'] ?? 
+                     data['error'] ?? 
+                     data['message'] ?? 
+                     errorMsg;
+        }
+        return {'success': false, 'message': errorMsg};
       }
     } catch (e) {
       return {'success': false, 'message': 'Connection error: $e'};
@@ -111,7 +130,15 @@ class ApiService {
         }),
       );
 
-      final data = jsonDecode(response.body);
+      // Check if response is HTML (error page) before parsing JSON
+      final data = _safeParseJsonResponse(response);
+      if (data == null) {
+        // HTML response received
+        return {
+          'success': false,
+          'message': _getHtmlErrorMessage(response)
+        };
+      }
 
       if (response.statusCode == 200) {
         // Save tokens
@@ -121,9 +148,76 @@ class ApiService {
         await prefs.setString('user_id', data['user']['id'].toString());
         await prefs.setString('username', data['user']['username']);
         
-        return {'success': true, 'data': data};
+        // Include password_change_required flag in response
+        return {
+          'success': true, 
+          'data': data,
+          'password_change_required': data['password_change_required'] ?? false
+        };
       } else {
-        return {'success': false, 'message': data['error'] ?? 'Login failed'};
+        return {
+          'success': false,
+          'message': data['detail'] ?? data['error'] ?? data['message'] ?? 'Login failed'
+        };
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'Connection error: $e'};
+    }
+  }
+
+  // Change password (one-time for clients/agents)
+  static Future<Map<String, dynamic>> changePassword({
+    required String oldPassword,
+    required String newPassword,
+  }) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token');
+
+      if (token == null) {
+        return {'success': false, 'message': 'Not authenticated'};
+      }
+
+      final response = await http.post(
+        Uri.parse('$baseUrl/auth/change-password/'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({
+          'old_password': oldPassword,
+          'new_password': newPassword,
+          'new_password2': newPassword,
+        }),
+      );
+
+      // Check if response is HTML (error page) before parsing JSON
+      final data = _safeParseJsonResponse(response);
+      if (data == null) {
+        // HTML response received
+        return {
+          'success': false,
+          'message': _getHtmlErrorMessage(response)
+        };
+      }
+
+      if (response.statusCode == 200) {
+        return {
+          'success': true,
+          'message': data['message'] ?? 'Password changed successfully'
+        };
+      } else {
+        // Extract error message from response
+        String errorMsg = 'Password change failed';
+        if (data is Map<String, dynamic>) {
+          errorMsg = data['error'] ?? 
+                     data['detail'] ?? 
+                     data['message'] ?? 
+                     data['old_password']?.join(', ') ??
+                     data['new_password']?.join(', ') ??
+                     errorMsg;
+        }
+        return {'success': false, 'message': errorMsg};
       }
     } catch (e) {
       return {'success': false, 'message': 'Connection error: $e'};

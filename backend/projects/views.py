@@ -71,9 +71,11 @@ class ProjectListView(generics.ListCreateAPIView):
         if not hasattr(self.request.user, 'role') or self.request.user.role.role != 'coordinator':
             raise serializers.ValidationError("Only coordinators can create projects.")
         
-        # Remove client_info and agent_info from request data if present
-        # These are informational and not stored in the Project model
-        # They can be assigned later using the assign endpoints
+        # The serializer.create() method will handle:
+        # - Creating the project
+        # - Processing client_info (check existing or create new account)
+        # - Processing agent_info (check existing or create new account)
+        # - Sending email credentials for newly created accounts
         serializer.save(coordinator=self.request.user)
 
 

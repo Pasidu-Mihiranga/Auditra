@@ -12,7 +12,8 @@ from .serializers import (
     UserDetailSerializer,
     LoginSerializer,
     AssignRoleSerializer,
-    UserRoleSerializer
+    UserRoleSerializer,
+    ChangePasswordSerializer
 )
 
 
@@ -57,10 +58,18 @@ class LoginView(APIView):
             refresh = RefreshToken.for_user(user)
             user_data = UserSerializer(user).data
             
+            # Check if password change is required (for clients/agents who haven't changed password)
+            password_change_required = False
+            if hasattr(user, 'role'):
+                user_role = user.role.role
+                if user_role in ['client', 'agent'] and not user.role.password_changed:
+                    password_change_required = True
+            
             return Response({
                 'user': user_data,
                 'refresh': str(refresh),
                 'access': str(refresh.access_token),
+                'password_change_required': password_change_required,
                 'message': 'Login successful'
             }, status=status.HTTP_200_OK)
         else:
@@ -160,3 +169,51 @@ class MyRoleView(APIView):
         return Response({
             'error': 'Role not found'
         }, status=status.HTTP_404_NOT_FOUND)
+
+
+class ChangePasswordView(APIView):
+    """Change password endpoint (one-time only for clients/agents)"""
+    permission_classes = (IsAuthenticated,)
+    
+    def post(self, request):
+        # Only clients and agents can use this endpoint
+        if not hasattr(request.user, 'role'):
+            return Response({
+                'error': 'User role not found'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        user_role = request.user.role.role
+        if user_role not in ['client', 'agent']:
+            return Response({
+                'error': 'Password change is only available for clients and agents'
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        # Check if password has already been changed
+        if request.user.role.password_changed:
+            return Response({
+                'error': 'Password has already been changed. You cannot change it again.'
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        serializer = ChangePasswordSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        old_password = serializer.validated_data['old_password']
+        new_password = serializer.validated_data['new_password']
+        
+        # Verify old password
+        if not request.user.check_password(old_password):
+            return Response({
+                'error': 'Current password is incorrect'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Set new password
+        request.user.set_password(new_password)
+        request.user.save()
+        
+        # Mark password as changed
+        request.user.role.password_changed = True
+        request.user.role.save()
+        
+        return Response({
+            'message': 'Password changed successfully'
+        }, status=status.HTTP_200_OK)

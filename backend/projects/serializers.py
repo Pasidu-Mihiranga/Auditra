@@ -1,6 +1,8 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
+from django.db import transaction
 from .models import Project, ProjectDocument
+from .utils import process_client_for_project, process_agent_for_project
 
 
 class ProjectDocumentSerializer(serializers.ModelSerializer):
@@ -208,8 +210,36 @@ class ProjectCreateSerializer(serializers.ModelSerializer):
         return super().to_internal_value(data)
     
     def create(self, validated_data):
+        # Extract client_info and agent_info before creating project
+        client_info = validated_data.pop('client_info', None)
+        agent_info = validated_data.pop('agent_info', None)
+        
+        # Set coordinator
         validated_data['coordinator'] = self.context['request'].user
-        return super().create(validated_data)
+        
+        # Create project within a transaction
+        with transaction.atomic():
+            project = super().create(validated_data)
+            
+            # Process client information
+            if client_info:
+                client_user, client_created, client_error = process_client_for_project(project, client_info)
+                if client_error and not client_user:
+                    # If client creation failed, raise validation error
+                    raise serializers.ValidationError({
+                        'client_info': client_error
+                    })
+            
+            # Process agent information (if has_agent is True)
+            if agent_info and validated_data.get('has_agent', False):
+                agent_user, agent_created, agent_error = process_agent_for_project(project, agent_info)
+                if agent_error and not agent_user:
+                    # If agent creation failed, raise validation error
+                    raise serializers.ValidationError({
+                        'agent_info': agent_error
+                    })
+            
+            return project
 
 
 class AssignFieldOfficerSerializer(serializers.Serializer):
