@@ -28,9 +28,58 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
   bool _isCreating = false;
   String _priority = 'medium'; // high, medium, low
   final formKey = GlobalKey<FormState>();
+  
+  // Client email check state
+  bool _checkingClientEmail = false;
+  bool? _clientExists;
+  String? _clientCheckMessage;
+  bool _creatingClient = false;
+  
+  // Agent email check state
+  bool _checkingAgentEmail = false;
+  bool? _agentExists;
+  String? _agentCheckMessage;
+  bool _creatingAgent = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Add listeners to email fields for real-time checking
+    clientEmailController.addListener(_onClientEmailChanged);
+    agentEmailController.addListener(_onAgentEmailChanged);
+    
+    // Check emails if they're already filled (e.g., when editing)
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final clientEmail = clientEmailController.text.trim();
+      if (clientEmail.isNotEmpty) {
+        final emailRegex = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
+        if (emailRegex.hasMatch(clientEmail)) {
+          setState(() {
+            _checkingClientEmail = true;
+          });
+          _checkClientEmail(clientEmail);
+        }
+      }
+      
+      if (hasAgent) {
+        final agentEmail = agentEmailController.text.trim();
+        if (agentEmail.isNotEmpty) {
+          final emailRegex = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
+          if (emailRegex.hasMatch(agentEmail)) {
+            setState(() {
+              _checkingAgentEmail = true;
+            });
+            _checkAgentEmail(agentEmail);
+          }
+        }
+      }
+    });
+  }
 
   @override
   void dispose() {
+    clientEmailController.removeListener(_onClientEmailChanged);
+    agentEmailController.removeListener(_onAgentEmailChanged);
     titleController.dispose();
     descriptionController.dispose();
     clientNameController.dispose();
@@ -44,6 +93,351 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
     agentAddressController.dispose();
     agentLicenseController.dispose();
     super.dispose();
+  }
+
+  void _onClientEmailChanged() {
+    final email = clientEmailController.text.trim();
+    print('DEBUG: _onClientEmailChanged called with: $email');
+    if (email.isEmpty) {
+      setState(() {
+        _clientExists = null;
+        _clientCheckMessage = null;
+        _checkingClientEmail = false;
+      });
+      return;
+    }
+    
+    // Basic email validation
+    final emailRegex = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
+    if (!emailRegex.hasMatch(email)) {
+      print('DEBUG: Email validation failed for: $email');
+      setState(() {
+        _clientExists = null;
+        _clientCheckMessage = null;
+        _checkingClientEmail = false;
+      });
+      return;
+    }
+    
+    print('DEBUG: Email validation passed, starting check for: $email');
+    // Show checking state immediately and start checking right away
+    setState(() {
+      _checkingClientEmail = true;
+    });
+    
+    // Check email after a very short delay (debounce) - reduced to 200ms for faster response
+    Future.delayed(const Duration(milliseconds: 200), () {
+      if (mounted && clientEmailController.text.trim() == email && email.isNotEmpty) {
+        print('DEBUG: Debounce complete, calling _checkClientEmail for: $email');
+        _checkClientEmail(email);
+      } else {
+        // If email changed, cancel the check
+        print('DEBUG: Email changed during debounce, canceling check');
+        if (mounted) {
+          setState(() {
+            _checkingClientEmail = false;
+          });
+        }
+      }
+    });
+  }
+
+  void _onAgentEmailChanged() {
+    if (!hasAgent) return;
+    final email = agentEmailController.text.trim();
+    if (email.isEmpty) {
+      setState(() {
+        _agentExists = null;
+        _agentCheckMessage = null;
+        _checkingAgentEmail = false;
+      });
+      return;
+    }
+    
+    // Basic email validation
+    final emailRegex = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
+    if (!emailRegex.hasMatch(email)) {
+      setState(() {
+        _agentExists = null;
+        _agentCheckMessage = null;
+        _checkingAgentEmail = false;
+      });
+      return;
+    }
+    
+    // Show checking state immediately and start checking right away
+    setState(() {
+      _checkingAgentEmail = true;
+    });
+    
+    // Check email after a very short delay (debounce) - reduced to 200ms for faster response
+    Future.delayed(const Duration(milliseconds: 200), () {
+      if (mounted && hasAgent && agentEmailController.text.trim() == email && email.isNotEmpty) {
+        _checkAgentEmail(email);
+      } else {
+        // If email changed, cancel the check
+        if (mounted) {
+          setState(() {
+            _checkingAgentEmail = false;
+          });
+        }
+      }
+    });
+  }
+
+  Future<void> _checkClientEmail(String email) async {
+    if (!mounted) return;
+    
+    // Only reset exists state, keep checking state true
+    setState(() {
+      _clientExists = null;
+      _clientCheckMessage = null;
+    });
+
+    try {
+      print('DEBUG: Starting client email check for: $email');
+      final result = await ApiService.checkUserByEmail(
+        email: email,
+        roleType: 'client',
+      );
+
+      if (!mounted) return;
+
+      print('DEBUG: Client email check result: $result');
+      setState(() {
+        _checkingClientEmail = false;
+        if (result['success'] == true) {
+          _clientExists = result['exists'] ?? false;
+          _clientCheckMessage = result['message'] ?? '';
+          print('DEBUG: Client exists: $_clientExists, Message: $_clientCheckMessage');
+        } else {
+          _clientExists = null;
+          _clientCheckMessage = result['message'] ?? 'Error checking client';
+          print('DEBUG: Client check failed: $_clientCheckMessage');
+        }
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _checkingClientEmail = false;
+        _clientExists = null;
+        String errorMsg = e.toString();
+        if (errorMsg.contains('timeout')) {
+          _clientCheckMessage = 'Connection timeout. Please check your internet.';
+        } else if (errorMsg.contains('Failed host lookup')) {
+          _clientCheckMessage = 'Cannot reach server. Please check your connection.';
+        } else {
+          _clientCheckMessage = 'Error: ${errorMsg.length > 50 ? errorMsg.substring(0, 50) + "..." : errorMsg}';
+        }
+      });
+    }
+  }
+
+  Future<void> _checkAgentEmail(String email) async {
+    if (!mounted || !hasAgent) return;
+    
+    // Only reset exists state, keep checking state true
+    setState(() {
+      _agentExists = null;
+      _agentCheckMessage = null;
+    });
+
+    try {
+      print('DEBUG: Starting agent email check for: $email');
+      final result = await ApiService.checkUserByEmail(
+        email: email,
+        roleType: 'agent',
+      );
+
+      if (!mounted) return;
+
+      print('DEBUG: Agent email check result: $result');
+      setState(() {
+        _checkingAgentEmail = false;
+        if (result['success'] == true) {
+          _agentExists = result['exists'] ?? false;
+          _agentCheckMessage = result['message'] ?? '';
+          print('DEBUG: Agent exists: $_agentExists, Message: $_agentCheckMessage');
+        } else {
+          _agentExists = null;
+          _agentCheckMessage = result['message'] ?? 'Error checking agent';
+          print('DEBUG: Agent check failed: $_agentCheckMessage');
+        }
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _checkingAgentEmail = false;
+        _agentExists = null;
+        String errorMsg = e.toString();
+        if (errorMsg.contains('timeout')) {
+          _agentCheckMessage = 'Connection timeout. Please check your internet.';
+        } else if (errorMsg.contains('Failed host lookup')) {
+          _agentCheckMessage = 'Cannot reach server. Please check your connection.';
+        } else {
+          _agentCheckMessage = 'Error: ${errorMsg.length > 50 ? errorMsg.substring(0, 50) + "..." : errorMsg}';
+        }
+      });
+    }
+  }
+
+  Future<void> _createClientAccount() async {
+    if (clientNameController.text.trim().isEmpty || clientEmailController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Client name and email are required'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    print('DEBUG: Starting client account creation');
+    setState(() => _creatingClient = true);
+
+    try {
+      final result = await ApiService.createClientAccount(
+        email: clientEmailController.text.trim(),
+        name: clientNameController.text.trim(),
+        phone: clientPhoneController.text.trim().isEmpty ? null : clientPhoneController.text.trim(),
+        address: clientAddressController.text.trim().isEmpty ? null : clientAddressController.text.trim(),
+        company: clientCompanyController.text.trim().isEmpty ? null : clientCompanyController.text.trim(),
+      );
+
+      if (!mounted) return;
+
+      print('DEBUG: Client account creation result: $result');
+      setState(() => _creatingClient = false);
+
+      if (result['success'] == true) {
+        // Check if client already existed
+        if (result['already_exists'] == true) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Row(
+                children: [
+                  const Icon(Icons.info_outline, color: Colors.white),
+                  const SizedBox(width: 8),
+                  Expanded(child: Text(result['message'] ?? 'Client already exists')),
+                ],
+              ),
+              backgroundColor: Colors.blue,
+            ),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Row(
+                children: [
+                  const Icon(Icons.check_circle, color: Colors.white),
+                  const SizedBox(width: 8),
+                  Expanded(child: Text(result['message'] ?? 'Client account created successfully')),
+                ],
+              ),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+        // Re-check email to update status
+        _checkClientEmail(clientEmailController.text.trim());
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(result['message'] ?? 'Failed to create client account'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      print('DEBUG: Error creating client account: $e');
+      if (!mounted) return;
+      setState(() => _creatingClient = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error creating client account: ${e.toString()}'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  Future<void> _createAgentAccount() async {
+    if (agentNameController.text.trim().isEmpty || agentEmailController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Agent name and email are required'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    print('DEBUG: Starting agent account creation');
+    setState(() => _creatingAgent = true);
+
+    try {
+      final result = await ApiService.createAgentAccount(
+        email: agentEmailController.text.trim(),
+        name: agentNameController.text.trim(),
+        phone: agentPhoneController.text.trim().isEmpty ? null : agentPhoneController.text.trim(),
+        address: agentAddressController.text.trim().isEmpty ? null : agentAddressController.text.trim(),
+      );
+
+      if (!mounted) return;
+
+      print('DEBUG: Agent account creation result: $result');
+      setState(() => _creatingAgent = false);
+
+      if (result['success'] == true) {
+        // Check if agent already existed
+        if (result['already_exists'] == true) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Row(
+                children: [
+                  const Icon(Icons.info_outline, color: Colors.white),
+                  const SizedBox(width: 8),
+                  Expanded(child: Text(result['message'] ?? 'Agent already exists')),
+                ],
+              ),
+              backgroundColor: Colors.blue,
+            ),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Row(
+                children: [
+                  const Icon(Icons.check_circle, color: Colors.white),
+                  const SizedBox(width: 8),
+                  Expanded(child: Text(result['message'] ?? 'Agent account created successfully')),
+                ],
+              ),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+        // Re-check email to update status
+        _checkAgentEmail(agentEmailController.text.trim());
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(result['message'] ?? 'Failed to create agent account'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      print('DEBUG: Error creating agent account: $e');
+      if (!mounted) return;
+      setState(() => _creatingAgent = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error creating agent account: ${e.toString()}'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   Future<void> _submitForm() async {
@@ -112,6 +506,28 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
       return;
     }
 
+    // Check if client email is being checked
+    if (_checkingClientEmail) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please wait while we check the client email...'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    // Check if client exists
+    if (_clientExists == false) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Client account does not exist. Please create the client account first.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
     // Validate agent name and email if agent is enabled
     if (hasAgent) {
       if (agentNameController.text.trim().isEmpty) {
@@ -128,6 +544,28 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Agent email is required'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
+      // Check if agent email is being checked
+      if (_checkingAgentEmail) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Please wait while we check the agent email...'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+        return;
+      }
+
+      // Check if agent exists
+      if (_agentExists == false) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Agent account does not exist. Please create the agent account first.'),
             backgroundColor: Colors.red,
           ),
         );
@@ -192,37 +630,222 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
     }
   }
 
-  Widget _buildFormField({required String label, required bool isRequired, required Widget child}) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
+  Widget _buildClientStatusWidget() {
+    if (_checkingClientEmail) {
+      return Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.blue.shade50,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.blue.shade200),
+        ),
+        child: Row(
           children: [
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: Colors.grey[800],
+            SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                valueColor: AlwaysStoppedAnimation<Color>(Colors.blue.shade700),
               ),
             ),
-            if (isRequired) ...[
-              const SizedBox(width: 4),
-              Text(
-                '*',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.red[600],
-                ),
-              ),
-            ],
+            const SizedBox(width: 8),
+            Text(
+              'Checking client...',
+              style: TextStyle(color: Colors.blue.shade700, fontSize: 13),
+            ),
           ],
         ),
-        const SizedBox(height: 8),
-        child,
-      ],
-    );
+      );
+    }
+
+    // If email is entered but not checked yet, show nothing
+    if (_clientExists == null && !_checkingClientEmail) {
+      return const SizedBox.shrink();
+    }
+
+    if (_clientExists == true) {
+      return Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.green.shade50,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.green.shade200),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.check_circle, color: Colors.green.shade700, size: 20),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                _clientCheckMessage ?? 'Client already exists',
+                style: TextStyle(color: Colors.green.shade700, fontSize: 13, fontWeight: FontWeight.w500),
+              ),
+            ),
+          ],
+        ),
+      );
+    } else {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.orange.shade50,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.orange.shade200),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.info_outline, color: Colors.orange.shade700, size: 20),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    _clientCheckMessage ?? 'Client does not exist',
+                    style: TextStyle(color: Colors.orange.shade700, fontSize: 13, fontWeight: FontWeight.w500),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            height: 40,
+            child: ElevatedButton.icon(
+              onPressed: _creatingClient ? null : _createClientAccount,
+              icon: _creatingClient
+                  ? SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
+                    )
+                  : const Icon(Icons.person_add, size: 18),
+              label: Text(_creatingClient ? 'Creating...' : 'Create Client'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue.shade700,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+  }
+
+  Widget _buildAgentStatusWidget() {
+    if (_checkingAgentEmail) {
+      return Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.blue.shade50,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.blue.shade200),
+        ),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                valueColor: AlwaysStoppedAnimation<Color>(Colors.blue.shade700),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              'Checking agent...',
+              style: TextStyle(color: Colors.blue.shade700, fontSize: 13),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // If email is entered but not checked yet, show nothing
+    if (_agentExists == null && !_checkingAgentEmail) {
+      return const SizedBox.shrink();
+    }
+
+    if (_agentExists == true) {
+      return Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.green.shade50,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.green.shade200),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.check_circle, color: Colors.green.shade700, size: 20),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                _agentCheckMessage ?? 'Agent already exists',
+                style: TextStyle(color: Colors.green.shade700, fontSize: 13, fontWeight: FontWeight.w500),
+              ),
+            ),
+          ],
+        ),
+      );
+    } else {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.orange.shade50,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.orange.shade200),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.info_outline, color: Colors.orange.shade700, size: 20),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    _agentCheckMessage ?? 'Agent does not exist',
+                    style: TextStyle(color: Colors.orange.shade700, fontSize: 13, fontWeight: FontWeight.w500),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            height: 40,
+            child: ElevatedButton.icon(
+              onPressed: _creatingAgent ? null : _createAgentAccount,
+              icon: _creatingAgent
+                  ? SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
+                    )
+                  : const Icon(Icons.person_add, size: 18),
+              label: Text(_creatingAgent ? 'Creating...' : 'Create Agent'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue.shade700,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+            ),
+          ),
+        ],
+      );
+    }
   }
 
   InputDecoration _buildInputDecoration({required String hintText, required IconData icon}) {
@@ -625,39 +1248,57 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
                               },
                             ),
                             const SizedBox(height: 16),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: TextFormField(
-                                    controller: clientEmailController,
-                                    style: const TextStyle(fontSize: 16),
-                                    decoration: _buildInputDecoration(
-                                      hintText: 'client@email.com *',
-                                      icon: Icons.email_outlined,
-                                    ),
-                                    keyboardType: TextInputType.emailAddress,
-                                    validator: (value) {
-                                      if (value == null || value.trim().isEmpty) {
-                                        return 'Client email is required';
-                                      }
-                                      return null;
-                                    },
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: TextFormField(
-                                    controller: clientPhoneController,
-                                    style: const TextStyle(fontSize: 16),
-                                    decoration: _buildInputDecoration(
-                                      hintText: 'Phone number',
-                                      icon: Icons.phone_outlined,
-                                    ),
-                                    keyboardType: TextInputType.phone,
-                                  ),
-                                ),
-                              ],
+                            // Email field (vertical layout)
+                            TextFormField(
+                              controller: clientEmailController,
+                              style: const TextStyle(fontSize: 16),
+                              decoration: _buildInputDecoration(
+                                hintText: 'client@email.com *',
+                                icon: Icons.email_outlined,
+                              ),
+                              keyboardType: TextInputType.emailAddress,
+                              onChanged: (value) {
+                                setState(() {}); // Trigger rebuild to show/hide status widget
+                                _onClientEmailChanged(); // Trigger email check
+                              },
+                              onEditingComplete: () {
+                                // Trigger check immediately when user finishes editing
+                                final email = clientEmailController.text.trim();
+                                if (email.isNotEmpty) {
+                                  final emailRegex = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
+                                  if (emailRegex.hasMatch(email)) {
+                                    setState(() {
+                                      _checkingClientEmail = true;
+                                    });
+                                    _checkClientEmail(email);
+                                  }
+                                }
+                              },
+                              validator: (value) {
+                                if (value == null || value.trim().isEmpty) {
+                                  return 'Client email is required';
+                                }
+                                final emailRegex = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
+                                if (!emailRegex.hasMatch(value.trim())) {
+                                  return 'Please enter a valid email address';
+                                }
+                                return null;
+                              },
                             ),
+                            const SizedBox(height: 16),
+                            // Phone field (vertical layout)
+                            TextFormField(
+                              controller: clientPhoneController,
+                              style: const TextStyle(fontSize: 16),
+                              decoration: _buildInputDecoration(
+                                hintText: 'Phone number',
+                                icon: Icons.phone_outlined,
+                              ),
+                              keyboardType: TextInputType.phone,
+                            ),
+                            // Client email status and create button
+                            const SizedBox(height: 12),
+                            _buildClientStatusWidget(),
                             const SizedBox(height: 16),
                             TextFormField(
                               controller: clientAddressController,
@@ -703,7 +1344,19 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
                                   ),
                                   Switch(
                                     value: hasAgent,
-                                    onChanged: (value) => setState(() => hasAgent = value),
+                                    onChanged: (value) {
+                                      setState(() {
+                                        hasAgent = value;
+                                        if (!value) {
+                                          // Clear agent check state when disabled
+                                          _agentExists = null;
+                                          _agentCheckMessage = null;
+                                        } else if (agentEmailController.text.trim().isNotEmpty) {
+                                          // Check email if already filled
+                                          _checkAgentEmail(agentEmailController.text.trim());
+                                        }
+                                      });
+                                    },
                                     activeColor: Theme.of(context).primaryColor,
                                   ),
                                   const SizedBox(width: 8),
@@ -733,39 +1386,63 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
                                   },
                                 ),
                                 const SizedBox(height: 16),
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: TextFormField(
-                                        controller: agentEmailController,
-                                        style: const TextStyle(fontSize: 16),
-                                        decoration: _buildInputDecoration(
-                                          hintText: 'agent@email.com *',
-                                          icon: Icons.email_outlined,
-                                        ),
-                                        keyboardType: TextInputType.emailAddress,
-                                        validator: (value) {
-                                          if (hasAgent && (value == null || value.trim().isEmpty)) {
-                                            return 'Agent email is required';
-                                          }
-                                          return null;
-                                        },
-                                      ),
-                                    ),
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      child: TextFormField(
-                                        controller: agentPhoneController,
-                                        style: const TextStyle(fontSize: 16),
-                                        decoration: _buildInputDecoration(
-                                          hintText: 'Phone number',
-                                          icon: Icons.phone_outlined,
-                                        ),
-                                        keyboardType: TextInputType.phone,
-                                      ),
-                                    ),
-                                  ],
+                                // Agent email field (vertical layout)
+                                TextFormField(
+                                  controller: agentEmailController,
+                                  style: const TextStyle(fontSize: 16),
+                                  decoration: _buildInputDecoration(
+                                    hintText: 'agent@email.com *',
+                                    icon: Icons.email_outlined,
+                                  ),
+                                  keyboardType: TextInputType.emailAddress,
+                                  onChanged: (value) {
+                                    setState(() {}); // Trigger rebuild to show/hide status widget
+                                    _onAgentEmailChanged(); // Trigger email check
+                                  },
+                                  onEditingComplete: () {
+                                    // Trigger check immediately when user finishes editing
+                                    if (hasAgent) {
+                                      final email = agentEmailController.text.trim();
+                                      if (email.isNotEmpty) {
+                                        final emailRegex = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
+                                        if (emailRegex.hasMatch(email)) {
+                                          setState(() {
+                                            _checkingAgentEmail = true;
+                                          });
+                                          _checkAgentEmail(email);
+                                        }
+                                      }
+                                    }
+                                  },
+                                  validator: (value) {
+                                    if (hasAgent && (value == null || value.trim().isEmpty)) {
+                                      return 'Agent email is required';
+                                    }
+                                    if (hasAgent && value != null && value.trim().isNotEmpty) {
+                                      final emailRegex = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
+                                      if (!emailRegex.hasMatch(value.trim())) {
+                                        return 'Please enter a valid email address';
+                                      }
+                                    }
+                                    return null;
+                                  },
                                 ),
+                                const SizedBox(height: 16),
+                                // Agent phone field (vertical layout)
+                                TextFormField(
+                                  controller: agentPhoneController,
+                                  style: const TextStyle(fontSize: 16),
+                                  decoration: _buildInputDecoration(
+                                    hintText: 'Phone number',
+                                    icon: Icons.phone_outlined,
+                                  ),
+                                  keyboardType: TextInputType.phone,
+                                ),
+                                // Agent email status and create button
+                                if (hasAgent) ...[
+                                  const SizedBox(height: 12),
+                                  _buildAgentStatusWidget(),
+                                ],
                                 const SizedBox(height: 16),
                                 TextFormField(
                                   controller: agentAddressController,

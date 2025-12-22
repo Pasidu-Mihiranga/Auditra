@@ -224,6 +224,241 @@ class ApiService {
     }
   }
 
+  // Check if user exists by email
+  static Future<Map<String, dynamic>> checkUserByEmail({
+    required String email,
+    required String roleType, // 'client' or 'agent'
+  }) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token');
+
+      if (token == null) {
+        return {'success': false, 'message': 'Not authenticated'};
+      }
+
+      final url = '$baseUrl/auth/check-user-by-email/';
+      print('DEBUG API: Calling URL: $url');
+      print('DEBUG API: Email: $email, RoleType: $roleType');
+      
+      final response = await http.post(
+        Uri.parse(url),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({
+          'email': email.trim().toLowerCase(),
+          'role_type': roleType,
+        }),
+      ).timeout(
+        const Duration(seconds: 3),
+        onTimeout: () {
+          throw Exception('Request timeout - please check your internet connection');
+        },
+      );
+      
+      print('DEBUG API: Response status: ${response.statusCode}');
+      print('DEBUG API: Response body: ${response.body}');
+
+      final data = _safeParseJsonResponse(response);
+      if (data == null) {
+        return {
+          'success': false,
+          'message': _getHtmlErrorMessage(response)
+        };
+      }
+
+      if (response.statusCode == 200) {
+        return {
+          'success': true,
+          'exists': data['exists'] ?? false,
+          'message': data['message'] ?? data['error'] ?? '',
+          'user_id': data['user_id'],
+          'username': data['username'],
+          'name': data['name'],
+        };
+      } else {
+        return {
+          'success': false,
+          'message': data['error'] ?? data['detail'] ?? 'Failed to check user'
+        };
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'Connection error: $e'};
+    }
+  }
+
+  // Create client account
+  static Future<Map<String, dynamic>> createClientAccount({
+    required String email,
+    required String name,
+    String? phone,
+    String? address,
+    String? company,
+  }) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token');
+
+      if (token == null) {
+        return {'success': false, 'message': 'Not authenticated'};
+      }
+
+      final url = '$baseUrl/auth/create-client-account/';
+      final body = {
+        'email': email.trim().toLowerCase(),
+        'name': name.trim(),
+        if (phone != null && phone.isNotEmpty) 'phone': phone.trim(),
+        if (address != null && address.isNotEmpty) 'address': address.trim(),
+        if (company != null && company.isNotEmpty) 'company': company.trim(),
+      };
+      
+      print('DEBUG API: Creating client account');
+      print('DEBUG API: URL: $url');
+      print('DEBUG API: Body: $body');
+      
+      final response = await http.post(
+        Uri.parse(url),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode(body),
+      ).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          throw Exception('Request timeout - please check your internet connection');
+        },
+      );
+      
+      print('DEBUG API: Response status: ${response.statusCode}');
+      print('DEBUG API: Response body: ${response.body}');
+
+      final data = _safeParseJsonResponse(response);
+      if (data == null) {
+        return {
+          'success': false,
+          'message': _getHtmlErrorMessage(response)
+        };
+      }
+
+      if (response.statusCode == 201 || response.statusCode == 200) {
+        // Check if response has 'success' field or just return success
+        if (data.containsKey('success') && data['success'] == true) {
+          return {
+            'success': true,
+            'message': data['message'] ?? 'Client account created successfully',
+            'user': data['user'],
+          };
+        } else if (data.containsKey('error')) {
+          return {
+            'success': false,
+            'message': data['error'] ?? 'Failed to create client account'
+          };
+        } else {
+          // Assume success if status is 201/200
+          return {
+            'success': true,
+            'message': data['message'] ?? 'Client account created successfully',
+            'user': data['user'],
+          };
+        }
+      } else if (response.statusCode == 400) {
+        // Handle 400 Bad Request - might be "already exists" which is actually OK
+        if (data.containsKey('error') && data['error'].toString().toLowerCase().contains('already exists')) {
+          return {
+            'success': true, // Treat as success since client exists
+            'message': data['error'] ?? 'Client already exists',
+            'user_id': data.containsKey('user_id') ? data['user_id'] : null,
+            'already_exists': true,
+          };
+        } else {
+          return {
+            'success': false,
+            'message': data['error'] ?? data['detail'] ?? data['message'] ?? 'Failed to create client account'
+          };
+        }
+      } else {
+        return {
+          'success': false,
+          'message': data['error'] ?? data['detail'] ?? data['message'] ?? 'Failed to create client account (Status: ${response.statusCode})'
+        };
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'Connection error: $e'};
+    }
+  }
+
+  // Create agent account
+  static Future<Map<String, dynamic>> createAgentAccount({
+    required String email,
+    required String name,
+    String? phone,
+    String? address,
+  }) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token');
+
+      if (token == null) {
+        return {'success': false, 'message': 'Not authenticated'};
+      }
+
+      final response = await http.post(
+        Uri.parse('$baseUrl/auth/create-agent-account/'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({
+          'email': email.trim().toLowerCase(),
+          'name': name.trim(),
+          if (phone != null && phone.isNotEmpty) 'phone': phone.trim(),
+          if (address != null && address.isNotEmpty) 'address': address.trim(),
+        }),
+      );
+
+      final data = _safeParseJsonResponse(response);
+      if (data == null) {
+        return {
+          'success': false,
+          'message': _getHtmlErrorMessage(response)
+        };
+      }
+
+      if (response.statusCode == 201 || response.statusCode == 200) {
+        return {
+          'success': true,
+          'message': data['message'] ?? 'Agent account created successfully',
+          'user': data['user'],
+        };
+      } else if (response.statusCode == 400) {
+        // Handle 400 Bad Request - might be "already exists" which is actually OK
+        if (data.containsKey('error') && data['error'].toString().toLowerCase().contains('already exists')) {
+          return {
+            'success': true, // Treat as success since agent exists
+            'message': data['error'] ?? 'Agent already exists',
+            'user_id': data.containsKey('user_id') ? data['user_id'] : null,
+            'already_exists': true,
+          };
+        } else {
+          return {
+            'success': false,
+            'message': data['error'] ?? data['detail'] ?? data['message'] ?? 'Failed to create agent account'
+          };
+        }
+      } else {
+        return {
+          'success': false,
+          'message': data['error'] ?? data['detail'] ?? data['message'] ?? 'Failed to create agent account (Status: ${response.statusCode})'
+        };
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'Connection error: $e'};
+    }
+  }
+
   // Get user profile
   static Future<Map<String, dynamic>> getProfile() async {
     try {
