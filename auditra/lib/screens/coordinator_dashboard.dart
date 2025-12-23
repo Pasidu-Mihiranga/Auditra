@@ -3,6 +3,8 @@ import 'package:intl/intl.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:convert';
 import 'dart:math' as math;
 import '../services/api_service.dart';
 import '../services/pdf_service.dart';
@@ -111,6 +113,7 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
     });
     _loadUserInfo();
     _loadProjects();
+    _loadRecreatedProjectIds();
   }
 
   @override
@@ -240,6 +243,41 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
           _projects = [];
         }
       });
+    }
+  }
+
+  Future<void> _loadRecreatedProjectIds() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final recreatedIdsJson = prefs.getString('recreated_project_ids');
+      if (recreatedIdsJson != null) {
+        final List<dynamic> idsList = jsonDecode(recreatedIdsJson);
+        _recreatedProjectIds = idsList.map((id) => id as int).toSet();
+      }
+      
+      final recreatedFromJson = prefs.getString('recreated_from_projects');
+      if (recreatedFromJson != null) {
+        final Map<String, dynamic> map = jsonDecode(recreatedFromJson);
+        _recreatedFromProjects = map.map((key, value) => MapEntry(int.parse(key), value as String));
+      }
+      
+      if (mounted) {
+        setState(() {});
+      }
+    } catch (e) {
+      print('Error loading recreated project IDs: $e');
+    }
+  }
+
+  Future<void> _saveRecreatedProjectIds() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('recreated_project_ids', jsonEncode(_recreatedProjectIds.toList()));
+      await prefs.setString('recreated_from_projects', jsonEncode(
+        _recreatedFromProjects.map((key, value) => MapEntry(key.toString(), value))
+      ));
+    } catch (e) {
+      print('Error saving recreated project IDs: $e');
     }
   }
 
@@ -373,6 +411,9 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
         }
         _pendingRecreationOriginalTitle = null;
       }
+      
+      // Save recreated project IDs to persistent storage
+      await _saveRecreatedProjectIds();
       
       // Show success message
       if (mounted) {
