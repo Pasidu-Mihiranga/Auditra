@@ -42,6 +42,7 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
   
   late TabController _periodTabController;
   TabController? _mainTabController; // For Attendance/Projects tabs
+  TabController? _projectStatusTabController; // For project status tabs (senior valuer only)
   
   // Project state (for roles that can view projects)
   List<Project> _projects = [];
@@ -89,6 +90,15 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
           setState(() {});
         }
       });
+      // Initialize project status tab controller for senior valuer
+      if (widget.role == 'senior_valuer') {
+        _projectStatusTabController = TabController(length: 4, vsync: this);
+        _projectStatusTabController!.addListener(() {
+          if (!_projectStatusTabController!.indexIsChanging && mounted) {
+            setState(() {});
+          }
+        });
+      }
       _loadProjects();
     }
     
@@ -102,6 +112,7 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
   void dispose() {
     _periodTabController.dispose();
     _mainTabController?.dispose();
+    _projectStatusTabController?.dispose();
     super.dispose();
   }
   
@@ -675,6 +686,40 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
   
   // Project viewing methods (for client, agent, accessor, senior valuer)
   Widget _buildProjectsTab() {
+    // For senior valuer, show status tabs
+    if (widget.role == 'senior_valuer' && _projectStatusTabController != null) {
+      return Column(
+        children: [
+          TabBar(
+            controller: _projectStatusTabController,
+            tabs: const [
+              Tab(text: 'Pending'),
+              Tab(text: 'In Progress'),
+              Tab(text: 'Completed'),
+              Tab(text: 'Cancelled'),
+            ],
+          ),
+          Expanded(
+            child: RefreshIndicator(
+              onRefresh: _loadProjects,
+              child: _isLoadingProjects
+                  ? const Center(child: CircularProgressIndicator())
+                  : TabBarView(
+                      controller: _projectStatusTabController,
+                      children: [
+                        _buildProjectListByStatus('pending'),
+                        _buildProjectListByStatus('in_progress'),
+                        _buildProjectListByStatus('completed'),
+                        _buildProjectListByStatus('cancelled'),
+                      ],
+                    ),
+            ),
+          ),
+        ],
+      );
+    }
+    
+    // For other roles, show all projects without tabs
     return RefreshIndicator(
       onRefresh: _loadProjects,
       child: _isLoadingProjects
@@ -706,6 +751,45 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
                     return _buildProjectCard(project);
                   },
                 ),
+    );
+  }
+
+  Widget _buildProjectListByStatus(String status) {
+    List<Project> filteredProjects;
+    
+    if (status == 'cancelled') {
+      // For cancelled tab, include both cancelled projects and rejected projects
+      filteredProjects = _projects.where((p) {
+        return p.status.toLowerCase() == 'cancelled' || 
+               p.mdGmApprovalStatus == 'rejected';
+      }).toList();
+    } else {
+      filteredProjects = _projects.where((p) => p.status.toLowerCase() == status).toList();
+    }
+    
+    if (filteredProjects.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.folder_open, size: 64, color: Colors.grey[400]),
+            const SizedBox(height: 16),
+            Text(
+              'No ${status.replaceAll('_', ' ')} projects',
+              style: TextStyle(fontSize: 18, color: Colors.grey[600]),
+            ),
+          ],
+        ),
+      );
+    }
+    
+    return ListView.builder(
+      padding: const EdgeInsets.all(16),
+      itemCount: filteredProjects.length,
+      itemBuilder: (context, index) {
+        final project = filteredProjects[index];
+        return _buildProjectCard(project);
+      },
     );
   }
 
