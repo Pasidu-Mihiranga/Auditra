@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../services/api_service.dart';
+import '../models/project_model.dart';
 
 class CreateProjectScreen extends StatefulWidget {
-  const CreateProjectScreen({super.key});
+  final Project? rejectedProject; // Optional rejected project to recreate from
+  
+  const CreateProjectScreen({super.key, this.rejectedProject});
 
   @override
   State<CreateProjectScreen> createState() => _CreateProjectScreenState();
@@ -28,6 +31,40 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
   bool _isCreating = false;
   String _priority = 'medium'; // high, medium, low
   final formKey = GlobalKey<FormState>();
+  bool get _isRecreating => widget.rejectedProject != null;
+
+  @override
+  void initState() {
+    super.initState();
+    // Pre-fill all fields from rejected project if recreating
+    if (widget.rejectedProject != null) {
+      final project = widget.rejectedProject!;
+      titleController.text = project.title;
+      descriptionController.text = project.description ?? '';
+      startDate = project.startDate;
+      endDate = project.endDate;
+      _priority = project.priority ?? 'medium';
+      
+      // Pre-fill client info
+      if (project.clientInfo != null) {
+        clientNameController.text = project.clientInfo!['name'] ?? '';
+        clientEmailController.text = project.clientInfo!['email'] ?? '';
+        clientPhoneController.text = project.clientInfo!['phone'] ?? '';
+        clientAddressController.text = project.clientInfo!['address'] ?? '';
+        clientCompanyController.text = project.clientInfo!['company'] ?? '';
+      }
+      
+      // Pre-fill agent info
+      if (project.agentInfo != null) {
+        hasAgent = true;
+        agentNameController.text = project.agentInfo!['name'] ?? '';
+        agentEmailController.text = project.agentInfo!['email'] ?? '';
+        agentPhoneController.text = project.agentInfo!['phone'] ?? '';
+        agentAddressController.text = project.agentInfo!['address'] ?? '';
+        agentLicenseController.text = project.agentInfo!['license_number'] ?? '';
+      }
+    }
+  }
 
   @override
   void dispose() {
@@ -292,7 +329,7 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
     final isSelected = _priority == value;
     return Expanded(
       child: InkWell(
-        onTap: () => setState(() => _priority = value),
+        onTap: _isRecreating ? null : () => setState(() => _priority = value),
         borderRadius: BorderRadius.circular(12),
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
@@ -335,12 +372,12 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
     required bool isRequired,
   }) {
     return InkWell(
-      onTap: onTap,
+      onTap: _isRecreating ? null : onTap,
       borderRadius: BorderRadius.circular(12),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
         decoration: BoxDecoration(
-          color: Colors.grey[50],
+          color: _isRecreating ? Colors.grey[100] : Colors.grey[50],
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
             color: isRequired && date == null ? Colors.red[300]! : Colors.grey[300]!,
@@ -369,14 +406,14 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
                         : 'Select date',
                     style: TextStyle(
                       fontSize: 16,
-                      color: date != null ? Colors.black87 : Colors.grey[400],
+                      color: _isRecreating ? Colors.grey[600] : (date != null ? Colors.black87 : Colors.grey[400]),
                       fontWeight: date != null ? FontWeight.w500 : FontWeight.normal,
                     ),
                   ),
                 ],
               ),
             ),
-            Icon(Icons.calendar_today, color: Colors.grey[600], size: 20),
+            Icon(Icons.calendar_today, color: _isRecreating ? Colors.grey[400] : Colors.grey[600], size: 20),
           ],
         ),
       ),
@@ -421,10 +458,10 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
                     child: const Icon(Icons.create_new_folder, color: Colors.white, size: 24),
                   ),
                   const SizedBox(width: 16),
-                  const Expanded(
+                  Expanded(
                     child: Text(
-                      'Create New Project',
-                      style: TextStyle(
+                      _isRecreating ? 'Recreate Project' : 'Create New Project',
+                      style: const TextStyle(
                         color: Colors.white,
                         fontSize: 24,
                         fontWeight: FontWeight.bold,
@@ -617,6 +654,7 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
                                 hintText: 'Enter client name *',
                                 icon: Icons.person_outline_rounded,
                               ),
+                              readOnly: _isRecreating,
                               validator: (value) {
                                 if (value == null || value.trim().isEmpty) {
                                   return 'Client name is required';
@@ -636,6 +674,7 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
                                       icon: Icons.email_outlined,
                                     ),
                                     keyboardType: TextInputType.emailAddress,
+                                    readOnly: _isRecreating,
                                     validator: (value) {
                                       if (value == null || value.trim().isEmpty) {
                                         return 'Client email is required';
@@ -654,6 +693,7 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
                                       icon: Icons.phone_outlined,
                                     ),
                                     keyboardType: TextInputType.phone,
+                                    readOnly: _isRecreating,
                                   ),
                                 ),
                               ],
@@ -667,6 +707,7 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
                                 icon: Icons.location_on_outlined,
                               ),
                               maxLines: 2,
+                              readOnly: _isRecreating,
                             ),
                             const SizedBox(height: 16),
                             TextFormField(
@@ -676,6 +717,7 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
                                 hintText: 'Company name (optional)',
                                 icon: Icons.business_outlined,
                               ),
+                              readOnly: _isRecreating,
                             ),
                           ],
                         ),
@@ -703,7 +745,7 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
                                   ),
                                   Switch(
                                     value: hasAgent,
-                                    onChanged: (value) => setState(() => hasAgent = value),
+                                    onChanged: _isRecreating ? null : (value) => setState(() => hasAgent = value),
                                     activeColor: Theme.of(context).primaryColor,
                                   ),
                                   const SizedBox(width: 8),
@@ -725,6 +767,7 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
                                     hintText: 'Enter agent name *',
                                     icon: Icons.badge_outlined,
                                   ),
+                                  readOnly: _isRecreating,
                                   validator: (value) {
                                     if (hasAgent && (value == null || value.trim().isEmpty)) {
                                       return 'Agent name is required';
@@ -744,6 +787,7 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
                                           icon: Icons.email_outlined,
                                         ),
                                         keyboardType: TextInputType.emailAddress,
+                                        readOnly: _isRecreating,
                                         validator: (value) {
                                           if (hasAgent && (value == null || value.trim().isEmpty)) {
                                             return 'Agent email is required';
@@ -762,6 +806,7 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
                                           icon: Icons.phone_outlined,
                                         ),
                                         keyboardType: TextInputType.phone,
+                                        readOnly: _isRecreating,
                                       ),
                                     ),
                                   ],
@@ -775,6 +820,7 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
                                     icon: Icons.location_on_outlined,
                                   ),
                                   maxLines: 2,
+                                  readOnly: _isRecreating,
                                 ),
                                 const SizedBox(height: 16),
                                 TextFormField(
@@ -784,6 +830,7 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
                                     hintText: 'Agent license number (optional)',
                                     icon: Icons.verified_outlined,
                                   ),
+                                  readOnly: _isRecreating,
                                 ),
                               ],
                             ],

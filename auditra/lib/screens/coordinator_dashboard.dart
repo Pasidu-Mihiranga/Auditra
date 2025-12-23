@@ -407,10 +407,10 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
     // Store the original project title to track recreation
     _pendingRecreationOriginalTitle = rejectedProject.title;
 
-    // Navigate to create project screen
+    // Navigate to create project screen with rejected project data
     final result = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
-        builder: (context) => const CreateProjectScreen(),
+        builder: (context) => CreateProjectScreen(rejectedProject: rejectedProject),
       ),
     );
 
