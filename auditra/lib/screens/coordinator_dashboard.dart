@@ -6505,8 +6505,8 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
               children: [
                 // Spacing for priority label
                 const SizedBox(height: 20),
-                // Show MD/GM rejection status if rejected and not yet recreated
-                if (project.mdGmApprovalStatus == 'rejected' && !_recreatedProjectIds.contains(project.id)) ...[
+                // Show MD/GM rejection status if rejected (always show, even after recreation)
+                if (project.mdGmApprovalStatus == 'rejected') ...[
                   Container(
                     padding: const EdgeInsets.all(12),
                     margin: const EdgeInsets.only(bottom: 12),
@@ -6544,20 +6544,23 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
                             ),
                           ),
                         ],
-                        const SizedBox(height: 12),
-                        SizedBox(
-                          width: double.infinity,
-                          child: ElevatedButton.icon(
-                            onPressed: () => _recreateProject(project),
-                            icon: const Icon(Icons.add_circle_outline, size: 18),
-                            label: const Text('Recreate Project'),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.blue[700],
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(vertical: 12),
+                        // Only show "Recreate Project" button if project hasn't been recreated yet
+                        if (!_recreatedProjectIds.contains(project.id)) ...[
+                          const SizedBox(height: 12),
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton.icon(
+                              onPressed: () => _recreateProject(project),
+                              icon: const Icon(Icons.add_circle_outline, size: 18),
+                              label: const Text('Recreate Project'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.blue[700],
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(vertical: 12),
+                              ),
                             ),
                           ),
-                        ),
+                        ],
                       ],
                     ),
                   ),
