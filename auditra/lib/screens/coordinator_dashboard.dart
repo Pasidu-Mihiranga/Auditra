@@ -6674,8 +6674,7 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
                         ],
                         // Only show "Recreate Project" button if project hasn't been recreated yet
                         // Ensure we're comparing the same type (int)
-                        final projectId = project.id is int ? project.id : int.tryParse(project.id.toString()) ?? 0;
-                        if (!_recreatedProjectIds.contains(projectId)) ...[
+                        if (!_recreatedProjectIds.contains(project.id is int ? project.id : int.tryParse(project.id.toString()) ?? 0)) ...[
                           const SizedBox(height: 12),
                           SizedBox(
                             width: double.infinity,
