@@ -243,6 +243,9 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
           _projects = [];
         }
       });
+      
+      // Reload recreated project IDs after projects are loaded to ensure sync
+      await _loadRecreatedProjectIds();
     }
   }
 
@@ -250,34 +253,54 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
     try {
       final prefs = await SharedPreferences.getInstance();
       final recreatedIdsJson = prefs.getString('recreated_project_ids');
+      print('🔍 Loading recreated project IDs from SharedPreferences...');
+      print('📦 Raw JSON: $recreatedIdsJson');
+      
       if (recreatedIdsJson != null) {
         final List<dynamic> idsList = jsonDecode(recreatedIdsJson);
-        _recreatedProjectIds = idsList.map((id) => id as int).toSet();
+        _recreatedProjectIds = idsList.map((id) {
+          // Handle both int and String types
+          if (id is int) return id;
+          if (id is String) return int.tryParse(id) ?? 0;
+          return id as int;
+        }).where((id) => id > 0).toSet();
+        print('✅ Loaded ${_recreatedProjectIds.length} recreated project IDs: $_recreatedProjectIds');
+      } else {
+        print('⚠️ No recreated project IDs found in SharedPreferences');
       }
       
       final recreatedFromJson = prefs.getString('recreated_from_projects');
       if (recreatedFromJson != null) {
         final Map<String, dynamic> map = jsonDecode(recreatedFromJson);
         _recreatedFromProjects = map.map((key, value) => MapEntry(int.parse(key), value as String));
+        print('✅ Loaded ${_recreatedFromProjects.length} recreated from mappings');
       }
       
       if (mounted) {
         setState(() {});
       }
     } catch (e) {
-      print('Error loading recreated project IDs: $e');
+      print('❌ Error loading recreated project IDs: $e');
+      print('Stack trace: ${StackTrace.current}');
     }
   }
 
   Future<void> _saveRecreatedProjectIds() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('recreated_project_ids', jsonEncode(_recreatedProjectIds.toList()));
-      await prefs.setString('recreated_from_projects', jsonEncode(
-        _recreatedFromProjects.map((key, value) => MapEntry(key.toString(), value))
-      ));
+      final idsList = _recreatedProjectIds.toList();
+      final idsJson = jsonEncode(idsList);
+      await prefs.setString('recreated_project_ids', idsJson);
+      
+      final fromMap = _recreatedFromProjects.map((key, value) => MapEntry(key.toString(), value));
+      final fromJson = jsonEncode(fromMap);
+      await prefs.setString('recreated_from_projects', fromJson);
+      
+      print('💾 Saved ${_recreatedProjectIds.length} recreated project IDs: $_recreatedProjectIds');
+      print('💾 Saved JSON: $idsJson');
     } catch (e) {
-      print('Error saving recreated project IDs: $e');
+      print('❌ Error saving recreated project IDs: $e');
+      print('Stack trace: ${StackTrace.current}');
     }
   }
 
@@ -393,7 +416,12 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
 
     if (result == true) {
       // Mark this project as recreated
+      print('🔄 Marking project ${rejectedProject.id} as recreated');
       _recreatedProjectIds.add(rejectedProject.id);
+      print('📝 Current recreated IDs: $_recreatedProjectIds');
+      
+      // Save immediately before refreshing projects
+      await _saveRecreatedProjectIds();
       
       // Refresh projects list to get the newly created project
       await _loadProjects();
@@ -408,11 +436,12 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
         if (sortedProjects.isNotEmpty) {
           final newProject = sortedProjects.first;
           _recreatedFromProjects[newProject.id] = _pendingRecreationOriginalTitle!;
+          print('🔗 Mapped new project ${newProject.id} to original "${_pendingRecreationOriginalTitle}"');
         }
         _pendingRecreationOriginalTitle = null;
       }
       
-      // Save recreated project IDs to persistent storage
+      // Save again after mapping (in case mapping was added)
       await _saveRecreatedProjectIds();
       
       // Show success message
@@ -6644,7 +6673,9 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
                           ),
                         ],
                         // Only show "Recreate Project" button if project hasn't been recreated yet
-                        if (!_recreatedProjectIds.contains(project.id)) ...[
+                        // Ensure we're comparing the same type (int)
+                        final projectId = project.id is int ? project.id : int.tryParse(project.id.toString()) ?? 0;
+                        if (!_recreatedProjectIds.contains(projectId)) ...[
                           const SizedBox(height: 12),
                           SizedBox(
                             width: double.infinity,
