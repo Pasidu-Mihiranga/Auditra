@@ -45,23 +45,38 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
       endDate = project.endDate;
       _priority = project.priority ?? 'medium';
       
-      // Pre-fill client info
-      if (project.clientInfo != null) {
-        clientNameController.text = project.clientInfo!['name'] ?? '';
-        clientEmailController.text = project.clientInfo!['email'] ?? '';
-        clientPhoneController.text = project.clientInfo!['phone'] ?? '';
-        clientAddressController.text = project.clientInfo!['address'] ?? '';
-        clientCompanyController.text = project.clientInfo!['company'] ?? '';
+      // Pre-fill client info - try clientInfo first, then fall back to assigned client fields
+      if (project.clientInfo != null && project.clientInfo!.isNotEmpty) {
+        print('🔍 Client Info from project.clientInfo: ${project.clientInfo}');
+        final clientInfo = project.clientInfo!;
+        clientNameController.text = (clientInfo['name'] ?? clientInfo['client_name'] ?? '').toString();
+        clientEmailController.text = (clientInfo['email'] ?? clientInfo['client_email'] ?? '').toString();
+        clientPhoneController.text = (clientInfo['phone'] ?? clientInfo['client_phone'] ?? clientInfo['phone_number'] ?? '').toString();
+        clientAddressController.text = (clientInfo['address'] ?? clientInfo['client_address'] ?? '').toString();
+        clientCompanyController.text = (clientInfo['company'] ?? clientInfo['company_name'] ?? '').toString();
+        print('✅ Pre-filled client from clientInfo: ${clientNameController.text}, ${clientEmailController.text}');
+      } else if (project.assignedClientName != null || project.assignedClientEmail != null) {
+        // Fall back to assigned client fields
+        print('🔍 Using assigned client fields: name=${project.assignedClientName}, email=${project.assignedClientEmail}');
+        clientNameController.text = project.assignedClientName ?? '';
+        clientEmailController.text = project.assignedClientEmail ?? '';
+        // Phone, address, and company might not be in assigned fields, so leave them empty
+        print('✅ Pre-filled client from assigned fields: ${clientNameController.text}, ${clientEmailController.text}');
+      } else {
+        print('⚠️ No client info found in project (clientInfo: ${project.clientInfo}, assignedClientName: ${project.assignedClientName})');
       }
       
       // Pre-fill agent info
       if (project.agentInfo != null) {
+        print('🔍 Agent Info from project: ${project.agentInfo}');
+        final agentInfo = project.agentInfo!;
         hasAgent = true;
-        agentNameController.text = project.agentInfo!['name'] ?? '';
-        agentEmailController.text = project.agentInfo!['email'] ?? '';
-        agentPhoneController.text = project.agentInfo!['phone'] ?? '';
-        agentAddressController.text = project.agentInfo!['address'] ?? '';
-        agentLicenseController.text = project.agentInfo!['license_number'] ?? '';
+        agentNameController.text = (agentInfo['name'] ?? agentInfo['agent_name'] ?? '').toString();
+        agentEmailController.text = (agentInfo['email'] ?? agentInfo['agent_email'] ?? '').toString();
+        agentPhoneController.text = (agentInfo['phone'] ?? agentInfo['agent_phone'] ?? agentInfo['phone_number'] ?? '').toString();
+        agentAddressController.text = (agentInfo['address'] ?? agentInfo['agent_address'] ?? '').toString();
+        agentLicenseController.text = (agentInfo['license_number'] ?? agentInfo['license'] ?? '').toString();
+        print('✅ Pre-filled agent: ${agentNameController.text}, ${agentEmailController.text}');
       }
     }
   }
