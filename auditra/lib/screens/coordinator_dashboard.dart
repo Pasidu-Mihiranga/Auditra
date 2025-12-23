@@ -81,6 +81,10 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
   bool _isLoadingProjects = false;
   // Track projects that have been recreated (to hide recreate button)
   Set<int> _recreatedProjectIds = {};
+  // Track which projects were recreated from which original projects (newProjectId -> originalProjectTitle)
+  Map<int, String> _recreatedFromProjects = {};
+  // Store original project info when recreating (to map after creation)
+  String? _pendingRecreationOriginalTitle;
   bool _isCreatingProject = false;
   // Search and sort state for each tab
   final Map<int, TextEditingController> _searchControllers = {};
@@ -339,6 +343,9 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
 
     if (confirm != true) return;
 
+    // Store the original project title to track recreation
+    _pendingRecreationOriginalTitle = rejectedProject.title;
+
     // Navigate to create project screen
     final result = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
@@ -349,6 +356,23 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
     if (result == true) {
       // Mark this project as recreated
       _recreatedProjectIds.add(rejectedProject.id);
+      
+      // Refresh projects list to get the newly created project
+      await _loadProjects();
+      
+      // Find the most recently created project and map it to the original
+      if (_pendingRecreationOriginalTitle != null && _projects.isNotEmpty) {
+        // Sort projects by creation date (newest first)
+        final sortedProjects = List<Project>.from(_projects)
+          ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+        
+        // The first project should be the newly created one
+        if (sortedProjects.isNotEmpty) {
+          final newProject = sortedProjects.first;
+          _recreatedFromProjects[newProject.id] = _pendingRecreationOriginalTitle!;
+        }
+        _pendingRecreationOriginalTitle = null;
+      }
       
       // Show success message
       if (mounted) {
@@ -368,13 +392,13 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
         );
       }
       
-      // Refresh projects list
-      await _loadProjects();
-      
       // Force UI rebuild to hide the recreate button on the rejected project
       if (mounted) {
         setState(() {});
       }
+    } else {
+      // Clear pending recreation if user cancelled
+      _pendingRecreationOriginalTitle = null;
     }
   }
 
@@ -6505,6 +6529,34 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
               children: [
                 // Spacing for priority label
                 const SizedBox(height: 20),
+                // Show "recreated from" message if this project was recreated
+                if (_recreatedFromProjects.containsKey(project.id)) ...[
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    margin: const EdgeInsets.only(bottom: 12),
+                    decoration: BoxDecoration(
+                      color: Colors.blue[50],
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.blue[200]!),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.refresh, color: Colors.blue[700], size: 20),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Recreated from "${_recreatedFromProjects[project.id]}"',
+                            style: TextStyle(
+                              color: Colors.blue[900],
+                              fontSize: 13,
+                              fontStyle: FontStyle.italic,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
                 // Show MD/GM rejection status if rejected (always show, even after recreation)
                 if (project.mdGmApprovalStatus == 'rejected') ...[
                   Container(
