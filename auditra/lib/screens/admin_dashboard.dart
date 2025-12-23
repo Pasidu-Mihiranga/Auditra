@@ -1791,11 +1791,12 @@ class _AdminDashboardState extends State<AdminDashboard> with SingleTickerProvid
           const SizedBox(height: 24),
 
           // Removal Requests Section
-          const Text(
+          Text(
             'Employee Removal Requests',
             style: TextStyle(
               fontSize: 20,
               fontWeight: FontWeight.bold,
+              color: Colors.green[700],
             ),
           ),
           const SizedBox(height: 16),
@@ -2005,12 +2006,12 @@ class _AdminDashboardState extends State<AdminDashboard> with SingleTickerProvid
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (pendingRequests.isNotEmpty) ...[
-          const Text(
+          Text(
             'Pending Requests',
             style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.bold,
-              color: Colors.orange,
+              color: Colors.orange[900],
             ),
           ),
           const SizedBox(height: 8),
@@ -2018,12 +2019,12 @@ class _AdminDashboardState extends State<AdminDashboard> with SingleTickerProvid
           const SizedBox(height: 16),
         ],
         if (otherRequests.isNotEmpty) ...[
-          const Text(
+          Text(
             'Processed Requests',
             style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.bold,
-              color: Colors.grey,
+              color: Colors.blue[700],
             ),
           ),
           const SizedBox(height: 8),
@@ -2064,7 +2065,7 @@ class _AdminDashboardState extends State<AdminDashboard> with SingleTickerProvid
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        'Employee #${request['employee_id'] ?? request['user']}',
+                        'Employee ${request['employee_id'] ?? request['user']}',
                         style: TextStyle(color: Colors.grey[600]),
                       ),
                       const SizedBox(height: 4),
@@ -2172,7 +2173,7 @@ class _AdminDashboardState extends State<AdminDashboard> with SingleTickerProvid
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Are you sure you want to approve the removal of ${request['employee_name']}?\n\nThis will permanently delete:\n• The employee account\n• All payment slips\n• All related data\n\nThis action cannot be undone.',
+                  'Are you sure you want to approve the removal of ${request['employee_name']}?',
                   style: const TextStyle(fontSize: 14),
                 ),
                 const SizedBox(height: 16),
@@ -2463,11 +2464,6 @@ class _AdminDashboardState extends State<AdminDashboard> with SingleTickerProvid
                   onPressed: _selectMonthYear,
                   tooltip: 'Select Month & Year',
                 ),
-                IconButton(
-                  icon: const Icon(Icons.refresh),
-                  onPressed: _loadMonthlyLeaveSummary,
-                  tooltip: 'Refresh',
-                ),
               ],
             ),
             const SizedBox(height: 8),
@@ -2709,11 +2705,6 @@ class _AdminDashboardState extends State<AdminDashboard> with SingleTickerProvid
                   icon: const Icon(Icons.calendar_month),
                   onPressed: _selectWeek,
                   tooltip: 'Select Week',
-                ),
-                IconButton(
-                  icon: const Icon(Icons.refresh),
-                  onPressed: _loadWeeklyAttendanceSummary,
-                  tooltip: 'Refresh',
                 ),
               ],
             ),

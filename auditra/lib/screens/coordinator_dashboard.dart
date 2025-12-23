@@ -9,8 +9,7 @@ import '../models/project_model.dart';
 import 'login_screen.dart';
 import 'generic_dashboard.dart';
 import 'create_project_screen.dart';
-import 'leave_request_screen.dart';
-import 'my_leave_requests_screen.dart';
+import 'payment_slips_screen.dart';
 
 // Helper class to hold upload dialog state
 class _UploadDialogState {
@@ -4760,30 +4759,6 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
         centerTitle: true,
         actions: [
           IconButton(
-            icon: const Icon(Icons.list_alt, color: Colors.blue),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const MyLeaveRequestsScreen(),
-                ),
-              );
-            },
-            tooltip: 'My Leave Requests',
-          ),
-          IconButton(
-            icon: const Icon(Icons.edit_calendar, color: Colors.purple),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const LeaveRequestScreen(),
-                ),
-              );
-            },
-            tooltip: 'Leave Requests',
-          ),
-          IconButton(
             icon: const Icon(Icons.logout),
             onPressed: _logout,
             tooltip: 'Logout',
@@ -4792,7 +4767,7 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
         bottom: TabBar(
           controller: _tabController,
           tabs: const [
-            Tab(icon: Icon(Icons.access_time), text: 'Attendance'),
+            Tab(icon: Icon(Icons.person), text: 'Profile'),
             Tab(icon: Icon(Icons.folder), text: 'Projects'),
           ],
         ),
@@ -4808,20 +4783,13 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
   }
 
   Widget _buildAttendanceTab() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16.0),
-      child: Column(
-        children: [
-          GenericDashboard(
-            role: 'coordinator',
-            roleDisplay: _roleDisplay ?? 'Coordinator',
-            isEmbedded: true,
-          ),
-        ],
-      ),
+    // Use GenericDashboard which provides Profile tab with Attendance, Payment, Leave subtabs
+    return GenericDashboard(
+      role: 'coordinator',
+      roleDisplay: _roleDisplay ?? 'Coordinator',
+      isEmbedded: true,
     );
   }
-
 
   List<Project> _filterAndSortProjects(List<Project> projects, int tabIndex) {
     // Get search query for this tab

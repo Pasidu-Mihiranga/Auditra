@@ -16,12 +16,16 @@ class GenericDashboard extends StatefulWidget {
   final String role;
   final String roleDisplay;
   final bool isEmbedded;
+  final bool showOnlyWeeklyAttendance;
+  final bool showOnlyMonthlyLeave;
   
   const GenericDashboard({
     super.key,
     required this.role,
     required this.roleDisplay,
     this.isEmbedded = false,
+    this.showOnlyWeeklyAttendance = false,
+    this.showOnlyMonthlyLeave = false,
   });
 
   @override
@@ -42,8 +46,9 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
   bool _isMarkingAttendance = false;
   
   late TabController _periodTabController;
-  TabController? _mainTabController; // For Attendance/Projects tabs (client/agent/accessor/senior_valuer)
-  TabController? _hrTabController; // For HR staff: Attendance / Leave / Payments tabs
+  TabController? _mainTabController; // For Profile/Projects tabs (client/agent/accessor/senior_valuer)
+  TabController? _hrTabController; // For HR staff: Profile tab (deprecated, will be replaced)
+  TabController? _profileTabController; // For Profile subtabs: Attendance / Payment / Leave
   
   // Project state (for roles that can view projects)
   List<Project> _projects = [];
@@ -104,6 +109,17 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
       }
     });
     
+    // Initialize Profile tab controller for subtabs (Attendance / Payment / Leave) 
+    // for all roles except admin, client, and agent
+    if (widget.role != 'admin' && widget.role != 'client' && widget.role != 'agent') {
+      _profileTabController = TabController(length: 3, vsync: this);
+      _profileTabController!.addListener(() {
+        if (!_profileTabController!.indexIsChanging && mounted) {
+          setState(() {});
+        }
+      });
+    }
+
     // Initialize main tab controller if this role should see projects
     if (_shouldShowProjects) {
       _mainTabController = TabController(length: 2, vsync: this);
@@ -114,8 +130,9 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
       });
       _loadProjects();
     }
-
-    // Initialize HR staff tab controller (Attendance / Leave / Payments)
+    
+    // Initialize HR staff tab controller (deprecated - will be replaced by Profile tab)
+    // Keeping for now to avoid breaking changes
     if (widget.role == 'hr_staff') {
       _hrTabController = TabController(length: 3, vsync: this);
       _hrTabController!.addListener(() {
@@ -135,12 +152,12 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
     _loadLeaveStatistics();
     _startTimer();
     
-    // Load weekly attendance summary for HR staff and admin
+    // Load weekly attendance summary for HR staff and admin only
     if (widget.role == 'hr_staff' || widget.role == 'admin') {
       _loadWeeklyAttendanceSummary();
     }
     
-    // Load monthly leave summary for HR staff
+    // Load monthly leave summary for HR staff only
     if (widget.role == 'hr_staff') {
       _loadMonthlyLeaveSummary();
     }
@@ -151,6 +168,7 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
     _periodTabController.dispose();
     _mainTabController?.dispose();
     _hrTabController?.dispose();
+    _profileTabController?.dispose();
     super.dispose();
   }
   
@@ -717,6 +735,46 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
   @override
   Widget build(BuildContext context) {
     if (widget.isEmbedded) {
+      // When embedded, check if showing only specific sections
+      if (widget.showOnlyWeeklyAttendance) {
+        // Show only Weekly Attendance Summary
+        return _isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : RefreshIndicator(
+                onRefresh: () async {
+                  await _loadWeeklyAttendanceSummary();
+                },
+                child: SingleChildScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.all(16.0),
+                  child: _buildWeeklyAttendanceSummarySection(),
+                ),
+              );
+      }
+      
+      if (widget.showOnlyMonthlyLeave) {
+        // Show only Monthly Leave Summary
+        return _isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : RefreshIndicator(
+                onRefresh: () async {
+                  await _loadMonthlyLeaveSummary();
+                },
+                child: SingleChildScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.all(16.0),
+                  child: _buildMonthlyLeaveSummarySection(),
+                ),
+              );
+      }
+      
+      // When embedded, show Profile tab with subtabs for non-admin roles (except client and agent)
+      if (widget.role != 'admin' && widget.role != 'client' && widget.role != 'agent' && _profileTabController != null) {
+        return _isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : _buildProfileTabBody();
+      }
+      // Otherwise show dashboard body
       final body = _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _buildDashboardBody();
@@ -855,70 +913,40 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
         ),
         centerTitle: true,
         actions: [
-          // View My Leave Requests button - visible for employee roles
-          IconButton(
-            icon: const Icon(Icons.list_alt, color: Colors.blue),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const MyLeaveRequestsScreen(),
-                ),
-              );
-            },
-            tooltip: 'My Leave Requests',
-          ),
-          // Leave Request button - visible for employee roles
-          IconButton(
-            icon: const Icon(Icons.edit_calendar, color: Colors.purple),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const LeaveRequestScreen(),
-                ),
-              );
-            },
-            tooltip: 'Leave Requests',
-          ),
-          // Personal Info button - visible for general employee only
-          if (widget.role == 'general_employee')
-            IconButton(
-              icon: const Icon(Icons.person_outline, color: Colors.blue),
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const PersonalInfoScreen(),
-                  ),
-                ).catchError((error) {
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('Error opening personal information: $error'),
-                        backgroundColor: Colors.red,
-                      ),
-                    );
-                  }
-                });
-              },
-              tooltip: 'Personal Information',
-      ),
           IconButton(
             icon: const Icon(Icons.logout),
             onPressed: _logout,
             tooltip: 'Logout',
           ),
         ],
-        bottom: widget.role == 'hr_staff' && _hrTabController != null
-            ? TabBar(
-                controller: _hrTabController!,
-                tabs: const [
-                  Tab(icon: Icon(Icons.calendar_today), text: 'Attendance'),
-                  Tab(icon: Icon(Icons.event_note), text: 'Leave'),
-                  Tab(icon: Icon(Icons.payment), text: 'Payments'),
-                ],
-              )
+        bottom: widget.role != 'admin' && widget.role != 'client' && widget.role != 'agent'
+            ? (_shouldShowProjects && _mainTabController != null
+                ? TabBar(
+                    controller: _mainTabController!,
+                    tabs: const [
+                      Tab(icon: Icon(Icons.person), text: 'Profile'),
+                      Tab(icon: Icon(Icons.folder), text: 'Projects'),
+                    ],
+                  )
+                : _profileTabController != null
+                    ? TabBar(
+                        controller: _profileTabController!,
+                        tabs: [
+                          Tab(
+                            icon: Icon(Icons.calendar_today, color: Colors.blue[600]),
+                            text: 'Attendance',
+                          ),
+                          Tab(
+                            icon: Icon(Icons.event_note, color: Colors.orange[600]),
+                            text: 'Leave',
+                          ),
+                          Tab(
+                            icon: Icon(Icons.payment, color: Colors.green[600]),
+                            text: 'Payment',
+                          ),
+                        ],
+                      )
+                    : null)
             : _shouldShowProjects && _mainTabController != null
                 ? TabBar(
                     controller: _mainTabController!,
@@ -931,37 +959,64 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : widget.role == 'hr_staff' && _hrTabController != null
+          : _shouldShowProjects && _mainTabController != null
               ? TabBarView(
-                  controller: _hrTabController!,
+                  controller: _mainTabController!,
                   children: [
-                    _buildHRAttendanceTabBody(),
-                    _buildHRLeaveTabBody(),
-                    _buildHRPaymentsTabBody(),
+                    // For client and agent, show dashboard body. For others (accessor, senior_valuer), show Profile tab
+                    (widget.role == 'client' || widget.role == 'agent')
+                        ? _buildDashboardBody()
+                        : _buildProfileTabBody(),
+                    _buildProjectsTab(),
                   ],
                 )
-              : _shouldShowProjects && _mainTabController != null
-                  ? TabBarView(
-                      controller: _mainTabController!,
-                      children: [
-                        _buildDashboardBody(),
-                        _buildProjectsTab(),
-                      ],
-                    )
+              : widget.role != 'admin' && widget.role != 'client' && widget.role != 'agent' && _profileTabController != null
+                  ? _buildProfileTabBody()
                   : _buildDashboardBody(),
     );
   }
 
   Widget _buildDashboardBody() {
+    // For admin, show only charts and weekly attendance summary
+    if (widget.role == 'admin') {
+      return RefreshIndicator(
+        onRefresh: () async {
+          await _loadUserData();
+          await _loadTodayAttendance();
+          await _loadSummary();
+          await _loadLeaveStatistics();
+          await _loadWeeklyAttendanceSummary();
+        },
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Weekly Attendance Summary - Show for admin
+              _buildWeeklyAttendanceSummarySection(),
+              const SizedBox(height: 16),
+              
+              // Charts Section
+              if (_summary != null) _buildChartsSection(),
+            ],
+          ),
+        ),
+      );
+    }
+    
+    // For all non-admin roles, show all content
     return RefreshIndicator(
       onRefresh: () async {
         await _loadUserData();
         await _loadTodayAttendance();
         await _loadSummary();
         await _loadLeaveStatistics();
-        // Load weekly attendance summary for admin
-        if (widget.role == 'admin') {
+        if (widget.role == 'hr_staff' || widget.role == 'admin') {
           await _loadWeeklyAttendanceSummary();
+        }
+        if (widget.role == 'hr_staff') {
+          await _loadMonthlyLeaveSummary();
         }
       },
       child: SingleChildScrollView(
@@ -974,26 +1029,28 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
             _buildTodayAttendanceCard(),
             const SizedBox(height: 16),
             
-            // Attendance Summary
+            // Summary Section
             _buildSummarySection(),
             const SizedBox(height: 16),
             
-            // Leave Statistics Section
-            _buildLeaveStatisticsSection(),
-            const SizedBox(height: 16),
-            
-            // Weekly Attendance Summary - Show for admin
-            if (widget.role == 'admin') ...[
+            // Charts Section
+            if (_summary != null) ...[
+              _buildChartsSection(),
               const SizedBox(height: 24),
-              _buildWeeklyAttendanceSummarySection(),
             ],
             
-            // Payment Section - Show for employee roles
-            _buildPaymentSection(),
-            const SizedBox(height: 16),
+            // Weekly Attendance Summary - Only show for HR staff and admin
+            if (widget.role == 'hr_staff' || widget.role == 'admin') ...[
+              _buildWeeklyAttendanceSummarySection(),
+              const SizedBox(height: 24),
+            ],
             
-            // Charts Section
-            if (_summary != null) _buildChartsSection(),
+            // Leave Statistics Section
+            _buildLeaveStatisticsSection(),
+            const SizedBox(height: 24),
+            
+            // Payment Section
+            _buildPaymentSection(),
           ],
         ),
       ),
@@ -1021,9 +1078,11 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
             _buildSummarySection(),
             const SizedBox(height: 16),
             if (_summary != null) _buildChartsSection(),
-            const SizedBox(height: 24),
-            // Weekly Attendance Summary
-            _buildWeeklyAttendanceSummarySection(),
+            // Weekly Attendance Summary - Only show for HR staff and admin
+            if (widget.role == 'hr_staff' || widget.role == 'admin') ...[
+              const SizedBox(height: 24),
+              _buildWeeklyAttendanceSummarySection(),
+            ],
           ],
         ),
       ),
@@ -1031,7 +1090,7 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
   }
   
   Future<void> _loadWeeklyAttendanceSummary() async {
-    // Allow both admin and HR staff to view weekly attendance summary
+    // Only allow HR staff and admin to view weekly attendance summary
     if (widget.role != 'hr_staff' && widget.role != 'admin') return;
     
     setState(() => _isLoadingAttendanceSummary = true);
@@ -1050,17 +1109,7 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
               .map((item) => item as Map<String, dynamic>)
               .toList();
         } else {
-          // Show error message if API call failed
-          final errorMessage = result['message'] ?? 'Failed to load attendance summary';
-          if (mounted && errorMessage.isNotEmpty) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(errorMessage),
-                backgroundColor: Colors.red,
-                duration: const Duration(seconds: 3),
-              ),
-            );
-          }
+          // Silently fail - don't show error message
           _weeklyAttendanceSummary = [];
         }
       });
@@ -1070,15 +1119,7 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
         _isLoadingAttendanceSummary = false;
         _weeklyAttendanceSummary = [];
       });
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error loading attendance summary: $e'),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 3),
-          ),
-        );
-      }
+      // Silently fail - don't show error message
     }
   }
 
@@ -1101,8 +1142,9 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
       await _loadWeeklyAttendanceSummary();
     }
   }
-  
+
   Future<void> _loadMonthlyLeaveSummary() async {
+    // Only allow HR staff to view monthly leave summary
     if (widget.role != 'hr_staff') return;
     
     setState(() => _isLoadingLeaveSummary = true);
@@ -1122,17 +1164,7 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
               .map((item) => item as Map<String, dynamic>)
               .toList();
         } else {
-          // Show error message if API call failed
-          final errorMessage = result['message'] ?? 'Failed to load leave summary';
-          if (mounted && errorMessage.isNotEmpty) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(errorMessage),
-                backgroundColor: Colors.red,
-                duration: const Duration(seconds: 3),
-              ),
-            );
-          }
+          // Silently fail - don't show error message
           _monthlyLeaveSummary = [];
         }
       });
@@ -1142,15 +1174,7 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
         _isLoadingLeaveSummary = false;
         _monthlyLeaveSummary = [];
       });
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error loading leave summary: $e'),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 3),
-          ),
-        );
-      }
+      // Silently fail - don't show error message
     }
   }
 
@@ -1234,8 +1258,13 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
       await _loadMonthlyLeaveSummary();
     }
   }
-  
+
   Widget _buildWeeklyAttendanceSummarySection() {
+    // Only show for HR staff and admin
+    if (widget.role != 'hr_staff' && widget.role != 'admin') {
+      return const SizedBox.shrink();
+    }
+    
     final weekEnd = _selectedWeekStart.add(const Duration(days: 6));
     final weekRange = '${_selectedWeekStart.day}/${_selectedWeekStart.month}/${_selectedWeekStart.year} - ${weekEnd.day}/${weekEnd.month}/${weekEnd.year}';
     
@@ -1266,11 +1295,6 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
                   icon: const Icon(Icons.calendar_month),
                   onPressed: _selectWeek,
                   tooltip: 'Select Week',
-                ),
-                IconButton(
-                  icon: const Icon(Icons.refresh),
-                  onPressed: _loadWeeklyAttendanceSummary,
-                  tooltip: 'Refresh',
                 ),
               ],
             ),
@@ -1339,7 +1363,7 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
               Builder(
                 builder: (context) {
                   // Filter employees based on search query
-                  final filteredEmployees = _attendanceSearchQuery.isEmpty
+                  List<Map<String, dynamic>> filteredEmployees = _attendanceSearchQuery.isEmpty
                       ? _weeklyAttendanceSummary
                       : _weeklyAttendanceSummary.where((employee) {
                           final employeeNumber = (employee['employee_number'] as String? ?? '').toString();
@@ -1846,6 +1870,11 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
   }
   
   Widget _buildMonthlyLeaveSummarySection() {
+    // Only show for HR staff
+    if (widget.role != 'hr_staff') {
+      return const SizedBox.shrink();
+    }
+    
     final monthNames = [
       'January', 'February', 'March', 'April', 'May', 'June',
       'July', 'August', 'September', 'October', 'November', 'December'
@@ -2244,6 +2273,216 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
                   ],
                 ),
               ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Profile tab with subtabs (Attendance, Payment, Leave)
+  Widget _buildProfileTabBody() {
+    if (_profileTabController == null) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    
+    // If embedded or used as a nested tab (e.g., inside Projects tab structure),
+    // we need to show the subtabs. Otherwise, subtabs are shown in AppBar bottom
+    if (widget.isEmbedded || (_shouldShowProjects && _mainTabController != null)) {
+      // Nested/embedded structure - show subtabs here
+      return Column(
+        children: [
+          // Subtabs for Profile (shown here for nested/embedded case)
+          TabBar(
+            controller: _profileTabController,
+            tabs: [
+              Tab(
+                icon: Icon(Icons.calendar_today, color: Colors.blue[600]),
+                text: 'Attendance',
+              ),
+              Tab(
+                icon: Icon(Icons.event_note, color: Colors.orange[600]),
+                text: 'Leave',
+              ),
+              Tab(
+                icon: Icon(Icons.payment, color: Colors.green[600]),
+                text: 'Payment',
+              ),
+            ],
+          ),
+          // Subtab content
+          Expanded(
+            child: TabBarView(
+              controller: _profileTabController,
+              children: [
+                _buildProfileAttendanceSubtab(),
+                _buildProfileLeaveSubtab(),
+                _buildProfilePaymentSubtab(),
+              ],
+            ),
+          ),
+        ],
+      );
+    } else {
+      // Subtabs are in AppBar bottom, just show the content
+      // TabBarView must be used directly when subtabs are in AppBar
+      return TabBarView(
+        controller: _profileTabController!,
+        children: [
+          _buildProfileAttendanceSubtab(),
+          _buildProfileLeaveSubtab(),
+          _buildProfilePaymentSubtab(),
+        ],
+      );
+    }
+  }
+
+  /// Profile - Attendance subtab
+  Widget _buildProfileAttendanceSubtab() {
+    return RefreshIndicator(
+      onRefresh: () async {
+        await _loadUserData();
+        await _loadTodayAttendance();
+        await _loadSummary();
+        // Weekly Attendance Summary is not shown in Profile tab (only in View tab or main dashboard)
+      },
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _buildTodayAttendanceCard(),
+            const SizedBox(height: 16),
+            _buildSummarySection(),
+            const SizedBox(height: 16),
+            if (_summary != null) _buildChartsSection(),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Profile - Payment subtab
+  Widget _buildProfilePaymentSubtab() {
+    return PaymentSlipsScreen(
+      role: widget.role,
+      showAppBar: false, // No AppBar when embedded as subtab
+      showOnlyOwn: true, // Always show only own payment slips in Profile tab
+    );
+  }
+
+  /// Profile - Leave subtab
+  Widget _buildProfileLeaveSubtab() {
+    // Check if leave request buttons should be shown (exclude client, agent, admin)
+    // HR staff can now see leave request buttons in Profile tab
+    final showLeaveRequestButtons = widget.role != 'client' && 
+                                   widget.role != 'agent' && 
+                                   widget.role != 'admin';
+    
+    return RefreshIndicator(
+      onRefresh: () async {
+        await _loadUserData();
+        await _loadLeaveStatistics();
+        // Don't load monthly leave summary for HR staff in Profile tab (they have View tab)
+      },
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _buildLeaveStatisticsSection(),
+            // Leave Request Buttons - Show for roles except client, agent, admin
+            // Now includes HR staff
+            if (showLeaveRequestButtons) ...[
+              const SizedBox(height: 24),
+              _buildLeaveRequestButtonsSection(),
+            ],
+            // Monthly Leave Summary - Not shown for HR staff in Profile tab (they have View tab)
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Build Leave Request Buttons Section
+  Widget _buildLeaveRequestButtonsSection() {
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Padding(
+        padding: const EdgeInsets.all(20.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.event_note, color: Colors.blue[700], size: 28),
+                const SizedBox(width: 12),
+                Text(
+                  'Leave Requests',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+            Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const LeaveRequestScreen(),
+                        ),
+                      ).then((_) {
+                        // Refresh leave statistics after creating/updating leave request
+                        _loadLeaveStatistics();
+                      });
+                    },
+                    icon: const Icon(Icons.add_circle_outline),
+                    label: const Text('Add Leave Request'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue[600],
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const MyLeaveRequestsScreen(),
+                        ),
+                      ).then((_) {
+                        // Refresh leave statistics after viewing/updating leave requests
+                        _loadLeaveStatistics();
+                      });
+                    },
+                    icon: const Icon(Icons.list_alt),
+                    label: const Text('View My Requests'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.blue[700],
+                      side: BorderSide(color: Colors.blue[700]!),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ],
         ),
@@ -3157,18 +3396,8 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
   }
 
   Future<void> _loadLeaveStatistics() async {
-    // Only load for employee roles
-    final allowedRoles = [
-      'coordinator',
-      'field_officer',
-      'accessor',
-      'senior_valuer',
-      'md_gm',
-      'hr_staff',
-      'general_employee',
-    ];
-    
-    if (!allowedRoles.contains(widget.role)) {
+    // Load for all non-admin roles
+    if (widget.role == 'admin') {
       return;
     }
     
@@ -3187,18 +3416,8 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
   }
 
   Widget _buildLeaveStatisticsSection() {
-    // Only show for employee roles
-    final allowedRoles = [
-      'coordinator',
-      'field_officer',
-      'accessor',
-      'senior_valuer',
-      'md_gm',
-      'hr_staff',
-      'general_employee',
-    ];
-    
-    if (!allowedRoles.contains(widget.role)) {
+    // Show for all non-admin roles
+    if (widget.role == 'admin') {
       return const SizedBox.shrink();
     }
     
@@ -3322,18 +3541,8 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
   }
 
   Widget _buildPaymentSection() {
-    // Show payment section for employee roles only (not for admin, client, agent, unassigned)
-    final employeeRoles = [
-      'coordinator',
-      'field_officer',
-      'senior_valuer',
-      'accessor',
-      'md_gm',
-      'hr_staff',
-      'general_employee',
-    ];
-    
-    if (!employeeRoles.contains(widget.role)) {
+    // Show payment section for all non-admin roles
+    if (widget.role == 'admin') {
       return const SizedBox.shrink();
     }
     
@@ -3359,7 +3568,7 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
             ),
             const SizedBox(height: 16),
             const Text(
-              'View your monthly payment slips and salary information.',
+              'View your own monthly payment slips and salary information.',
               style: TextStyle(color: Colors.grey),
             ),
             const SizedBox(height: 16),
@@ -3368,7 +3577,10 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (context) => PaymentSlipsScreen(role: widget.role),
+                    builder: (context) => PaymentSlipsScreen(
+                      role: widget.role,
+                      showOnlyOwn: true, // Always show only own payment slips in Profile tab
+                    ),
                   ),
                 ).catchError((error) {
                   if (mounted) {
@@ -3382,7 +3594,7 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
                 });
               },
               icon: const Icon(Icons.visibility),
-              label: const Text('View Payment Slips'),
+              label: const Text('View My Payment Slips'),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.green,
                 foregroundColor: Colors.white,

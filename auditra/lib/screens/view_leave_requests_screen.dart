@@ -3,7 +3,12 @@ import 'package:intl/intl.dart';
 import '../services/api_service.dart';
 
 class ViewLeaveRequestsScreen extends StatefulWidget {
-  const ViewLeaveRequestsScreen({super.key});
+  final bool showAppBar;
+  
+  const ViewLeaveRequestsScreen({
+    super.key,
+    this.showAppBar = true,
+  });
 
   @override
   State<ViewLeaveRequestsScreen> createState() => _ViewLeaveRequestsScreenState();
@@ -13,11 +18,22 @@ class _ViewLeaveRequestsScreenState extends State<ViewLeaveRequestsScreen> {
   List<Map<String, dynamic>> _leaveRequests = [];
   bool _isLoading = true;
   String _filterStatus = 'all'; // all, pending, approved, rejected
+  String? _currentUserRole;
 
   @override
   void initState() {
     super.initState();
+    _loadUserRole();
     _loadLeaveRequests();
+  }
+
+  Future<void> _loadUserRole() async {
+    final result = await ApiService.getMyRole();
+    if (result['success'] && mounted) {
+      setState(() {
+        _currentUserRole = result['data']['role'];
+      });
+    }
   }
 
   Future<void> _loadLeaveRequests() async {
@@ -37,6 +53,7 @@ class _ViewLeaveRequestsScreenState extends State<ViewLeaveRequestsScreen> {
             'id': item['id'],
             'employee_name': item['employee_name'] ?? 'Unknown',
             'employee_id': item['employee_id'] ?? '',
+            'employee_role': item['employee_role'] ?? '',
             'leave_type': item['leave_type_display'] ?? item['leave_type'] ?? 'Unknown',
             'start_date': DateTime.parse(item['start_date']),
             'end_date': DateTime.parse(item['end_date']),
@@ -45,7 +62,6 @@ class _ViewLeaveRequestsScreenState extends State<ViewLeaveRequestsScreen> {
             'status': item['status'] ?? 'pending',
             'submitted_at': DateTime.parse(item['submitted_at']),
             'reviewed_at': item['reviewed_at'] != null ? DateTime.parse(item['reviewed_at']) : null,
-            'notes': item['notes'],
           };
         }).toList();
       });
@@ -92,10 +108,73 @@ class _ViewLeaveRequestsScreenState extends State<ViewLeaveRequestsScreen> {
   }
 
   Future<void> _updateLeaveStatus(int requestId, String newStatus) async {
+    // Show confirmation dialog
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Row(
+            children: [
+              Icon(
+                newStatus == 'approved' ? Icons.check_circle : Icons.cancel,
+                color: newStatus == 'approved' ? Colors.green : Colors.red,
+                size: 28,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  newStatus == 'approved' ? 'Approve Leave Request' : 'Reject Leave Request',
+                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
+          ),
+          content: Text(
+            newStatus == 'approved'
+                ? 'Are you sure you want to approve this leave request?'
+                : 'Are you sure you want to reject this leave request?',
+            style: const TextStyle(fontSize: 16),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: newStatus == 'approved' ? Colors.green : Colors.red,
+                foregroundColor: Colors.white,
+              ),
+              child: Text(newStatus == 'approved' ? 'Approve' : 'Reject'),
+            ),
+          ],
+        );
+      },
+    );
+    
+    if (confirmed != true || !mounted) return;
+    
+    // Show loading indicator
+    if (mounted) {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (BuildContext context) => const Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
+    
     final result = await ApiService.updateLeaveRequestStatus(
       requestId: requestId,
       status: newStatus,
     );
+    
+    // Close loading indicator
+    if (mounted) {
+      Navigator.of(context).pop();
+    }
     
     if (!mounted) return;
     
@@ -103,93 +182,135 @@ class _ViewLeaveRequestsScreenState extends State<ViewLeaveRequestsScreen> {
       // Reload the list to get updated data
       await _loadLeaveRequests();
       
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(result['message'] ?? 'Leave request ${_getStatusLabel(newStatus).toLowerCase()} successfully'),
-          backgroundColor: _getStatusColor(newStatus),
-          duration: const Duration(seconds: 2),
-        ),
-      );
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(result['message'] ?? 'Failed to update leave request'),
-          backgroundColor: Colors.red,
-          duration: const Duration(seconds: 3),
-        ),
-      );
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('View Leave Requests'),
-        centerTitle: true,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _loadLeaveRequests,
-            tooltip: 'Refresh',
-          ),
-        ],
-      ),
-      body: Column(
-        children: [
-          // Filter chips
-          Container(
-            padding: const EdgeInsets.all(16),
-            child: Row(
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
               children: [
+                Icon(
+                  newStatus == 'approved' ? Icons.check_circle : Icons.cancel,
+                  color: Colors.white,
+                ),
+                const SizedBox(width: 8),
                 Expanded(
-                  child: Wrap(
-                    spacing: 8,
-                    children: [
-                      _buildFilterChip('All', 'all'),
-                      _buildFilterChip('Pending', 'pending'),
-                      _buildFilterChip('Approved', 'approved'),
-                      _buildFilterChip('Rejected', 'rejected'),
-                    ],
+                  child: Text(
+                    result['message'] ?? 'Leave request ${_getStatusLabel(newStatus).toLowerCase()} successfully',
                   ),
                 ),
               ],
             ),
+            backgroundColor: _getStatusColor(newStatus),
+            duration: const Duration(seconds: 3),
+            behavior: SnackBarBehavior.floating,
           ),
-          const Divider(height: 1),
-          // Leave requests list
-          Expanded(
-            child: _isLoading
-                ? const Center(child: CircularProgressIndicator())
-                : _filteredRequests.isEmpty
-                    ? Center(
+        );
+      }
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.error, color: Colors.white),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(result['message'] ?? 'Failed to update leave request'),
+                ),
+              ],
+            ),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
+  }
+
+
+  @override
+  Widget build(BuildContext context) {
+    final body = Column(
+      children: [
+        // Filter chips
+        Container(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              Expanded(
+                child: Wrap(
+                  spacing: 8,
+                  children: [
+                    _buildFilterChip('All', 'all'),
+                    _buildFilterChip('Pending', 'pending'),
+                    _buildFilterChip('Approved', 'approved'),
+                    _buildFilterChip('Rejected', 'rejected'),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        const Divider(height: 1),
+        // Leave requests list
+        Expanded(
+          child: _isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : _filteredRequests.isEmpty
+                  ? Center(
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                             Icon(Icons.event_busy, size: 64, color: Colors.grey[400]),
                             const SizedBox(height: 16),
                             Text(
-                              'No leave requests found',
+                              _currentUserRole == 'admin'
+                                  ? 'No HR staff leave requests found'
+                                  : 'No leave requests found',
                               style: TextStyle(fontSize: 18, color: Colors.grey[600]),
                             ),
+                            if (_currentUserRole == 'admin') ...[
+                              const SizedBox(height: 8),
+                              Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 32.0),
+                                child: Text(
+                                  'Only leave requests from HR staff are shown here',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(fontSize: 14, color: Colors.grey[500]),
+                                ),
+                              ),
+                            ],
                           ],
                         ),
                       )
-                    : RefreshIndicator(
-                        onRefresh: _loadLeaveRequests,
-                        child: ListView.builder(
-                          padding: const EdgeInsets.all(16),
-                          itemCount: _filteredRequests.length,
-                          itemBuilder: (context, index) {
-                            final request = _filteredRequests[index];
-                            return _buildLeaveRequestCard(request);
-                          },
-                        ),
+                  : RefreshIndicator(
+                      onRefresh: _loadLeaveRequests,
+                      child: ListView.builder(
+                        padding: const EdgeInsets.all(16),
+                        itemCount: _filteredRequests.length,
+                        itemBuilder: (context, index) {
+                          final request = _filteredRequests[index];
+                          return _buildLeaveRequestCard(request);
+                        },
                       ),
-          ),
-        ],
-      ),
+                    ),
+        ),
+      ],
     );
+    
+    if (widget.showAppBar) {
+      return Scaffold(
+        appBar: AppBar(
+          title: Text(_currentUserRole == 'admin' 
+            ? 'HR Staff Leave Requests' 
+            : 'View Leave Requests'),
+          centerTitle: true,
+        ),
+        body: body,
+      );
+    }
+    
+    return body;
   }
 
   Widget _buildFilterChip(String label, String value) {
@@ -238,6 +359,17 @@ class _ViewLeaveRequestsScreenState extends State<ViewLeaveRequestsScreen> {
           children: [
             const SizedBox(height: 4),
             Text('${request['leave_type']} • ${request['days']} day(s)'),
+            if (_currentUserRole == 'admin' && request['employee_role'] != null) ...[
+              const SizedBox(height: 4),
+              Text(
+                'HR Staff',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.blue[700],
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
             const SizedBox(height: 4),
             Row(
               children: [
@@ -268,6 +400,10 @@ class _ViewLeaveRequestsScreenState extends State<ViewLeaveRequestsScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _buildInfoRow('Employee ID', request['employee_id'] as String),
+                if (_currentUserRole == 'admin' && request['employee_role'] != null) ...[
+                  const SizedBox(height: 8),
+                  _buildInfoRow('Role', 'HR Staff'),
+                ],
                 const SizedBox(height: 8),
                 _buildInfoRow(
                   'Date Range',
@@ -277,30 +413,38 @@ class _ViewLeaveRequestsScreenState extends State<ViewLeaveRequestsScreen> {
                 _buildInfoRow('Reason', request['reason'] as String),
                 const SizedBox(height: 16),
                 if (status == 'pending')
-                  Row(
+                  Column(
                     children: [
-                      Expanded(
+                      SizedBox(
+                        width: double.infinity,
                         child: ElevatedButton.icon(
                           onPressed: () => _updateLeaveStatus(request['id'] as int, 'approved'),
-                          icon: const Icon(Icons.check, size: 18),
-                          label: const Text('Approve'),
+                          icon: const Icon(Icons.check_circle, size: 20),
+                          label: const Text('Approve Leave Request'),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Colors.green,
                             foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
                           ),
                         ),
                       ),
-                      const SizedBox(width: 8),
-                      Expanded(
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        width: double.infinity,
                         child: ElevatedButton.icon(
                           onPressed: () => _updateLeaveStatus(request['id'] as int, 'rejected'),
-                          icon: const Icon(Icons.close, size: 18),
-                          label: const Text('Reject'),
+                          icon: const Icon(Icons.cancel, size: 20),
+                          label: const Text('Reject Leave Request'),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Colors.red,
                             foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
                           ),
                         ),
                       ),

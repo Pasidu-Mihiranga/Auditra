@@ -248,6 +248,7 @@ class LeaveRequestSerializer(serializers.ModelSerializer):
     """Serializer for Leave Request"""
     employee_name = serializers.SerializerMethodField()
     employee_id = serializers.SerializerMethodField()
+    employee_role = serializers.SerializerMethodField()
     leave_type_display = serializers.CharField(source='get_leave_type_display', read_only=True)
     status_display = serializers.CharField(source='get_status_display', read_only=True)
     days = serializers.ReadOnlyField()
@@ -255,7 +256,7 @@ class LeaveRequestSerializer(serializers.ModelSerializer):
     class Meta:
         model = LeaveRequest
         fields = (
-            'id', 'user', 'employee_name', 'employee_id', 'leave_type', 
+            'id', 'user', 'employee_name', 'employee_id', 'employee_role', 'leave_type', 
             'leave_type_display', 'start_date', 'end_date', 'days', 
             'reason', 'status', 'status_display', 'submitted_at', 
             'reviewed_at', 'reviewed_by', 'notes'
@@ -270,6 +271,15 @@ class LeaveRequestSerializer(serializers.ModelSerializer):
     def get_employee_id(self, obj):
         """Get employee ID (user ID)"""
         return str(obj.user.id)
+    
+    def get_employee_role(self, obj):
+        """Get employee role"""
+        try:
+            if hasattr(obj.user, 'role') and obj.user.role:
+                return obj.user.role.role
+        except Exception:
+            pass
+        return None
 
 
 class EmployeeRemovalRequestSerializer(serializers.ModelSerializer):

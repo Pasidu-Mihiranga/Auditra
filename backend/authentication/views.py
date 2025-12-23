@@ -826,7 +826,7 @@ class CreateLeaveRequestView(APIView):
 
 
 class AllLeaveRequestsView(generics.ListAPIView):
-    """API endpoint for admin and HR staff to view all leave requests"""
+    """API endpoint for admin and HR staff to view leave requests"""
     permission_classes = (IsAuthenticated,)
     serializer_class = LeaveRequestSerializer
     
@@ -836,10 +836,18 @@ class AllLeaveRequestsView(generics.ListAPIView):
             user_role = UserRole.objects.get(user=self.request.user)
             if user_role.role not in ['admin', 'hr_staff']:
                 return LeaveRequest.objects.none()
+            
+            # If admin, only show leave requests from HR staff
+            if user_role.role == 'admin':
+                # Get all users with HR staff role
+                hr_staff_users = User.objects.filter(role__role='hr_staff')
+                # Return only leave requests from HR staff
+                return LeaveRequest.objects.filter(user__in=hr_staff_users).order_by('-submitted_at')
+            
+            # If HR staff, show all leave requests (they manage all employee leave requests)
+            return LeaveRequest.objects.all().order_by('-submitted_at')
         except UserRole.DoesNotExist:
             return LeaveRequest.objects.none()
-        
-        return LeaveRequest.objects.all()
     
     def list(self, request, *args, **kwargs):
         queryset = self.get_queryset()

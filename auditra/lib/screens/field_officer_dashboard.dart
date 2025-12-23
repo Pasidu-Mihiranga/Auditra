@@ -8,8 +8,7 @@ import '../models/project_model.dart';
 import 'login_screen.dart';
 import 'generic_dashboard.dart';
 import 'valuation_form_screen.dart';
-import 'leave_request_screen.dart';
-import 'my_leave_requests_screen.dart';
+import 'payment_slips_screen.dart';
 
 class FieldOfficerDashboard extends StatefulWidget {
   const FieldOfficerDashboard({super.key});
@@ -37,6 +36,10 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
   // Timer for countdown
   DateTime? _countdownEnd;
   Duration _remainingTime = Duration.zero;
+  
+  // Leave statistics state
+  Map<String, dynamic>? _leaveStatistics;
+  bool _isLoadingLeaveStats = false;
 
   @override
   void initState() {
@@ -627,30 +630,6 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
         centerTitle: true,
         actions: [
           IconButton(
-            icon: const Icon(Icons.list_alt, color: Colors.blue),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const MyLeaveRequestsScreen(),
-                ),
-              );
-            },
-            tooltip: 'My Leave Requests',
-          ),
-          IconButton(
-            icon: const Icon(Icons.edit_calendar, color: Colors.purple),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const LeaveRequestScreen(),
-                ),
-              );
-            },
-            tooltip: 'Leave Requests',
-          ),
-          IconButton(
             icon: const Icon(Icons.logout),
             onPressed: _logout,
             tooltip: 'Logout',
@@ -659,7 +638,7 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
         bottom: TabBar(
           controller: _tabController,
           tabs: const [
-            Tab(icon: Icon(Icons.access_time), text: 'Attendance'),
+            Tab(icon: Icon(Icons.person), text: 'Profile'),
             Tab(icon: Icon(Icons.folder), text: 'Projects'),
           ],
         ),

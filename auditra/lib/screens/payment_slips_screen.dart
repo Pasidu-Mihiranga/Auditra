@@ -16,8 +16,15 @@ import '../models/payment_slip_model.dart';
 
 class PaymentSlipsScreen extends StatefulWidget {
   final String? role;
+  final bool showAppBar;
+  final bool showOnlyOwn; // If true, show only user's own payment slips regardless of role
   
-  const PaymentSlipsScreen({super.key, this.role});
+  const PaymentSlipsScreen({
+    super.key, 
+    this.role,
+    this.showAppBar = true,
+    this.showOnlyOwn = false,
+  });
 
   @override
   State<PaymentSlipsScreen> createState() => _PaymentSlipsScreenState();
@@ -81,8 +88,9 @@ class _PaymentSlipsScreenState extends State<PaymentSlipsScreen> {
 
     try {
       // Check if user is admin or HR staff - if so, load all payment slips and separate them
+      // UNLESS showOnlyOwn is true (for Profile tab)
       final role = _userRole ?? widget.role;
-      final isAdminOrHR = role == 'admin' || role == 'hr_staff';
+      final isAdminOrHR = (role == 'admin' || role == 'hr_staff') && !widget.showOnlyOwn;
       
       if (isAdminOrHR) {
         // Load all payment slips (excluding admin's own)
@@ -185,14 +193,11 @@ class _PaymentSlipsScreenState extends State<PaymentSlipsScreen> {
   @override
   Widget build(BuildContext context) {
     final role = _userRole ?? widget.role;
-    final isAdminOrHR = role == 'admin' || role == 'hr_staff';
+    // If showOnlyOwn is true, treat as regular user (not admin/HR) to show only own slips
+    final isAdminOrHR = !widget.showOnlyOwn && (role == 'admin' || role == 'hr_staff');
+    final isHRStaff = !widget.showOnlyOwn && (role == 'hr_staff');
     
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(isAdminOrHR ? 'All Payment Slips' : 'Payment Slips'),
-        centerTitle: true,
-      ),
-      body: _isLoading
+    final body = _isLoading
           ? const Center(child: CircularProgressIndicator())
           : (isAdminOrHR 
               ? _othersPaymentSlips.isEmpty 
@@ -224,18 +229,262 @@ class _PaymentSlipsScreenState extends State<PaymentSlipsScreen> {
                 )
               : RefreshIndicator(
                   onRefresh: _loadPaymentSlips,
-                  child: isAdminOrHR
-                      ? _buildAdminView()
-                      : ListView.builder(
-                          padding: const EdgeInsets.all(16.0),
-                          itemCount: _paymentSlips.length,
-                          itemBuilder: (context, index) {
-                            final slip = _paymentSlips[index];
-                            return _buildPaymentSlipCard(slip, isAdminOrHR);
-                          },
-                        ),
+                  child: Column(
+                    children: [
+                      // Create and Upload buttons for HR staff
+                      if (isHRStaff) _buildHRStaffActionButtons(),
+                      // Payment slips list
+                      Expanded(
+                        child: isAdminOrHR
+                            ? _buildAdminView()
+                            : ListView.builder(
+                                padding: const EdgeInsets.all(16.0),
+                                itemCount: _paymentSlips.length,
+                                itemBuilder: (context, index) {
+                                  final slip = _paymentSlips[index];
+                                  return _buildPaymentSlipCard(slip, isAdminOrHR);
+                                },
+                              ),
+                      ),
+                    ],
+                  ),
+                );
+    
+    if (widget.showAppBar) {
+      return Scaffold(
+        appBar: AppBar(
+          title: Text(isAdminOrHR ? 'All Payment Slips' : 'Payment Slips'),
+          centerTitle: true,
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.refresh),
+              onPressed: _loadPaymentSlips,
+              tooltip: 'Refresh',
+            ),
+          ],
+        ),
+        body: body,
+      );
+    }
+    
+    return body;
+  }
+
+  /// Build action buttons for HR staff (Create and Upload Payment Slips)
+  Widget _buildHRStaffActionButtons() {
+    return Container(
+      padding: const EdgeInsets.all(16.0),
+      decoration: BoxDecoration(
+        color: Colors.blue[50],
+        border: Border(
+          bottom: BorderSide(color: Colors.grey[300]!, width: 1),
+        ),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: ElevatedButton.icon(
+              onPressed: _createPaymentSlips,
+              icon: const Icon(Icons.add_circle_outline, size: 20),
+              label: const Text('Create Payment Slips'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
                 ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: ElevatedButton.icon(
+              onPressed: _uploadPaymentSlips,
+              icon: const Icon(Icons.cloud_upload_outlined, size: 20),
+              label: const Text('Upload Payment Slips'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.orange,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
+  }
+
+  /// Create payment slips for all employees
+  Future<void> _createPaymentSlips() async {
+    final now = DateTime.now();
+    final currentMonth = now.month;
+    final currentYear = now.year;
+    
+    // Show confirmation dialog
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Create Payment Slips'),
+        content: Text(
+          'Generate payment slips for all employees for ${_getMonthName(currentMonth)} $currentYear.\n\nExisting payment slips for this month will be updated.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Create'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green,
+              foregroundColor: Colors.white,
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    // Show loading
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(child: CircularProgressIndicator()),
+    );
+
+    final generateResult = await ApiService.generatePaymentSlips(
+      month: currentMonth,
+      year: currentYear,
+    );
+
+    if (!mounted) return;
+    Navigator.pop(context); // Close loading dialog
+
+    if (generateResult['success']) {
+      final data = generateResult['data'];
+      final generated = data['generated_count'] ?? 0;
+      final updated = data['updated_count'] ?? 0;
+      final total = data['total_count'] ?? 0;
+      
+      String message;
+      if (total > 0) {
+        if (generated > 0 && updated > 0) {
+          message = 'Payment slips created successfully!\n$generated created, $updated updated\n(Total: $total employees)';
+        } else if (updated > 0) {
+          message = 'Payment slips updated successfully for $updated employees';
+        } else {
+          message = 'Payment slips created successfully for $generated employees';
+        }
+      } else {
+        message = data['message'] ?? 'No payment slips generated. All eligible employees may already have payment slips for this month/year.';
+      }
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: total > 0 ? Colors.green : Colors.orange,
+          duration: Duration(seconds: total > 0 ? 4 : 5),
+        ),
+      );
+      
+      // Refresh the list
+      _loadPaymentSlips();
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(generateResult['message'] ?? 'Failed to create payment slips'),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    }
+  }
+
+  String _getMonthName(int month) {
+    const monthNames = [
+      'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'
+    ];
+    return monthNames[month - 1];
+  }
+
+  /// Upload payment slips for employees to view
+  Future<void> _uploadPaymentSlips() async {
+    final now = DateTime.now();
+    final currentMonth = now.month;
+    final currentYear = now.year;
+    
+    // Show confirmation dialog
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Upload Payment Slips'),
+        content: Text(
+          'This will make payment slips visible to all employees for ${_getMonthName(currentMonth)} $currentYear.\n\nEmployees will be able to view their own payment slips after this action.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Upload'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.orange,
+              foregroundColor: Colors.white,
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    // Show loading
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(child: CircularProgressIndicator()),
+    );
+
+    final uploadResult = await ApiService.uploadPaymentSlips(
+      month: currentMonth,
+      year: currentYear,
+    );
+
+    if (!mounted) return;
+    Navigator.pop(context); // Close loading dialog
+
+    if (uploadResult['success']) {
+      final data = uploadResult['data'];
+      final uploaded = data['uploaded_count'] ?? 0;
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Payment slips uploaded successfully for $uploaded employees!'),
+          backgroundColor: Colors.green,
+          duration: const Duration(seconds: 3),
+        ),
+      );
+      
+      // Refresh the list
+      _loadPaymentSlips();
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(uploadResult['message'] ?? 'Failed to upload payment slips'),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    }
   }
 
   Widget _buildAdminView() {
@@ -254,38 +503,44 @@ class _PaymentSlipsScreenState extends State<PaymentSlipsScreen> {
       padding: const EdgeInsets.all(16.0),
       children: [
         // Search Bar
-        Container(
-          margin: const EdgeInsets.only(bottom: 16.0),
-          decoration: BoxDecoration(
-            color: Colors.grey[100],
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.grey[300]!),
-          ),
-          child: TextField(
-            controller: _searchController,
-            decoration: InputDecoration(
-              hintText: 'Search by Employee Number',
-              prefixIcon: const Icon(Icons.search, color: Colors.grey),
-              suffixIcon: _searchQuery.isNotEmpty
-                  ? IconButton(
-                      icon: const Icon(Icons.clear, color: Colors.grey),
-                      onPressed: () {
-                        _searchController.clear();
-                        setState(() {
-                          _searchQuery = '';
-                        });
-                      },
-                    )
-                  : null,
-              border: InputBorder.none,
-              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        Row(
+          children: [
+            Expanded(
+              child: Container(
+                margin: const EdgeInsets.only(bottom: 16.0),
+                decoration: BoxDecoration(
+                  color: Colors.grey[100],
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.grey[300]!),
+                ),
+                child: TextField(
+                  controller: _searchController,
+                  decoration: InputDecoration(
+                    hintText: 'Search by Employee Number',
+                    prefixIcon: const Icon(Icons.search, color: Colors.grey),
+                    suffixIcon: _searchQuery.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(Icons.clear, color: Colors.grey),
+                            onPressed: () {
+                              _searchController.clear();
+                              setState(() {
+                                _searchQuery = '';
+                              });
+                            },
+                          )
+                        : null,
+                    border: InputBorder.none,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  ),
+                  onChanged: (value) {
+                    setState(() {
+                      _searchQuery = value;
+                    });
+                  },
+                ),
+              ),
             ),
-            onChanged: (value) {
-              setState(() {
-                _searchQuery = value;
-              });
-            },
-          ),
+          ],
         ),
         
         // All Payment Slips (excluding admin's own - ensure no admin slips are displayed)
@@ -447,23 +702,22 @@ class _PaymentSlipsScreenState extends State<PaymentSlipsScreen> {
     
     return Column(
       children: [
-        // Download PDF button - Available for Admin and HR staff
-        if (isAdminOrHR)
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
-              onPressed: () => _downloadPaymentSlipPDF(slip),
-              icon: const Icon(Icons.download, size: 20),
-              label: const Text('Download PDF', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
-              style: ElevatedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                backgroundColor: Colors.green,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-              ),
+        // Download PDF button - Available for all users (same as admin dashboard)
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton.icon(
+            onPressed: () => _downloadPaymentSlipPDF(slip),
+            icon: const Icon(Icons.download, size: 20),
+            label: const Text('Download PDF', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+            style: ElevatedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              backgroundColor: Colors.green,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
             ),
           ),
-        if (isAdminOrHR) const SizedBox(height: 12),
+        ),
+        const SizedBox(height: 12),
         Row(
           children: [
             if (isAdminOrHR) ...[
@@ -848,14 +1102,14 @@ class _PaymentSlipsScreenState extends State<PaymentSlipsScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'You are requesting the removal of ${slip.userFullName} (Employee #${slip.employeeNumber ?? slip.userId}).\n\nThis request will be sent to the admin for approval. The admin will review and decide whether to approve or reject the removal.',
+                    'You are requesting the removal of ${slip.userFullName} (Employee ${slip.employeeNumber ?? slip.userId}).',
                     style: const TextStyle(fontSize: 14),
                   ),
                   const SizedBox(height: 16),
                   TextField(
                     controller: reasonController,
                     decoration: const InputDecoration(
-                      labelText: 'Reason for removal (optional)',
+                      labelText: 'Reason for removal',
                       border: OutlineInputBorder(),
                       hintText: 'Enter reason for removal request...',
                     ),

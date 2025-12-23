@@ -5,6 +5,7 @@ import 'admin_dashboard.dart';
 import 'generic_dashboard.dart';
 import 'coordinator_dashboard.dart';
 import 'field_officer_dashboard.dart';
+import 'hr_staff_dashboard.dart';
 
 class HomeScreen extends StatefulWidget {
   final String userRole;
@@ -64,6 +65,9 @@ class _HomeScreenState extends State<HomeScreen> {
           break;
         case 'field_officer':
           destination = const FieldOfficerDashboard();
+          break;
+        case 'hr_staff':
+          destination = const HRStaffDashboard();
           break;
         default:
           destination = GenericDashboard(
