@@ -105,12 +105,20 @@ class ProjectListView(generics.ListCreateAPIView):
         if not hasattr(self.request.user, 'role') or self.request.user.role.role != 'coordinator':
             raise serializers.ValidationError("Only coordinators can create projects.")
         
-        # The serializer.create() method will handle:
-        # - Creating the project
-        # - Processing client_info (check existing or create new account)
-        # - Processing agent_info (check existing or create new account)
-        # - Sending email credentials for newly created accounts
-        serializer.save(coordinator=self.request.user)
+        try:
+            # The serializer.create() method will handle:
+            # - Creating the project
+            # - Processing client_info (check existing or create new account)
+            # - Processing agent_info (check existing or create new account)
+            # - Sending email credentials for newly created accounts
+            serializer.save(coordinator=self.request.user)
+        except Exception as e:
+            # Log the error for debugging
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error creating project: {str(e)}", exc_info=True)
+            # Re-raise as ValidationError so DRF returns JSON
+            raise serializers.ValidationError(f"Error creating project: {str(e)}")
 
 
 class ProjectDetailView(generics.RetrieveUpdateDestroyAPIView):

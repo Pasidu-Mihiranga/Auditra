@@ -253,22 +253,24 @@ class ProjectCreateSerializer(serializers.ModelSerializer):
             
             # Process client information - only assign existing users
             if client_info and client_info.get('email'):
-                email = client_info.get('email').strip().lower()
-                existing_user = check_user_by_email(email)
-                
-                if existing_user:
-                    # Check if user has client role
-                    if hasattr(existing_user, 'role') and existing_user.role.role == 'client':
-                        project.assigned_client = existing_user
-                        project.save()
+                email = client_info.get('email')
+                if email:
+                    email = email.strip().lower()
+                    existing_user = check_user_by_email(email)
+                    
+                    if existing_user:
+                        # Check if user has client role
+                        if hasattr(existing_user, 'role') and existing_user.role.role == 'client':
+                            project.assigned_client = existing_user
+                            project.save()
+                        else:
+                            raise serializers.ValidationError({
+                                'client_info': f'User with email {email} exists but is not a client'
+                            })
                     else:
                         raise serializers.ValidationError({
-                            'client_info': f'User with email {email} exists but is not a client'
+                            'client_info': f'Client with email {email} does not exist. Please create the client account first.'
                         })
-                else:
-                    raise serializers.ValidationError({
-                        'client_info': f'Client with email {email} does not exist. Please create the client account first.'
-                    })
             
             # Process agent information - only assign existing users
             if agent_info and agent_info.get('email') and validated_data.get('has_agent', False):

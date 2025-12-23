@@ -1184,9 +1184,22 @@ class ApiService {
       String contentType = response.headers['content-type'] ?? '';
       if (!contentType.contains('application/json')) {
         // Server returned HTML (likely an error page)
+        // Try to extract error message from HTML or provide a more helpful message
+        String errorMsg = 'Server error. Please check if the backend server is running.';
+        if (response.statusCode == 400) {
+          errorMsg = 'Bad request. Please check your input data.';
+        } else if (response.statusCode == 401) {
+          errorMsg = 'Authentication failed. Please login again.';
+        } else if (response.statusCode == 403) {
+          errorMsg = 'Permission denied. You may not have access to create projects.';
+        } else if (response.statusCode == 500) {
+          errorMsg = 'Internal server error. Please contact support.';
+        }
+        print('DEBUG API: Non-JSON response. Status: ${response.statusCode}, Content-Type: $contentType');
+        print('DEBUG API: Response body (first 500 chars): ${response.body.length > 500 ? response.body.substring(0, 500) : response.body}');
         return {
           'success': false,
-          'message': 'Server error. Please check if the backend server is running.'
+          'message': errorMsg
         };
       }
 
