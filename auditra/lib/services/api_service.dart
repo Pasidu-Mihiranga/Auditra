@@ -1271,10 +1271,28 @@ class ApiService {
           return {'success': false, 'message': 'Failed to create project'};
         }
       } catch (e) {
-        // If JSON parsing fails, return a user-friendly error
+        // If JSON parsing fails, log the actual response for debugging
+        print('DEBUG API: JSON parsing failed. Status: ${response.statusCode}');
+        print('DEBUG API: Content-Type: ${response.headers['content-type']}');
+        print('DEBUG API: Response body (first 1000 chars): ${response.body.length > 1000 ? response.body.substring(0, 1000) : response.body}');
+        print('DEBUG API: Error: $e');
+        
+        // Try to extract error message from HTML if it's an error page
+        String errorMsg = 'Invalid response from server. Please try again.';
+        if (response.body.contains('<title>')) {
+          // Extract title from HTML error page
+          final titleMatch = RegExp(r'<title>([^<]+)</title>').firstMatch(response.body);
+          if (titleMatch != null) {
+            errorMsg = 'Server error: ${titleMatch.group(1)}';
+          }
+        } else if (response.body.isNotEmpty) {
+          // If not HTML, show first part of response
+          errorMsg = 'Server returned invalid data: ${response.body.length > 200 ? response.body.substring(0, 200) + "..." : response.body}';
+        }
+        
         return {
           'success': false,
-          'message': 'Invalid response from server. Please try again.'
+          'message': errorMsg
         };
       }
     } catch (e) {
