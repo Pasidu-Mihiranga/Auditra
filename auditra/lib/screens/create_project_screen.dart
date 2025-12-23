@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../services/api_service.dart';
+import '../models/project_model.dart';
 
 class CreateProjectScreen extends StatefulWidget {
-  const CreateProjectScreen({super.key});
+  final Project? rejectedProject; // Optional rejected project to recreate from
+  
+  const CreateProjectScreen({super.key, this.rejectedProject});
 
   @override
   State<CreateProjectScreen> createState() => _CreateProjectScreenState();
@@ -40,6 +43,8 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
   bool? _agentExists;
   String? _agentCheckMessage;
   bool _creatingAgent = false;
+  
+  bool get _isRecreating => widget.rejectedProject != null;
 
   @override
   void initState() {
@@ -48,8 +53,14 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
     clientEmailController.addListener(_onClientEmailChanged);
     agentEmailController.addListener(_onAgentEmailChanged);
     
-    // Check emails if they're already filled (e.g., when editing)
+    // Use post-frame callback to ensure controllers are ready
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      // Pre-fill all fields from rejected project if recreating
+      if (widget.rejectedProject != null) {
+        _prefillFieldsFromProject(widget.rejectedProject!);
+      }
+      
+      // Check emails if they're already filled (e.g., when editing or after prefilling)
       final clientEmail = clientEmailController.text.trim();
       if (clientEmail.isNotEmpty) {
         final emailRegex = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
@@ -74,6 +85,59 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
         }
       }
     });
+  }
+
+  void _prefillFieldsFromProject(Project project) {
+    titleController.text = project.title;
+    descriptionController.text = project.description ?? '';
+    startDate = project.startDate;
+    endDate = project.endDate;
+    _priority = project.priority ?? 'medium';
+    
+    // Pre-fill client info - try clientInfo first, then fall back to assigned client fields
+    if (project.clientInfo != null && project.clientInfo!.isNotEmpty) {
+      print('🔍 Client Info from project.clientInfo: ${project.clientInfo}');
+      final clientInfo = project.clientInfo!;
+      clientNameController.text = (clientInfo['name'] ?? clientInfo['client_name'] ?? '').toString();
+      clientEmailController.text = (clientInfo['email'] ?? clientInfo['client_email'] ?? '').toString();
+      clientPhoneController.text = (clientInfo['phone'] ?? clientInfo['client_phone'] ?? clientInfo['phone_number'] ?? '').toString();
+      clientAddressController.text = (clientInfo['address'] ?? clientInfo['client_address'] ?? '').toString();
+      clientCompanyController.text = (clientInfo['company'] ?? clientInfo['company_name'] ?? '').toString();
+      print('✅ Pre-filled client from clientInfo: ${clientNameController.text}, ${clientEmailController.text}');
+    } else if (project.assignedClientName != null || project.assignedClientEmail != null) {
+      // Fall back to assigned client fields
+      print('🔍 Using assigned client fields: name=${project.assignedClientName}, email=${project.assignedClientEmail}');
+      clientNameController.text = project.assignedClientName ?? '';
+      clientEmailController.text = project.assignedClientEmail ?? '';
+      // Phone, address, and company might not be in assigned fields, so leave them empty
+      print('✅ Pre-filled client from assigned fields: ${clientNameController.text}, ${clientEmailController.text}');
+    } else {
+      print('⚠️ No client info found in project (clientInfo: ${project.clientInfo}, assignedClientName: ${project.assignedClientName})');
+    }
+    
+    // Pre-fill agent info
+    if (project.agentInfo != null && project.agentInfo!.isNotEmpty) {
+      print('🔍 Agent Info from project: ${project.agentInfo}');
+      final agentInfo = project.agentInfo!;
+      hasAgent = true;
+      agentNameController.text = (agentInfo['name'] ?? agentInfo['agent_name'] ?? '').toString();
+      agentEmailController.text = (agentInfo['email'] ?? agentInfo['agent_email'] ?? '').toString();
+      agentPhoneController.text = (agentInfo['phone'] ?? agentInfo['agent_phone'] ?? agentInfo['phone_number'] ?? '').toString();
+      agentAddressController.text = (agentInfo['address'] ?? agentInfo['agent_address'] ?? '').toString();
+      agentLicenseController.text = (agentInfo['license_number'] ?? agentInfo['license'] ?? '').toString();
+      print('✅ Pre-filled agent: ${agentNameController.text}, ${agentEmailController.text}');
+    } else if (project.assignedAgentName != null || project.assignedAgentEmail != null) {
+      // Fall back to assigned agent fields
+      print('🔍 Using assigned agent fields: name=${project.assignedAgentName}, email=${project.assignedAgentEmail}');
+      hasAgent = true;
+      agentNameController.text = project.assignedAgentName ?? '';
+      agentEmailController.text = project.assignedAgentEmail ?? '';
+      print('✅ Pre-filled agent from assigned fields: ${agentNameController.text}, ${agentEmailController.text}');
+    }
+    
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   @override
@@ -915,7 +979,7 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
     final isSelected = _priority == value;
     return Expanded(
       child: InkWell(
-        onTap: () => setState(() => _priority = value),
+        onTap: _isRecreating ? null : () => setState(() => _priority = value),
         borderRadius: BorderRadius.circular(12),
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
@@ -958,12 +1022,12 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
     required bool isRequired,
   }) {
     return InkWell(
-      onTap: onTap,
+      onTap: _isRecreating ? null : onTap,
       borderRadius: BorderRadius.circular(12),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
         decoration: BoxDecoration(
-          color: Colors.grey[50],
+          color: _isRecreating ? Colors.grey[100] : Colors.grey[50],
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
             color: isRequired && date == null ? Colors.red[300]! : Colors.grey[300]!,
@@ -992,14 +1056,14 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
                         : 'Select date',
                     style: TextStyle(
                       fontSize: 16,
-                      color: date != null ? Colors.black87 : Colors.grey[400],
+                      color: _isRecreating ? Colors.grey[600] : (date != null ? Colors.black87 : Colors.grey[400]),
                       fontWeight: date != null ? FontWeight.w500 : FontWeight.normal,
                     ),
                   ),
                 ],
               ),
             ),
-            Icon(Icons.calendar_today, color: Colors.grey[600], size: 20),
+            Icon(Icons.calendar_today, color: _isRecreating ? Colors.grey[400] : Colors.grey[600], size: 20),
           ],
         ),
       ),
@@ -1044,10 +1108,10 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
                     child: const Icon(Icons.create_new_folder, color: Colors.white, size: 24),
                   ),
                   const SizedBox(width: 16),
-                  const Expanded(
+                  Expanded(
                     child: Text(
-                      'Create New Project',
-                      style: TextStyle(
+                      _isRecreating ? 'Recreate Project' : 'Create New Project',
+                      style: const TextStyle(
                         color: Colors.white,
                         fontSize: 24,
                         fontWeight: FontWeight.bold,
@@ -1240,6 +1304,7 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
                                 hintText: 'Enter client name *',
                                 icon: Icons.person_outline_rounded,
                               ),
+                              readOnly: _isRecreating,
                               validator: (value) {
                                 if (value == null || value.trim().isEmpty) {
                                   return 'Client name is required';
@@ -1257,6 +1322,7 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
                                 icon: Icons.email_outlined,
                               ),
                               keyboardType: TextInputType.emailAddress,
+                              readOnly: _isRecreating,
                               onChanged: (value) {
                                 setState(() {}); // Trigger rebuild to show/hide status widget
                                 _onClientEmailChanged(); // Trigger email check
@@ -1295,6 +1361,7 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
                                 icon: Icons.phone_outlined,
                               ),
                               keyboardType: TextInputType.phone,
+                              readOnly: _isRecreating,
                             ),
                             // Client email status and create button
                             const SizedBox(height: 12),
@@ -1308,6 +1375,7 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
                                 icon: Icons.location_on_outlined,
                               ),
                               maxLines: 2,
+                              readOnly: _isRecreating,
                             ),
                             const SizedBox(height: 16),
                             TextFormField(
@@ -1317,6 +1385,7 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
                                 hintText: 'Company name (optional)',
                                 icon: Icons.business_outlined,
                               ),
+                              readOnly: _isRecreating,
                             ),
                           ],
                         ),
@@ -1344,7 +1413,7 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
                                   ),
                                   Switch(
                                     value: hasAgent,
-                                    onChanged: (value) {
+                                    onChanged: _isRecreating ? null : (value) {
                                       setState(() {
                                         hasAgent = value;
                                         if (!value) {
@@ -1378,6 +1447,7 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
                                     hintText: 'Enter agent name *',
                                     icon: Icons.badge_outlined,
                                   ),
+                                  readOnly: _isRecreating,
                                   validator: (value) {
                                     if (hasAgent && (value == null || value.trim().isEmpty)) {
                                       return 'Agent name is required';
@@ -1395,6 +1465,7 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
                                     icon: Icons.email_outlined,
                                   ),
                                   keyboardType: TextInputType.emailAddress,
+                                  readOnly: _isRecreating,
                                   onChanged: (value) {
                                     setState(() {}); // Trigger rebuild to show/hide status widget
                                     _onAgentEmailChanged(); // Trigger email check
@@ -1437,6 +1508,7 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
                                     icon: Icons.phone_outlined,
                                   ),
                                   keyboardType: TextInputType.phone,
+                                  readOnly: _isRecreating,
                                 ),
                                 // Agent email status and create button
                                 if (hasAgent) ...[
@@ -1452,6 +1524,7 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
                                     icon: Icons.location_on_outlined,
                                   ),
                                   maxLines: 2,
+                                  readOnly: _isRecreating,
                                 ),
                                 const SizedBox(height: 16),
                                 TextFormField(
@@ -1461,6 +1534,7 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
                                     hintText: 'Agent license number (optional)',
                                     icon: Icons.verified_outlined,
                                   ),
+                                  readOnly: _isRecreating,
                                 ),
                               ],
                             ],

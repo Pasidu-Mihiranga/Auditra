@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:fl_chart/fl_chart.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:printing/printing.dart';
 import 'dart:math' as math;
 import '../services/api_service.dart';
+import '../services/pdf_service.dart';
 import '../models/attendance_model.dart';
 import '../models/project_model.dart';
+import '../models/valuation_model.dart';
 import 'login_screen.dart';
 
 class GenericDashboard extends StatefulWidget {
@@ -38,6 +42,7 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
   
   late TabController _periodTabController;
   TabController? _mainTabController; // For Attendance/Projects tabs
+  TabController? _projectStatusTabController; // For project status tabs (senior valuer only)
   
   // Project state (for roles that can view projects)
   List<Project> _projects = [];
@@ -55,7 +60,8 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
     return widget.role == 'client' || 
            widget.role == 'agent' || 
            widget.role == 'accessor' || 
-           widget.role == 'senior_valuer';
+           widget.role == 'senior_valuer' ||
+           widget.role == 'md_gm';
   }
 
   // Check if this role should see attendance tab (clients don't see attendance)
@@ -89,10 +95,22 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
           setState(() {});
         }
       });
+<<<<<<< HEAD
     }
     
     // Load projects for roles that should see projects
     if (_shouldShowProjects) {
+=======
+      // Initialize project status tab controller for senior valuer
+      if (widget.role == 'senior_valuer') {
+        _projectStatusTabController = TabController(length: 4, vsync: this);
+        _projectStatusTabController!.addListener(() {
+          if (!_projectStatusTabController!.indexIsChanging && mounted) {
+            setState(() {});
+          }
+        });
+      }
+>>>>>>> branch-Kavinu
       _loadProjects();
     }
     
@@ -109,6 +127,7 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
   void dispose() {
     _periodTabController.dispose();
     _mainTabController?.dispose();
+    _projectStatusTabController?.dispose();
     super.dispose();
   }
   
@@ -684,6 +703,40 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
   
   // Project viewing methods (for client, agent, accessor, senior valuer)
   Widget _buildProjectsTab() {
+    // For senior valuer, show status tabs
+    if (widget.role == 'senior_valuer' && _projectStatusTabController != null) {
+      return Column(
+        children: [
+          TabBar(
+            controller: _projectStatusTabController,
+            tabs: const [
+              Tab(text: 'Pending'),
+              Tab(text: 'In Progress'),
+              Tab(text: 'Completed'),
+              Tab(text: 'Cancelled'),
+            ],
+          ),
+          Expanded(
+            child: RefreshIndicator(
+              onRefresh: _loadProjects,
+              child: _isLoadingProjects
+                  ? const Center(child: CircularProgressIndicator())
+                  : TabBarView(
+                      controller: _projectStatusTabController,
+                      children: [
+                        _buildProjectListByStatus('pending'),
+                        _buildProjectListByStatus('in_progress'),
+                        _buildProjectListByStatus('completed'),
+                        _buildProjectListByStatus('cancelled'),
+                      ],
+                    ),
+            ),
+          ),
+        ],
+      );
+    }
+    
+    // For other roles, show all projects without tabs
     return RefreshIndicator(
       onRefresh: _loadProjects,
       child: _isLoadingProjects
@@ -718,6 +771,45 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
     );
   }
 
+  Widget _buildProjectListByStatus(String status) {
+    List<Project> filteredProjects;
+    
+    if (status == 'cancelled') {
+      // For cancelled tab, include both cancelled projects and rejected projects
+      filteredProjects = _projects.where((p) {
+        return p.status.toLowerCase() == 'cancelled' || 
+               p.mdGmApprovalStatus == 'rejected';
+      }).toList();
+    } else {
+      filteredProjects = _projects.where((p) => p.status.toLowerCase() == status).toList();
+    }
+    
+    if (filteredProjects.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.folder_open, size: 64, color: Colors.grey[400]),
+            const SizedBox(height: 16),
+            Text(
+              'No ${status.replaceAll('_', ' ')} projects',
+              style: TextStyle(fontSize: 18, color: Colors.grey[600]),
+            ),
+          ],
+        ),
+      );
+    }
+    
+    return ListView.builder(
+      padding: const EdgeInsets.all(16),
+      itemCount: filteredProjects.length,
+      itemBuilder: (context, index) {
+        final project = filteredProjects[index];
+        return _buildProjectCard(project);
+      },
+    );
+  }
+
   Widget _buildProjectCard(Project project) {
     final priority = project.priority ?? 'medium';
     return Stack(
@@ -736,6 +828,103 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const SizedBox(height: 20), // Space for priority label
+                  // Show MD/GM approval/rejection status (for MD/GM, senior valuer and assessor)
+                  if (widget.role == 'md_gm' || widget.role == 'senior_valuer' || widget.role == 'accessor') ...[
+                    if (project.mdGmApprovalStatus == 'approved') ...[
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        margin: const EdgeInsets.only(bottom: 12),
+                        decoration: BoxDecoration(
+                          color: Colors.green[50],
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.green[200]!),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(Icons.check_circle, color: Colors.green[700], size: 20),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                widget.role == 'md_gm' ? 'Project Approved' : 'Project Approved by MD/GM',
+                                style: TextStyle(
+                                  color: Colors.green[900],
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ] else if (project.mdGmApprovalStatus == 'rejected') ...[
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        margin: const EdgeInsets.only(bottom: 12),
+                        decoration: BoxDecoration(
+                          color: Colors.red[50],
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.red[200]!),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Icon(Icons.cancel, color: Colors.red[700], size: 20),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    widget.role == 'md_gm' ? 'Project Rejected' : 'Project Rejected by MD/GM',
+                                    style: TextStyle(
+                                      color: Colors.red[900],
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            if (project.mdGmRejectionReason != null && project.mdGmRejectionReason!.isNotEmpty) ...[
+                              const SizedBox(height: 8),
+                              Text(
+                                'Reason: ${project.mdGmRejectionReason}',
+                                style: TextStyle(
+                                  color: Colors.red[800],
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ] else if (widget.role == 'md_gm' && project.mdGmApprovalStatus == 'pending') ...[
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        margin: const EdgeInsets.only(bottom: 12),
+                        decoration: BoxDecoration(
+                          color: Colors.orange[50],
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.orange[200]!),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(Icons.pending, color: Colors.orange[700], size: 20),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Pending Approval',
+                                style: TextStyle(
+                                  color: Colors.orange[900],
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ],
                   Row(
                     children: [
                       Expanded(
@@ -898,6 +1087,18 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
   }
 
   Future<void> _viewProjectDetails(Project project) async {
+    // For senior valuer, show reviewed valuations
+    if (widget.role == 'senior_valuer') {
+      await _showSeniorValuerProjectDetails(project);
+      return;
+    }
+    
+    // For MD/GM, show all valuation reports
+    if (widget.role == 'md_gm') {
+      await _showMDGMProjectDetails(project);
+      return;
+    }
+    
     await showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -963,6 +1164,848 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
         ],
       ),
     );
+  }
+
+  Future<void> _showSeniorValuerProjectDetails(Project project) async {
+    // Load reviewed valuations for this project
+    final result = await ApiService.getReviewedValuationsForSeniorValuer(projectId: project.id);
+    List<Valuation> reviewedValuations = [];
+    
+    if (result['success'] && result['data'] != null) {
+      final valuationsList = result['data'] as List<dynamic>;
+      reviewedValuations = valuationsList
+          .map((v) => Valuation.fromJson(v))
+          .toList();
+    }
+    
+    if (!mounted) return;
+    
+    await showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(project.title),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (project.description != null) ...[
+                const Text(
+                  'Description:',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 4),
+                Text(project.description!),
+                const SizedBox(height: 16),
+              ],
+              const Divider(),
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.blue[50],
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.blue[200]!),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.info_outline, color: Colors.blue[700], size: 20),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'These valuations have been approved by the Assessor and are pending your final approval.',
+                        style: TextStyle(
+                          color: Colors.blue[900],
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                'Reviewed Valuations (Pending Your Approval):',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              ),
+              const SizedBox(height: 12),
+              if (reviewedValuations.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.all(16.0),
+                  child: Center(
+                    child: Text(
+                      'No reviewed valuations available',
+                      style: TextStyle(color: Colors.grey),
+                    ),
+                  ),
+                )
+              else
+                ...reviewedValuations.map((valuation) => Card(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      child: ListTile(
+                        title: Text(valuation.categoryDisplay),
+                        subtitle: Text(
+                          'Field Officer: ${valuation.fieldOfficerName ?? valuation.fieldOfficerUsername}\n'
+                          'Status: ${valuation.statusDisplay}',
+                        ),
+                        trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                        onTap: () {
+                          Navigator.of(context).pop();
+                          _viewValuationPDFAndApprove(valuation, project);
+                        },
+                      ),
+                    )),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showMDGMProjectDetails(Project project) async {
+    // Get all valuations from the project (already loaded)
+    final valuations = project.valuations;
+    
+    if (!mounted) return;
+    
+    await showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(project.title),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (project.description != null) ...[
+                const Text(
+                  'Description:',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 4),
+                Text(project.description!),
+                const SizedBox(height: 16),
+              ],
+              const Divider(),
+              const SizedBox(height: 8),
+              // Show approval status if already approved/rejected
+              if (project.mdGmApprovalStatus == 'approved')
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.green[50],
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.green[200]!),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.check_circle, color: Colors.green[700], size: 20),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Project has been approved by MD/GM.',
+                          style: TextStyle(
+                            color: Colors.green[900],
+                            fontSize: 13,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                )
+              else if (project.mdGmApprovalStatus == 'rejected')
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.red[50],
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.red[200]!),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(Icons.cancel, color: Colors.red[700], size: 20),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Project has been rejected by MD/GM.',
+                              style: TextStyle(
+                                color: Colors.red[900],
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (project.mdGmRejectionReason != null && project.mdGmRejectionReason!.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          'Reason: ${project.mdGmRejectionReason}',
+                          style: TextStyle(
+                            color: Colors.red[900],
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                )
+              else
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.blue[50],
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.blue[200]!),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.info_outline, color: Colors.blue[700], size: 20),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'All valuation reports for this project are shown below. All reports have been approved by the Senior Valuer. Please review and approve or reject the project.',
+                          style: TextStyle(
+                            color: Colors.blue[900],
+                            fontSize: 13,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              const SizedBox(height: 12),
+              Text(
+                'Valuation Reports (${valuations.length}):',
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              ),
+              const SizedBox(height: 12),
+              if (valuations.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.all(16.0),
+                  child: Center(
+                    child: Text(
+                      'No valuation reports available',
+                      style: TextStyle(color: Colors.grey),
+                    ),
+                  ),
+                )
+              else
+                ...valuations.map((valuation) => Card(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      child: ListTile(
+                        title: Text(valuation.categoryDisplay),
+                        subtitle: Text(
+                          'Field Officer: ${valuation.fieldOfficerName ?? valuation.fieldOfficerUsername}\n'
+                          'Status: ${valuation.statusDisplay}\n'
+                          'Created: ${DateFormat('yyyy-MM-dd').format(valuation.createdAt)}',
+                        ),
+                        trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                        onTap: () {
+                          Navigator.of(context).pop();
+                          _viewValuationPDFForMDGM(valuation, project);
+                        },
+                      ),
+                    )),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Close'),
+          ),
+          // Show approve/reject buttons only if not already approved/rejected
+          if (project.mdGmApprovalStatus != 'approved' && project.mdGmApprovalStatus != 'rejected') ...[
+            ElevatedButton(
+              onPressed: () async {
+                Navigator.of(context).pop();
+                await _rejectProjectByMDGM(project);
+              },
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+              child: const Text('Reject'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                Navigator.of(context).pop();
+                await _approveProjectByMDGM(project);
+              },
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+              child: const Text('Approve'),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Future<void> _approveProjectByMDGM(Project project) async {
+    // Show confirmation
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Approve Project'),
+        content: Text('Are you sure you want to approve the project "${project.title}"?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+            child: const Text('Approve'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    // Show loading
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(child: CircularProgressIndicator()),
+    );
+
+    final result = await ApiService.approveProjectByMDGM(project.id);
+
+    if (!mounted) return;
+    Navigator.of(context).pop(); // Close loading
+
+    if (result['success']) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(result['message'] ?? 'Project approved successfully'),
+          backgroundColor: Colors.green,
+        ),
+      );
+      _loadProjects();
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(result['message'] ?? 'Failed to approve project'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  Future<void> _rejectProjectByMDGM(Project project) async {
+    final reasonController = TextEditingController();
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Reject Project'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Are you sure you want to reject the project "${project.title}"?'),
+              const SizedBox(height: 16),
+              const Text(
+                'Rejection Reason:',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: reasonController,
+                decoration: const InputDecoration(
+                  labelText: 'Rejection Reason',
+                  hintText: 'Enter reason for rejection...',
+                  border: OutlineInputBorder(),
+                ),
+                maxLines: 3,
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              if (reasonController.text.trim().isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Please provide a rejection reason'),
+                    backgroundColor: Colors.orange,
+                  ),
+                );
+                return;
+              }
+              Navigator.of(context).pop(true);
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Reject'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    final rejectionReason = reasonController.text.trim();
+    if (rejectionReason.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Rejection reason is required'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    // Show loading
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(child: CircularProgressIndicator()),
+    );
+
+    final result = await ApiService.rejectProjectByMDGM(
+      projectId: project.id,
+      rejectionReason: rejectionReason,
+    );
+
+    if (!mounted) return;
+    Navigator.of(context).pop(); // Close loading
+
+    if (result['success']) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(result['message'] ?? 'Project rejected successfully'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      _loadProjects();
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(result['message'] ?? 'Failed to reject project'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  Future<void> _viewValuationPDFForMDGM(Valuation valuation, Project project) async {
+    // Show loading while generating PDF
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(
+        child: Card(
+          child: Padding(
+            padding: EdgeInsets.all(20.0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularProgressIndicator(),
+                SizedBox(height: 16),
+                Text('Generating PDF report...'),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+
+    try {
+      // Generate PDF
+      final pdfFile = await PdfService.generateValuationReport(
+        valuation: valuation,
+        project: project,
+      );
+
+      // Close loading dialog
+      if (!mounted) return;
+      Navigator.of(context).pop();
+
+      // Show PDF viewer (read-only for MD/GM)
+      if (!mounted) return;
+      await showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text('${valuation.categoryDisplay} Valuation Report'),
+          content: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.green[50],
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.green[200]!),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.info_outline, color: Colors.green[700], size: 20),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'This valuation report has been approved by the Senior Valuer.',
+                          style: TextStyle(
+                            color: Colors.green[900],
+                            fontSize: 13,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: () async {
+                      // View PDF using printing package
+                      final bytes = await pdfFile.readAsBytes();
+                      await Printing.layoutPdf(
+                        onLayout: (format) async => bytes,
+                      );
+                    },
+                    icon: const Icon(Icons.picture_as_pdf),
+                    label: const Text('View PDF Report'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue[700],
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                const Divider(),
+                const SizedBox(height: 16),
+                Text(
+                  'Report Details:',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                ),
+                const SizedBox(height: 8),
+                _buildReportDetailRow('Status', valuation.statusDisplay),
+                _buildReportDetailRow('Field Officer', valuation.fieldOfficerName ?? valuation.fieldOfficerUsername),
+                _buildReportDetailRow('Category', valuation.categoryDisplay),
+                _buildReportDetailRow('Created', DateFormat('yyyy-MM-dd HH:mm').format(valuation.createdAt)),
+                if (valuation.updatedAt != valuation.createdAt)
+                  _buildReportDetailRow('Last Updated', DateFormat('yyyy-MM-dd HH:mm').format(valuation.updatedAt)),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Close'),
+            ),
+          ],
+        ),
+      );
+    } catch (e) {
+      // Close loading dialog if still open
+      if (mounted) {
+        Navigator.of(context).pop();
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error generating PDF: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Widget _buildReportDetailRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4.0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 100,
+            child: Text(
+              '$label:',
+              style: TextStyle(
+                fontWeight: FontWeight.w500,
+                color: Colors.grey[700],
+                fontSize: 13,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(fontSize: 13),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _viewValuationPDFAndApprove(Valuation valuation, Project project) async {
+    // Show loading while generating PDF
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(
+        child: Card(
+          child: Padding(
+            padding: EdgeInsets.all(20.0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularProgressIndicator(),
+                SizedBox(height: 16),
+                Text('Generating PDF report...'),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+
+    try {
+      // Generate PDF
+      final pdfFile = await PdfService.generateValuationReport(
+        valuation: valuation,
+        project: project,
+      );
+
+      // Close loading dialog
+      if (!mounted) return;
+      Navigator.of(context).pop();
+
+      // Show PDF viewer with Accept/Reject buttons
+      final rejectionReasonController = TextEditingController();
+      
+      if (!mounted) return;
+      await showDialog(
+        context: context,
+        builder: (context) => StatefulBuilder(
+          builder: (context, setDialogState) => AlertDialog(
+            title: Text('${valuation.categoryDisplay} Valuation Report'),
+            content: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.blue[50],
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.blue[200]!),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.info_outline, color: Colors.blue[700], size: 20),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Please review the PDF report and approve or reject the valuation.',
+                            style: TextStyle(
+                              color: Colors.blue[900],
+                              fontSize: 13,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: () async {
+                        // View PDF using printing package
+                        final bytes = await pdfFile.readAsBytes();
+                        await Printing.layoutPdf(
+                          onLayout: (format) async => bytes,
+                        );
+                      },
+                      icon: const Icon(Icons.picture_as_pdf),
+                      label: const Text('View PDF Report'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.blue[700],
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  const Divider(),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Rejection Reason (if rejecting):',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: rejectionReasonController,
+                    decoration: const InputDecoration(
+                      labelText: 'Rejection Reason',
+                      hintText: 'Enter reason for rejection (required if rejecting)...',
+                      border: OutlineInputBorder(),
+                    ),
+                    maxLines: 3,
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton(
+                onPressed: () async {
+                  final rejectionReason = rejectionReasonController.text.trim();
+                  if (rejectionReason.isEmpty) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Please provide a rejection reason'),
+                        backgroundColor: Colors.orange,
+                      ),
+                    );
+                    return;
+                  }
+
+                  // Show loading
+                  if (!mounted) return;
+                  showDialog(
+                    context: context,
+                    barrierDismissible: false,
+                    builder: (context) => const Center(child: CircularProgressIndicator()),
+                  );
+
+                  final result = await ApiService.rejectValuationBySeniorValuer(
+                    valuationId: valuation.id,
+                    rejectionReason: rejectionReason,
+                  );
+
+                  if (!mounted) return;
+                  Navigator.of(context).pop(); // Close loading
+                  Navigator.of(context).pop(); // Close dialog
+
+                  if (result['success']) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Valuation rejected successfully'),
+                        backgroundColor: Colors.orange,
+                      ),
+                    );
+                    _loadProjects();
+                  } else {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(result['message'] ?? 'Failed to reject valuation'),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                  }
+                },
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                child: const Text('Reject'),
+              ),
+              ElevatedButton(
+                onPressed: () async {
+                  // Show confirmation
+                  final confirm = await showDialog<bool>(
+                    context: context,
+                    builder: (context) => AlertDialog(
+                      title: const Text('Approve Valuation'),
+                      content: Text('Are you sure you want to approve this ${valuation.categoryDisplay} valuation?'),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.of(context).pop(false),
+                          child: const Text('Cancel'),
+                        ),
+                        ElevatedButton(
+                          onPressed: () => Navigator.of(context).pop(true),
+                          style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+                          child: const Text('Approve'),
+                        ),
+                      ],
+                    ),
+                  );
+
+                  if (confirm != true) return;
+
+                  // Show loading
+                  if (!mounted) return;
+                  showDialog(
+                    context: context,
+                    barrierDismissible: false,
+                    builder: (context) => const Center(child: CircularProgressIndicator()),
+                  );
+
+                  final result = await ApiService.approveValuationBySeniorValuer(valuation.id);
+
+                  if (!mounted) return;
+                  Navigator.of(context).pop(); // Close loading
+                  Navigator.of(context).pop(); // Close dialog
+
+                  if (result['success']) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Valuation approved successfully'),
+                        backgroundColor: Colors.green,
+                      ),
+                    );
+                    _loadProjects();
+                  } else {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(result['message'] ?? 'Failed to approve valuation'),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                  }
+                },
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+                child: const Text('Accept'),
+              ),
+            ],
+          ),
+        ),
+      );
+    } catch (e) {
+      // Close loading dialog if still open
+      if (mounted) {
+        Navigator.of(context).pop();
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error generating PDF: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   Widget _buildTodayAttendanceCard() {
@@ -2409,6 +3452,511 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
         );
       },
     );
+  }
+
+  Widget _buildHistoryTab() {
+    // Get all valuations from all projects
+    List<Valuation> allValuations = [];
+    for (var project in _projects) {
+      allValuations.addAll(project.valuations);
+    }
+    
+    // Sort by date (newest first)
+    allValuations.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    
+    return RefreshIndicator(
+      onRefresh: _loadProjects,
+      child: allValuations.isEmpty
+          ? Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.history, size: 64, color: Colors.grey[400]),
+                  const SizedBox(height: 16),
+                  Text(
+                    'No valuation history yet',
+                    style: TextStyle(
+                      fontSize: 18,
+                      color: Colors.grey[600],
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'All received valuations will appear here',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.grey[500],
+                    ),
+                  ),
+                ],
+              ),
+            )
+          : ListView.builder(
+              padding: const EdgeInsets.all(16),
+              itemCount: allValuations.length,
+              itemBuilder: (context, index) {
+                final valuation = allValuations[index];
+                final project = _projects.firstWhere(
+                  (p) => p.id == valuation.projectId,
+                  orElse: () => _projects.first,
+                );
+                return _buildHistoryValuationCard(valuation, project);
+              },
+            ),
+    );
+  }
+
+  Widget _buildHistoryValuationCard(Valuation valuation, Project project) {
+    Color statusColor;
+    IconData statusIcon;
+    String statusText;
+    
+    switch (valuation.status) {
+      case 'approved':
+        statusColor = Colors.green;
+        statusIcon = Icons.check_circle;
+        statusText = 'Approved';
+        break;
+      case 'reviewed':
+        statusColor = Colors.blue;
+        statusIcon = Icons.visibility;
+        statusText = 'Reviewed (Pending Approval)';
+        break;
+      case 'rejected':
+        statusColor = Colors.red;
+        statusIcon = Icons.cancel;
+        statusText = 'Rejected';
+        break;
+      case 'submitted':
+        statusColor = Colors.orange;
+        statusIcon = Icons.send;
+        statusText = 'Submitted';
+        break;
+      case 'draft':
+        statusColor = Colors.grey;
+        statusIcon = Icons.edit;
+        statusText = 'Draft';
+        break;
+      default:
+        statusColor = Colors.grey;
+        statusIcon = Icons.description;
+        statusText = valuation.statusDisplay;
+    }
+    
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: InkWell(
+        onTap: () => _viewHistoryValuationDetails(valuation, project),
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: statusColor.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Icon(statusIcon, color: statusColor, size: 24),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          project.title,
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          valuation.categoryDisplay,
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Colors.grey[700],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: statusColor.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: statusColor.withOpacity(0.3)),
+                    ),
+                    child: Text(
+                      statusText,
+                      style: TextStyle(
+                        color: _getShadeColor(statusColor, 700),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              if (valuation.rejectionReason != null && valuation.rejectionReason!.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.red[50],
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.red[200]!),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(Icons.info_outline, color: Colors.red[700], size: 18),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Rejection Reason: ${valuation.rejectionReason}',
+                          style: TextStyle(
+                            color: Colors.red[900],
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Icon(Icons.calendar_today, size: 14, color: Colors.grey[600]),
+                  const SizedBox(width: 6),
+                  Text(
+                    'Created: ${DateFormat('MMM dd, yyyy').format(valuation.createdAt)}',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                  if (valuation.submittedAt != null) ...[
+                    const SizedBox(width: 16),
+                    Icon(Icons.send, size: 14, color: Colors.grey[600]),
+                    const SizedBox(width: 6),
+                    Text(
+                      'Submitted: ${DateFormat('MMM dd, yyyy').format(valuation.submittedAt!)}',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey[600],
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _viewHistoryValuationDetails(Valuation valuation, Project project) async {
+    // Fetch fresh project data
+    final projectResult = await ApiService.getProject(project.id);
+    Project? updatedProject = project;
+    
+    if (projectResult['success'] && projectResult['data'] != null) {
+      try {
+        updatedProject = Project.fromJson(projectResult['data']);
+      } catch (e) {
+        print('Error parsing updated project: $e');
+      }
+    }
+    
+    final finalProject = updatedProject ?? project;
+    final updatedValuation = finalProject.valuations.firstWhere(
+      (v) => v.id == valuation.id,
+      orElse: () => valuation,
+    );
+    
+    await showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        child: Container(
+          width: MediaQuery.of(context).size.width * 0.9,
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(context).size.height * 0.8,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Header
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: Colors.blue[50],
+                  borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(20),
+                    topRight: Radius.circular(20),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.blue[100],
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(Icons.description, color: Colors.blue, size: 24),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            finalProject.title,
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            updatedValuation.categoryDisplay,
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.grey[700],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      icon: const Icon(Icons.close),
+                    ),
+                  ],
+                ),
+              ),
+              // Content
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Status
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: _getValuationStatusColor(updatedValuation.status).withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: _getValuationStatusColor(updatedValuation.status).withOpacity(0.3),
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              _getStatusIcon(updatedValuation.status),
+                              color: _getValuationStatusColor(updatedValuation.status),
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              'Status: ${updatedValuation.statusDisplay}',
+                              style: TextStyle(
+                                color: _getValuationStatusColor(updatedValuation.status),
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      // Description
+                      if (updatedValuation.description != null && updatedValuation.description!.isNotEmpty) ...[
+                        const Text(
+                          'Description:',
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(updatedValuation.description!),
+                        const SizedBox(height: 16),
+                      ],
+                      // Estimated Value
+                      if (updatedValuation.estimatedValue != null) ...[
+                        const Text(
+                          'Estimated Value:',
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Rs. ${NumberFormat('#,##0.00').format(updatedValuation.estimatedValue)}',
+                          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                        ),
+                        const SizedBox(height: 16),
+                      ],
+                      // Rejection Reason
+                      if (updatedValuation.rejectionReason != null && updatedValuation.rejectionReason!.isNotEmpty) ...[
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.red[50],
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.red[200]!),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Rejection Reason:',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.red,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(updatedValuation.rejectionReason!),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                      ],
+                      // Dates
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'Created:',
+                                  style: TextStyle(fontSize: 12, color: Colors.grey),
+                                ),
+                                Text(
+                                  DateFormat('MMM dd, yyyy').format(updatedValuation.createdAt),
+                                  style: const TextStyle(fontWeight: FontWeight.w500),
+                                ),
+                              ],
+                            ),
+                          ),
+                          if (updatedValuation.submittedAt != null)
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text(
+                                    'Submitted:',
+                                    style: TextStyle(fontSize: 12, color: Colors.grey),
+                                  ),
+                                  Text(
+                                    DateFormat('MMM dd, yyyy').format(updatedValuation.submittedAt!),
+                                    style: const TextStyle(fontWeight: FontWeight.w500),
+                                  ),
+                                ],
+                              ),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      // View PDF Button (view-only, no accept/reject)
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
+                          onPressed: () async {
+                            Navigator.of(context).pop();
+                            await _viewValuationPDF(updatedValuation, finalProject);
+                          },
+                          icon: const Icon(Icons.picture_as_pdf),
+                          label: const Text('View PDF Report'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.blue[700],
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  IconData _getStatusIcon(String status) {
+    switch (status) {
+      case 'approved':
+        return Icons.check_circle;
+      case 'reviewed':
+        return Icons.visibility;
+      case 'rejected':
+        return Icons.cancel;
+      case 'submitted':
+        return Icons.send;
+      case 'draft':
+        return Icons.edit;
+      default:
+        return Icons.description;
+    }
+  }
+
+  Color _getValuationStatusColor(String status) {
+    switch (status) {
+      case 'draft':
+        return Colors.grey[600]!;
+      case 'submitted':
+        return Colors.blue[600]!;
+      case 'reviewed':
+        return Colors.purple[600]!;
+      case 'approved':
+        return Colors.green[600]!;
+      case 'rejected':
+        return Colors.red[600]!;
+      default:
+        return Colors.grey[400]!;
+    }
+  }
+
+  Future<void> _viewValuationPDF(Valuation valuation, Project project) async {
+    try {
+      final pdfFile = await PdfService.generateValuationReport(
+        valuation: valuation,
+        project: project,
+      );
+      await PdfService.saveAndOpenPdf(pdfFile);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error viewing PDF: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Color _getShadeColor(Color color, int shade) {
+    if (color == Colors.green) return Colors.green[shade]!;
+    if (color == Colors.blue) return Colors.blue[shade]!;
+    if (color == Colors.red) return Colors.red[shade]!;
+    if (color == Colors.orange) return Colors.orange[shade]!;
+    if (color == Colors.grey) return Colors.grey[shade]!;
+    return color;
   }
 }
 

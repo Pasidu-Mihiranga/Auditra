@@ -40,6 +40,11 @@ class Project {
   final int documentsCount;
   final List<Valuation> valuations;
   final int valuationsCount;
+  final String? mdGmApprovalStatus;
+  final String? mdGmApprovalStatusDisplay;
+  final String? mdGmRejectionReason;
+  final DateTime? mdGmApprovedAt;
+  final DateTime? mdGmRejectedAt;
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -83,6 +88,11 @@ class Project {
     required this.documentsCount,
     required this.valuations,
     required this.valuationsCount,
+    this.mdGmApprovalStatus,
+    this.mdGmApprovalStatusDisplay,
+    this.mdGmRejectionReason,
+    this.mdGmApprovedAt,
+    this.mdGmRejectedAt,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -171,6 +181,11 @@ class Project {
       documentsCount: parseIntSafely(json['documents_count']) ?? 0,
       valuations: valuations,
       valuationsCount: parseIntSafely(json['valuations_count']) ?? valuations.length,
+      mdGmApprovalStatus: json['md_gm_approval_status'],
+      mdGmApprovalStatusDisplay: json['md_gm_approval_status_display'],
+      mdGmRejectionReason: json['md_gm_rejection_reason'],
+      mdGmApprovedAt: json['md_gm_approved_at'] != null ? DateTime.parse(json['md_gm_approved_at']) : null,
+      mdGmRejectedAt: json['md_gm_rejected_at'] != null ? DateTime.parse(json['md_gm_rejected_at']) : null,
       createdAt: DateTime.parse(json['created_at']),
       updatedAt: DateTime.parse(json['updated_at']),
     );

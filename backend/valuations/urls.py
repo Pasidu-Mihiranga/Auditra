@@ -8,6 +8,14 @@ urlpatterns = [
     path('', views.ValuationListCreateView.as_view(), name='valuation-list-create'),
     path('<int:pk>/', views.ValuationDetailView.as_view(), name='valuation-detail'),
     path('<int:pk>/submit/', views.submit_valuation, name='valuation-submit'),
+    path('<int:pk>/accept/', views.accept_valuation, name='valuation-accept'),
+    path('<int:pk>/reject/', views.reject_valuation, name='valuation-reject'),
+    path('<int:pk>/approve/', views.senior_valuer_approve_valuation, name='valuation-approve'),
+    path('<int:pk>/senior-valuer-reject/', views.senior_valuer_reject_valuation, name='senior-valuer-reject'),
+    
+    # Senior valuer endpoints
+    path('senior-valuer/reviewed/', views.SeniorValuerValuationListView.as_view(), name='senior-valuer-valuations'),
+    path('<int:pk>/submit-proposal/', views.senior_valuer_submit_proposal, name='senior-valuer-submit-proposal'),
     
     # Valuation photo endpoints
     path('<int:valuation_id>/photos/', views.ValuationPhotoListCreateView.as_view(), name='valuation-photo-list-create'),

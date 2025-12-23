@@ -579,10 +579,9 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
                 newValuationId = idValue.toInt();
               }
             } else {
-              print('Warning: ID field is null in response');
-              // Try to fetch the valuation by project and category as fallback
-              // This is a workaround if backend doesn't return ID
-              print('Response keys: ${valuationData.keys.toList()}');
+              // ID not in response - this can happen if backend returns different format
+              // We'll use the existing valuation ID or fetch it later
+              print('Note: ID field not found in response. Response keys: ${valuationData.keys.toList()}');
             }
           } else if (valuationData is int) {
             // If the response is just an ID

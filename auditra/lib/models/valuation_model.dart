@@ -46,6 +46,9 @@ class Valuation {
   final DateTime updatedAt;
   final DateTime? submittedAt;
   final bool canBeEdited;
+  final String? rejectionReason;
+  final String? seniorValuerComments;
+  final String? finalReportUrl;
 
   Valuation({
     required this.id,
@@ -86,6 +89,9 @@ class Valuation {
     required this.updatedAt,
     this.submittedAt,
     this.canBeEdited = false,
+    this.rejectionReason,
+    this.seniorValuerComments,
+    this.finalReportUrl,
   });
 
   factory Valuation.fromJson(Map<String, dynamic> json) {
@@ -179,6 +185,9 @@ class Valuation {
           ? DateTime.parse(json['submitted_at'].toString()) 
           : null,
       canBeEdited: json['can_be_edited'] ?? false,
+      rejectionReason: json['rejection_reason'] as String?,
+      seniorValuerComments: json['senior_valuer_comments'] as String?,
+      finalReportUrl: json['final_report_url'] as String?,
     );
   }
 

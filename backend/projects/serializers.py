@@ -105,6 +105,7 @@ class ProjectSerializer(serializers.ModelSerializer):
         allow_null=True
     )
     status_display = serializers.CharField(source='get_status_display', read_only=True)
+    md_gm_approval_status_display = serializers.SerializerMethodField()
     documents = ProjectDocumentSerializer(many=True, read_only=True)
     documents_count = serializers.IntegerField(source='documents.count', read_only=True)
     valuations = serializers.SerializerMethodField()
@@ -123,6 +124,8 @@ class ProjectSerializer(serializers.ModelSerializer):
             'assigned_senior_valuer', 'assigned_senior_valuer_username', 'assigned_senior_valuer_name',
             'assigned_senior_valuer_email', 'has_agent', 'client_info', 'agent_info',
             'status', 'status_display', 'workflow_stage', 'priority', 'start_date', 'end_date',
+            'md_gm_approval_status', 'md_gm_approval_status_display', 'md_gm_rejection_reason',
+            'md_gm_approved_at', 'md_gm_rejected_at',
             'documents', 'documents_count', 'valuations', 'valuations_count', 'created_at', 'updated_at'
         )
         read_only_fields = ('coordinator', 'created_at', 'updated_at')
@@ -168,15 +171,42 @@ class ProjectSerializer(serializers.ModelSerializer):
             return obj.assigned_senior_valuer.username
         return None
     
+    def get_md_gm_approval_status_display(self, obj):
+        status_map = {
+            'pending': 'Pending',
+            'approved': 'Approved',
+            'rejected': 'Rejected',
+        }
+        return status_map.get(obj.md_gm_approval_status, 'Pending')
+    
     def get_valuations(self, obj):
         """Get valuations for this project"""
         # Import here to avoid circular import
         from valuations.serializers import ValuationSerializer
+        request = self.context.get('request')
+        
+        # Filter valuations based on user role
         valuations = obj.valuations.all().select_related('field_officer').prefetch_related('photos')
+        
+        # Senior valuer should only see reviewed valuations (sent by assessor)
+        if request and hasattr(request.user, 'role') and request.user.role.role == 'senior_valuer':
+            valuations = valuations.filter(status='reviewed')
+        
+        # MD/GM should see all valuations for projects they receive
+        # (Projects are already filtered to only show those with all approved valuations)
+        # No need to filter valuations here - show all reports
+        
         return ValuationSerializer(valuations, many=True, context=self.context).data
     
     def get_valuations_count(self, obj):
         """Get count of valuations for this project"""
+        request = self.context.get('request')
+        
+        # Senior valuer should only count reviewed valuations
+        if request and hasattr(request.user, 'role') and request.user.role.role == 'senior_valuer':
+            return obj.valuations.filter(status='reviewed').count()
+        
+        # MD/GM should see all valuations count for projects they receive
         return obj.valuations.count()
 
 

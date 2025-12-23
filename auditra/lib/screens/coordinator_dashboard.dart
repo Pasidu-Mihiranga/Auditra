@@ -3,6 +3,8 @@ import 'package:intl/intl.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:convert';
 import 'dart:math' as math;
 import '../services/api_service.dart';
 import '../services/pdf_service.dart';
@@ -79,6 +81,12 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
   // Project state
   List<Project> _projects = [];
   bool _isLoadingProjects = false;
+  // Track projects that have been recreated (to hide recreate button)
+  Set<int> _recreatedProjectIds = {};
+  // Track which projects were recreated from which original projects (newProjectId -> originalProjectTitle)
+  Map<int, String> _recreatedFromProjects = {};
+  // Store original project info when recreating (to map after creation)
+  String? _pendingRecreationOriginalTitle;
   bool _isCreatingProject = false;
   // Search and sort state for each tab
   final Map<int, TextEditingController> _searchControllers = {};
@@ -105,6 +113,7 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
     });
     _loadUserInfo();
     _loadProjects();
+    _loadRecreatedProjectIds();
   }
 
   @override
@@ -234,6 +243,64 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
           _projects = [];
         }
       });
+      
+      // Reload recreated project IDs after projects are loaded to ensure sync
+      await _loadRecreatedProjectIds();
+    }
+  }
+
+  Future<void> _loadRecreatedProjectIds() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final recreatedIdsJson = prefs.getString('recreated_project_ids');
+      print('🔍 Loading recreated project IDs from SharedPreferences...');
+      print('📦 Raw JSON: $recreatedIdsJson');
+      
+      if (recreatedIdsJson != null) {
+        final List<dynamic> idsList = jsonDecode(recreatedIdsJson);
+        _recreatedProjectIds = idsList.map((id) {
+          // Handle both int and String types
+          if (id is int) return id;
+          if (id is String) return int.tryParse(id) ?? 0;
+          return id as int;
+        }).where((id) => id > 0).toSet();
+        print('✅ Loaded ${_recreatedProjectIds.length} recreated project IDs: $_recreatedProjectIds');
+      } else {
+        print('⚠️ No recreated project IDs found in SharedPreferences');
+      }
+      
+      final recreatedFromJson = prefs.getString('recreated_from_projects');
+      if (recreatedFromJson != null) {
+        final Map<String, dynamic> map = jsonDecode(recreatedFromJson);
+        _recreatedFromProjects = map.map((key, value) => MapEntry(int.parse(key), value as String));
+        print('✅ Loaded ${_recreatedFromProjects.length} recreated from mappings');
+      }
+      
+      if (mounted) {
+        setState(() {});
+      }
+    } catch (e) {
+      print('❌ Error loading recreated project IDs: $e');
+      print('Stack trace: ${StackTrace.current}');
+    }
+  }
+
+  Future<void> _saveRecreatedProjectIds() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final idsList = _recreatedProjectIds.toList();
+      final idsJson = jsonEncode(idsList);
+      await prefs.setString('recreated_project_ids', idsJson);
+      
+      final fromMap = _recreatedFromProjects.map((key, value) => MapEntry(key.toString(), value));
+      final fromJson = jsonEncode(fromMap);
+      await prefs.setString('recreated_from_projects', fromJson);
+      
+      print('💾 Saved ${_recreatedProjectIds.length} recreated project IDs: $_recreatedProjectIds');
+      print('💾 Saved JSON: $idsJson');
+    } catch (e) {
+      print('❌ Error saving recreated project IDs: $e');
+      print('Stack trace: ${StackTrace.current}');
     }
   }
 
@@ -308,6 +375,100 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
 
     if (result == true) {
       await _loadProjects();
+    }
+  }
+
+  Future<void> _recreateProject(Project rejectedProject) async {
+    // Show confirmation dialog
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Recreate Project'),
+        content: Text(
+          'Do you want to create a new project based on "${rejectedProject.title}"? '
+          'You will be taken to the project creation form where you can review and modify the details.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.blue[700]),
+            child: const Text('Recreate'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    // Store the original project title to track recreation
+    _pendingRecreationOriginalTitle = rejectedProject.title;
+
+    // Navigate to create project screen with rejected project data
+    final result = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (context) => CreateProjectScreen(rejectedProject: rejectedProject),
+      ),
+    );
+
+    if (result == true) {
+      // Mark this project as recreated
+      print('🔄 Marking project ${rejectedProject.id} as recreated');
+      _recreatedProjectIds.add(rejectedProject.id);
+      print('📝 Current recreated IDs: $_recreatedProjectIds');
+      
+      // Save immediately before refreshing projects
+      await _saveRecreatedProjectIds();
+      
+      // Refresh projects list to get the newly created project
+      await _loadProjects();
+      
+      // Find the most recently created project and map it to the original
+      if (_pendingRecreationOriginalTitle != null && _projects.isNotEmpty) {
+        // Sort projects by creation date (newest first)
+        final sortedProjects = List<Project>.from(_projects)
+          ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+        
+        // The first project should be the newly created one
+        if (sortedProjects.isNotEmpty) {
+          final newProject = sortedProjects.first;
+          _recreatedFromProjects[newProject.id] = _pendingRecreationOriginalTitle!;
+          print('🔗 Mapped new project ${newProject.id} to original "${_pendingRecreationOriginalTitle}"');
+        }
+        _pendingRecreationOriginalTitle = null;
+      }
+      
+      // Save again after mapping (in case mapping was added)
+      await _saveRecreatedProjectIds();
+      
+      // Show success message
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Row(
+              children: [
+                Icon(Icons.check_circle, color: Colors.white),
+                SizedBox(width: 8),
+                Expanded(child: Text('Project recreated successfully')),
+              ],
+            ),
+            backgroundColor: Colors.green,
+            behavior: SnackBarBehavior.floating,
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+      
+      // Force UI rebuild to hide the recreate button on the rejected project
+      if (mounted) {
+        setState(() {});
+      }
+    } else {
+      // Clear pending recreation if user cancelled
+      _pendingRecreationOriginalTitle = null;
     }
   }
 
@@ -6128,10 +6289,16 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
   Widget _buildProjectsTab() {
     // Filter projects by status
     // Use case-insensitive comparison to handle any potential case variations
-    final pendingProjects = _projects.where((p) => p.status.toLowerCase() == 'pending').toList();
+    // Exclude rejected projects from pending (they should appear in cancelled tab)
+    final pendingProjects = _projects.where((p) => 
+      p.status.toLowerCase() == 'pending' && p.mdGmApprovalStatus != 'rejected'
+    ).toList();
     final ongoingProjects = _projects.where((p) => p.status.toLowerCase() == 'in_progress').toList();
     final completedProjects = _projects.where((p) => p.status.toLowerCase() == 'completed').toList();
-    final cancelledProjects = _projects.where((p) => p.status.toLowerCase() == 'cancelled').toList();
+    // Include both cancelled projects and rejected projects in cancelled tab
+    final cancelledProjects = _projects.where((p) => 
+      p.status.toLowerCase() == 'cancelled' || p.mdGmApprovalStatus == 'rejected'
+    ).toList();
     
     // Initialize search controllers for each tab if not exists
     for (int i = 0; i < 4; i++) {
@@ -6438,6 +6605,95 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
               children: [
                 // Spacing for priority label
                 const SizedBox(height: 20),
+                // Show "recreated from" message if this project was recreated
+                if (_recreatedFromProjects.containsKey(project.id)) ...[
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    margin: const EdgeInsets.only(bottom: 12),
+                    decoration: BoxDecoration(
+                      color: Colors.blue[50],
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.blue[200]!),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.refresh, color: Colors.blue[700], size: 20),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Recreated from "${_recreatedFromProjects[project.id]}"',
+                            style: TextStyle(
+                              color: Colors.blue[900],
+                              fontSize: 13,
+                              fontStyle: FontStyle.italic,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+                // Show MD/GM rejection status if rejected (always show, even after recreation)
+                if (project.mdGmApprovalStatus == 'rejected') ...[
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    margin: const EdgeInsets.only(bottom: 12),
+                    decoration: BoxDecoration(
+                      color: Colors.red[50],
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.red[200]!),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(Icons.cancel, color: Colors.red[700], size: 20),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Project Rejected by MD/GM',
+                                style: TextStyle(
+                                  color: Colors.red[900],
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        if (project.mdGmRejectionReason != null && project.mdGmRejectionReason!.isNotEmpty) ...[
+                          const SizedBox(height: 8),
+                          Text(
+                            'Reason: ${project.mdGmRejectionReason}',
+                            style: TextStyle(
+                              color: Colors.red[800],
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                        // Only show "Recreate Project" button if project hasn't been recreated yet
+                        // Ensure we're comparing the same type (int)
+                        if (!_recreatedProjectIds.contains(project.id is int ? project.id : int.tryParse(project.id.toString()) ?? 0)) ...[
+                          const SizedBox(height: 12),
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton.icon(
+                              onPressed: () => _recreateProject(project),
+                              icon: const Icon(Icons.add_circle_outline, size: 18),
+                              label: const Text('Recreate Project'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.blue[700],
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(vertical: 12),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
                 // Top row: project name + status aligned with edit/delete icons
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.center,

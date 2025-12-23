@@ -70,12 +70,62 @@ class _RegisterScreenState extends State<RegisterScreen> {
         MaterialPageRoute(builder: (_) => HomeScreen(userRole: role ?? 'unassigned')),
       );
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(result['message']),
-          backgroundColor: Colors.red,
-        ),
-      );
+      // Show connection errors in a dialog for better visibility
+      final errorMessage = result['message'] ?? 'Registration failed';
+      if (errorMessage.contains('Connection') || 
+          errorMessage.contains('Network') || 
+          errorMessage.contains('timeout') ||
+          errorMessage.contains('Cannot connect') ||
+          errorMessage.contains('SocketException')) {
+        // Show dialog for connection errors with better formatting
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Row(
+              children: [
+                Icon(Icons.error_outline, color: Colors.red, size: 28),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Connection Error',
+                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ],
+            ),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    errorMessage,
+                    style: const TextStyle(fontSize: 14, height: 1.5),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                ),
+                child: const Text('OK', style: TextStyle(fontSize: 16)),
+              ),
+            ],
+          ),
+        );
+      } else {
+        // Show SnackBar for validation errors
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(errorMessage),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
     }
   }
 

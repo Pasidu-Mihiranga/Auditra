@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'offline_db_service.dart';
 import 'offline_storage_service.dart';
 import 'network_service.dart';
+import 'sync_engine.dart';
 import '../models/project_model.dart';
 
 // Helper function to safely parse JSON response and handle HTML errors
@@ -75,17 +76,24 @@ class ApiService {
           'first_name': firstName ?? '',
           'last_name': lastName ?? '',
         }),
+      ).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          throw Exception('Connection timeout. Please check if the backend server is running.');
+        },
       );
 
       // Check if response is HTML (error page) before parsing JSON
-      final data = _safeParseJsonResponse(response);
-      if (data == null) {
-        // HTML response received
+      final parsedData = _safeParseJsonResponse(response);
+      if (parsedData == null) {
+        // HTML response - server error
         return {
           'success': false,
-          'message': _getHtmlErrorMessage(response)
+          'message': _getHtmlErrorMessage(response),
         };
       }
+
+      final data = parsedData;
 
       if (response.statusCode == 201) {
         // Save tokens
@@ -97,7 +105,7 @@ class ApiService {
         
         return {'success': true, 'data': data};
       } else {
-        // Extract error message from response
+        // Extract error message from response (comprehensive error handling)
         String errorMsg = 'Registration failed';
         if (data is Map<String, dynamic>) {
           errorMsg = data['username']?.join(', ') ?? 
@@ -106,10 +114,37 @@ class ApiService {
                      data['detail'] ?? 
                      data['error'] ?? 
                      data['message'] ?? 
+                     data['non_field_errors']?.toString() ??
                      errorMsg;
         }
         return {'success': false, 'message': errorMsg};
       }
+    } on SocketException catch (e) {
+      String errorMsg = 'Cannot connect to server.\n\n';
+      if (e.message.contains('Network is unreachable') || 
+          e.message.contains('Connection failed') ||
+          e.message.contains('Failed host lookup')) {
+        errorMsg += 'Please check:\n\n';
+        errorMsg += '1. Backend server is running:\n';
+        errorMsg += '   Run: python manage.py runserver\n\n';
+        errorMsg += '2. Correct IP address:\n';
+        errorMsg += '   • Android Emulator: 10.0.2.2:8000\n';
+        errorMsg += '   • iOS Simulator: localhost:8000\n';
+        errorMsg += '   • Physical Device: Your PC IP (e.g., 192.168.1.100:8000)\n\n';
+        errorMsg += '3. Update baseUrl in:\n';
+        errorMsg += '   auditra/lib/services/api_service.dart\n\n';
+        errorMsg += 'Current server: $baseUrl';
+      } else {
+        errorMsg += 'Error: ${e.message}\n\n';
+        errorMsg += 'Please ensure the backend server is running.';
+      }
+      return {'success': false, 'message': errorMsg};
+    } on HttpException catch (e) {
+      return {'success': false, 'message': 'HTTP error: ${e.message}'};
+    } on FormatException catch (e) {
+      return {'success': false, 'message': 'Invalid server response: ${e.message}'};
+    } on Exception catch (e) {
+      return {'success': false, 'message': e.toString()};
     } catch (e) {
       return {'success': false, 'message': 'Connection error: $e'};
     }
@@ -128,17 +163,24 @@ class ApiService {
           'username': username,
           'password': password,
         }),
+      ).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          throw Exception('Connection timeout. Please check if the backend server is running.');
+        },
       );
 
       // Check if response is HTML (error page) before parsing JSON
-      final data = _safeParseJsonResponse(response);
-      if (data == null) {
-        // HTML response received
+      final parsedData = _safeParseJsonResponse(response);
+      if (parsedData == null) {
+        // HTML response - server error
         return {
           'success': false,
-          'message': _getHtmlErrorMessage(response)
+          'message': _getHtmlErrorMessage(response),
         };
       }
+
+      final data = parsedData;
 
       if (response.statusCode == 200) {
         // Save tokens
@@ -155,11 +197,47 @@ class ApiService {
           'password_change_required': data['password_change_required'] ?? false
         };
       } else {
-        return {
-          'success': false,
-          'message': data['detail'] ?? data['error'] ?? data['message'] ?? 'Login failed'
-        };
+        // Handle validation errors
+        String errorMessage = 'Login failed';
+        if (data.containsKey('error')) {
+          errorMessage = data['error'].toString();
+        } else if (data.containsKey('detail')) {
+          errorMessage = data['detail'].toString();
+        } else if (data.containsKey('non_field_errors')) {
+          errorMessage = data['non_field_errors'].toString();
+        } else if (data.containsKey('message')) {
+          errorMessage = data['message'].toString();
+        } else {
+          errorMessage = data.toString();
+        }
+        return {'success': false, 'message': errorMessage};
       }
+    } on SocketException catch (e) {
+      String errorMsg = 'Cannot connect to server.\n\n';
+      if (e.message.contains('Network is unreachable') || 
+          e.message.contains('Connection failed') ||
+          e.message.contains('Failed host lookup')) {
+        errorMsg += 'Please check:\n\n';
+        errorMsg += '1. Backend server is running:\n';
+        errorMsg += '   Run: python manage.py runserver\n\n';
+        errorMsg += '2. Correct IP address:\n';
+        errorMsg += '   • Android Emulator: 10.0.2.2:8000\n';
+        errorMsg += '   • iOS Simulator: localhost:8000\n';
+        errorMsg += '   • Physical Device: Your PC IP (e.g., 192.168.1.100:8000)\n\n';
+        errorMsg += '3. Update baseUrl in:\n';
+        errorMsg += '   auditra/lib/services/api_service.dart\n\n';
+        errorMsg += 'Current server: $baseUrl';
+      } else {
+        errorMsg += 'Error: ${e.message}\n\n';
+        errorMsg += 'Please ensure the backend server is running.';
+      }
+      return {'success': false, 'message': errorMsg};
+    } on HttpException catch (e) {
+      return {'success': false, 'message': 'HTTP error: ${e.message}'};
+    } on FormatException catch (e) {
+      return {'success': false, 'message': 'Invalid server response: ${e.message}'};
+    } on Exception catch (e) {
+      return {'success': false, 'message': e.toString()};
     } catch (e) {
       return {'success': false, 'message': 'Connection error: $e'};
     }
@@ -405,19 +483,34 @@ class ApiService {
         return {'success': false, 'message': 'Not authenticated'};
       }
 
+      final url = '$baseUrl/auth/create-agent-account/';
+      final body = {
+        'email': email.trim().toLowerCase(),
+        'name': name.trim(),
+        if (phone != null && phone.isNotEmpty) 'phone': phone.trim(),
+        if (address != null && address.isNotEmpty) 'address': address.trim(),
+      };
+      
+      print('DEBUG API: Creating agent account');
+      print('DEBUG API: URL: $url');
+      print('DEBUG API: Body: $body');
+      
       final response = await http.post(
-        Uri.parse('$baseUrl/auth/create-agent-account/'),
+        Uri.parse(url),
         headers: {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $token',
         },
-        body: jsonEncode({
-          'email': email.trim().toLowerCase(),
-          'name': name.trim(),
-          if (phone != null && phone.isNotEmpty) 'phone': phone.trim(),
-          if (address != null && address.isNotEmpty) 'address': address.trim(),
-        }),
+        body: jsonEncode(body),
+      ).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          throw Exception('Request timeout - please check your internet connection');
+        },
       );
+      
+      print('DEBUG API: Response status: ${response.statusCode}');
+      print('DEBUG API: Response body: ${response.body}');
 
       final data = _safeParseJsonResponse(response);
       if (data == null) {
@@ -428,11 +521,26 @@ class ApiService {
       }
 
       if (response.statusCode == 201 || response.statusCode == 200) {
-        return {
-          'success': true,
-          'message': data['message'] ?? 'Agent account created successfully',
-          'user': data['user'],
-        };
+        // Check if response has 'success' field or just return success
+        if (data.containsKey('success') && data['success'] == true) {
+          return {
+            'success': true,
+            'message': data['message'] ?? 'Agent account created successfully',
+            'user': data['user'],
+          };
+        } else if (data.containsKey('error')) {
+          return {
+            'success': false,
+            'message': data['error'] ?? 'Failed to create agent account'
+          };
+        } else {
+          // Assume success if status is 201/200
+          return {
+            'success': true,
+            'message': data['message'] ?? 'Agent account created successfully',
+            'user': data['user'],
+          };
+        }
       } else if (response.statusCode == 400) {
         // Handle 400 Bad Request - might be "already exists" which is actually OK
         if (data.containsKey('error') && data['error'].toString().toLowerCase().contains('already exists')) {
@@ -1980,37 +2088,50 @@ class ApiService {
     final useOfflineMode = await _shouldUseOfflineMode();
     
     if (useOfflineMode) {
-      // OFFLINE-FIRST: Always save locally first
-      try {
-        final localId = await OfflineStorageService.saveValuationOffline(valuationData);
-        print('💾 Valuation saved offline with localId: ${localId.substring(0, 8)}...');
-        
-        // Try to sync immediately if online
-        if (NetworkService.isOnline) {
-          try {
-            final syncResult = await syncValuationToServer(valuationData);
-            if (syncResult['success']) {
-              final serverId = syncResult['data']['id'] as int;
-              await OfflineStorageService.markValuationSynced(localId, serverId);
-              print('✅ Valuation synced immediately: $localId -> $serverId');
-              return {'success': true, 'data': syncResult['data'], 'localId': localId};
-            } else {
-              // Sync failed, but data saved locally
-              print('📴 Sync failed, but valuation saved locally');
-              return {'success': true, 'localId': localId, 'synced': false};
-            }
-          } catch (syncErr) {
-            // Sync failed, but data saved locally
-            print('📴 Sync error, but valuation saved locally: $syncErr');
+      // Check network status first
+      final isOnline = NetworkService.isOnline;
+      
+      if (isOnline) {
+        // ONLINE: Try to send directly to server first
+        try {
+          final syncResult = await syncValuationToServer(valuationData);
+          if (syncResult['success']) {
+            // Successfully sent to server - no need for offline storage
+            print('✅ Valuation sent directly to server (online mode)');
+            return {'success': true, 'data': syncResult['data']};
+          } else {
+            // Server request failed - fall back to offline storage
+            print('⚠️ Server request failed, saving offline: ${syncResult['message']}');
+            final localId = await OfflineStorageService.saveValuationOffline(valuationData);
+            // Trigger background sync retry
+            Future.delayed(const Duration(seconds: 2), () {
+              SyncEngine.syncAll(silent: true);
+            });
             return {'success': true, 'localId': localId, 'synced': false};
           }
-        } else {
-          // Offline, data saved locally
-          print('📴 Offline - valuation saved locally, will sync later');
-          return {'success': true, 'localId': localId, 'synced': false};
+        } catch (e) {
+          // Network error - save offline and retry
+          print('⚠️ Network error, saving offline: $e');
+          try {
+            final localId = await OfflineStorageService.saveValuationOffline(valuationData);
+            // Trigger background sync retry
+            Future.delayed(const Duration(seconds: 2), () {
+              SyncEngine.syncAll(silent: true);
+            });
+            return {'success': true, 'localId': localId, 'synced': false};
+          } catch (saveErr) {
+            return {'success': false, 'message': 'Failed to save valuation offline: $saveErr'};
+          }
         }
-      } catch (e) {
-        return {'success': false, 'message': 'Failed to save valuation offline: $e'};
+      } else {
+        // OFFLINE: Save to offline storage
+        try {
+          final localId = await OfflineStorageService.saveValuationOffline(valuationData);
+          print('📴 Offline - valuation saved locally, will sync when online');
+          return {'success': true, 'localId': localId, 'synced': false};
+        } catch (e) {
+          return {'success': false, 'message': 'Failed to save valuation offline: $e'};
+        }
       }
     }
     
@@ -2316,6 +2437,65 @@ class ApiService {
     }
   }
 
+  static Future<Map<String, dynamic>> acceptValuation(int valuationId) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token');
+
+      if (token == null) {
+        return {'success': false, 'message': 'Not authenticated'};
+      }
+
+      final response = await http.post(
+        Uri.parse('$baseUrl/valuations/$valuationId/accept/'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      final data = jsonDecode(response.body);
+
+      if (response.statusCode == 200) {
+        return {'success': true, 'data': data};
+      } else {
+        return {'success': false, 'message': data['error'] ?? data['detail'] ?? 'Failed to accept valuation'};
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'Connection error: $e'};
+    }
+  }
+
+  static Future<Map<String, dynamic>> rejectValuation(int valuationId, {required String rejectionReason}) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token');
+
+      if (token == null) {
+        return {'success': false, 'message': 'Not authenticated'};
+      }
+
+      final response = await http.post(
+        Uri.parse('$baseUrl/valuations/$valuationId/reject/'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({'rejection_reason': rejectionReason}),
+      );
+
+      final data = jsonDecode(response.body);
+
+      if (response.statusCode == 200) {
+        return {'success': true, 'data': data};
+      } else {
+        return {'success': false, 'message': data['error'] ?? data['detail'] ?? 'Failed to reject valuation'};
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'Connection error: $e'};
+    }
+  }
+
   static Future<Map<String, dynamic>> deleteValuation(int valuationId) async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -2341,6 +2521,215 @@ class ApiService {
       }
     } catch (e) {
       return {'success': false, 'message': 'Connection error: $e'};
+    }
+  }
+
+  // Senior Valuer methods
+  static Future<Map<String, dynamic>> getReviewedValuationsForSeniorValuer({int? projectId}) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token');
+
+      if (token == null) {
+        return {'success': false, 'message': 'Not authenticated'};
+      }
+
+      String url = '$baseUrl/valuations/senior-valuer/reviewed/';
+      if (projectId != null) {
+        url += '?project=$projectId';
+      }
+
+      final response = await http.get(
+        Uri.parse(url),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      final data = jsonDecode(response.body);
+
+      if (response.statusCode == 200) {
+        return {'success': true, 'data': data};
+      } else {
+        return {'success': false, 'message': data['error'] ?? data['detail'] ?? 'Failed to load reviewed valuations'};
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'Connection error: $e'};
+    }
+  }
+
+  static Future<Map<String, dynamic>> submitSeniorValuerProposal({
+    required int valuationId,
+    String? comments,
+    String? finalReportPath,
+  }) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token');
+
+      if (token == null) {
+        return {'success': false, 'message': 'Not authenticated'};
+      }
+
+      final request = http.MultipartRequest(
+        'POST',
+        Uri.parse('$baseUrl/valuations/$valuationId/submit-proposal/'),
+      );
+
+      request.headers['Authorization'] = 'Bearer $token';
+      
+      if (comments != null && comments.isNotEmpty) {
+        request.fields['senior_valuer_comments'] = comments;
+      }
+
+      if (finalReportPath != null && finalReportPath.isNotEmpty) {
+        final file = await http.MultipartFile.fromPath('final_report', finalReportPath);
+        request.files.add(file);
+      }
+
+      final streamedResponse = await request.send();
+      final response = await http.Response.fromStream(streamedResponse);
+      final data = jsonDecode(response.body);
+
+      if (response.statusCode == 200) {
+        return {'success': true, 'data': data};
+      } else {
+        return {'success': false, 'message': data['error'] ?? data['detail'] ?? 'Failed to submit proposal'};
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'Connection error: $e'};
+    }
+  }
+
+  static Future<Map<String, dynamic>> approveValuationBySeniorValuer(int valuationId) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token');
+
+      if (token == null) {
+        return {'success': false, 'message': 'Not authenticated'};
+      }
+
+      final response = await http.post(
+        Uri.parse('$baseUrl/valuations/$valuationId/approve/'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      final data = jsonDecode(response.body);
+
+      if (response.statusCode == 200) {
+        return {'success': true, 'data': data};
+      } else {
+        return {'success': false, 'message': data['error'] ?? data['detail'] ?? 'Failed to approve valuation'};
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'Connection error: $e'};
+    }
+  }
+
+  static Future<Map<String, dynamic>> rejectValuationBySeniorValuer({
+    required int valuationId,
+    required String rejectionReason,
+  }) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token');
+
+      if (token == null) {
+        return {'success': false, 'message': 'Not authenticated'};
+      }
+
+      final response = await http.post(
+        Uri.parse('$baseUrl/valuations/$valuationId/senior-valuer-reject/'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({'rejection_reason': rejectionReason}),
+      );
+
+      final data = jsonDecode(response.body);
+
+      if (response.statusCode == 200) {
+        return {'success': true, 'data': data};
+      } else {
+        return {'success': false, 'message': data['error'] ?? data['detail'] ?? 'Failed to approve valuation'};
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'Connection error: $e'};
+    }
+  }
+  
+  // MD/GM Project Approval/Rejection
+  static Future<Map<String, dynamic>> approveProjectByMDGM(int projectId) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token');
+      
+      if (token == null) {
+        return {'success': false, 'message': 'Not authenticated'};
+      }
+      
+      final response = await http.post(
+        Uri.parse('$baseUrl/projects/$projectId/md-gm-approve/'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      ).timeout(const Duration(seconds: 10));
+      
+      final data = _safeParseJsonResponse(response);
+      if (data == null) {
+        return {'success': false, 'message': _getHtmlErrorMessage(response)};
+      }
+      
+      if (response.statusCode == 200) {
+        return {'success': true, 'data': data, 'message': data['message'] ?? 'Project approved successfully'};
+      } else {
+        return {'success': false, 'message': data['error'] ?? data['detail'] ?? 'Failed to approve project'};
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'Error: ${e.toString()}'};
+    }
+  }
+  
+  static Future<Map<String, dynamic>> rejectProjectByMDGM({
+    required int projectId,
+    required String rejectionReason,
+  }) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token');
+      
+      if (token == null) {
+        return {'success': false, 'message': 'Not authenticated'};
+      }
+      
+      final response = await http.post(
+        Uri.parse('$baseUrl/projects/$projectId/md-gm-reject/'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({'rejection_reason': rejectionReason}),
+      ).timeout(const Duration(seconds: 10));
+      
+      final data = _safeParseJsonResponse(response);
+      if (data == null) {
+        return {'success': false, 'message': _getHtmlErrorMessage(response)};
+      }
+      
+      if (response.statusCode == 200) {
+        return {'success': true, 'data': data, 'message': data['message'] ?? 'Project rejected successfully'};
+      } else {
+        return {'success': false, 'message': data['error'] ?? data['detail'] ?? 'Failed to reject project'};
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'Error: ${e.toString()}'};
     }
   }
 }

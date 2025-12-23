@@ -31,6 +31,7 @@ class ValuationSerializer(serializers.ModelSerializer):
     category_display = serializers.CharField(source='get_category_display', read_only=True)
     status_display = serializers.CharField(source='get_status_display', read_only=True)
     can_be_edited = serializers.SerializerMethodField()
+    final_report_url = serializers.SerializerMethodField()
     
     class Meta:
         model = Valuation
@@ -48,6 +49,10 @@ class ValuationSerializer(serializers.ModelSerializer):
             'vehicle_mileage', 'vehicle_condition',
             # Other fields
             'other_type', 'other_specifications',
+            # Accessor review fields
+            'rejection_reason',
+            # Senior valuer fields
+            'senior_valuer_comments', 'final_report', 'final_report_url',
             # Timestamps
             'created_at', 'updated_at', 'submitted_at', 'photos', 'can_be_edited'
         ]
@@ -61,6 +66,15 @@ class ValuationSerializer(serializers.ModelSerializer):
     def get_can_be_edited(self, obj):
         """Check if valuation can be edited"""
         return obj.can_be_edited()
+    
+    def get_final_report_url(self, obj):
+        """Get URL for final report file"""
+        if obj.final_report:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.final_report.url)
+            return obj.final_report.url
+        return None
 
 
 class ValuationCreateSerializer(serializers.ModelSerializer):

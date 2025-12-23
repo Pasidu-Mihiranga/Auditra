@@ -11,6 +11,7 @@ class SyncEngine {
   static StreamSubscription<bool>? _networkSubscription;
   static Timer? _periodicSyncTimer;
   static final List<Function(Map<String, dynamic>)> _listeners = [];
+  static bool _wasOffline = false;
 
   /// Initialize sync engine
   static Future<void> init() async {
@@ -28,31 +29,37 @@ class SyncEngine {
     // Initialize network service
     await NetworkService.init();
 
+    // Track previous network state to detect transitions from offline to online
+    _wasOffline = !NetworkService.isOnline;
+    
     // Listen to network status changes
     _networkSubscription = NetworkService.networkStatusStream.listen((isOnline) {
       if (isOnline) {
-        print('📶 Network restored - triggering sync');
-        // Small delay to ensure connection is stable
-        Future.delayed(const Duration(seconds: 1), () {
-          syncAll();
-        });
+        if (_wasOffline) {
+          // Transitioning from offline to online - sync immediately
+          print('📶 Network restored (was offline) - triggering sync');
+          Future.delayed(const Duration(seconds: 1), () {
+            syncAll();
+          });
+        }
+        // Don't sync if already online - items should go directly to server
+        _wasOffline = false;
       } else {
         print('📴 Network lost');
+        _wasOffline = true;
       }
     });
 
-    // Periodic sync check every 60 seconds when online
-    _periodicSyncTimer = Timer.periodic(const Duration(seconds: 60), (timer) {
-      if (NetworkService.isOnline && !_isSyncing) {
-        syncAllSilent();
-      }
-    });
-
-    // Initial sync check with delay (if online)
+    // Initial sync check: only if we were offline and now online, or if there are unsynced items
     if (NetworkService.isOnline) {
-      Future.delayed(const Duration(seconds: 2), () {
-        syncAll();
-      });
+      // Check if there are unsynced items that need syncing
+      final unsyncedValuations = OfflineStorageService.getUnsyncedValuations();
+      if (unsyncedValuations.isNotEmpty) {
+        print('📶 Online with ${unsyncedValuations.length} unsynced items - syncing now');
+        Future.delayed(const Duration(seconds: 2), () {
+          syncAll(silent: true);
+        });
+      }
     }
 
     _isInitialized = true;
@@ -89,6 +96,19 @@ class SyncEngine {
 
     if (!NetworkService.isOnline) {
       if (!silent) print('📴 Offline - skipping sync');
+      return;
+    }
+
+    // Check if there are any unsynced items before starting sync
+    final unsyncedValuations = OfflineStorageService.getUnsyncedValuations();
+    final unsyncedAttendance = OfflineStorageService.getUnsyncedAttendance();
+    final unsyncedPhotos = OfflineStorageService.getUnsyncedPhotos();
+    final hasUnsyncedItems = unsyncedValuations.isNotEmpty || 
+                            unsyncedAttendance.isNotEmpty || 
+                            unsyncedPhotos.isNotEmpty;
+    
+    if (!hasUnsyncedItems) {
+      if (!silent) print('✅ No unsynced items - skipping sync');
       return;
     }
 
