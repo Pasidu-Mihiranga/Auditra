@@ -727,8 +727,8 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const SizedBox(height: 20), // Space for priority label
-                  // Show MD/GM approval/rejection status (for senior valuer and assessor)
-                  if ((widget.role == 'senior_valuer' || widget.role == 'accessor')) ...[
+                  // Show MD/GM approval/rejection status (for MD/GM, senior valuer and assessor)
+                  if (widget.role == 'md_gm' || widget.role == 'senior_valuer' || widget.role == 'accessor') ...[
                     if (project.mdGmApprovalStatus == 'approved') ...[
                       Container(
                         padding: const EdgeInsets.all(12),
@@ -744,7 +744,7 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
                             const SizedBox(width: 8),
                             Expanded(
                               child: Text(
-                                'Project Approved by MD/GM',
+                                widget.role == 'md_gm' ? 'Project Approved' : 'Project Approved by MD/GM',
                                 style: TextStyle(
                                   color: Colors.green[900],
                                   fontSize: 14,
@@ -773,7 +773,7 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
                                 const SizedBox(width: 8),
                                 Expanded(
                                   child: Text(
-                                    'Project Rejected by MD/GM',
+                                    widget.role == 'md_gm' ? 'Project Rejected' : 'Project Rejected by MD/GM',
                                     style: TextStyle(
                                       color: Colors.red[900],
                                       fontSize: 14,
@@ -793,6 +793,32 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
                                 ),
                               ),
                             ],
+                          ],
+                        ),
+                      ),
+                    ] else if (widget.role == 'md_gm' && project.mdGmApprovalStatus == 'pending') ...[
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        margin: const EdgeInsets.only(bottom: 12),
+                        decoration: BoxDecoration(
+                          color: Colors.orange[50],
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.orange[200]!),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(Icons.pending, color: Colors.orange[700], size: 20),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Pending Approval',
+                                style: TextStyle(
+                                  color: Colors.orange[900],
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
                           ],
                         ),
                       ),
