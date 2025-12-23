@@ -95,22 +95,20 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
           setState(() {});
         }
       });
-<<<<<<< HEAD
+    }
+    
+    // Initialize project status tab controller for senior valuer
+    if (widget.role == 'senior_valuer') {
+      _projectStatusTabController = TabController(length: 4, vsync: this);
+      _projectStatusTabController!.addListener(() {
+        if (!_projectStatusTabController!.indexIsChanging && mounted) {
+          setState(() {});
+        }
+      });
     }
     
     // Load projects for roles that should see projects
     if (_shouldShowProjects) {
-=======
-      // Initialize project status tab controller for senior valuer
-      if (widget.role == 'senior_valuer') {
-        _projectStatusTabController = TabController(length: 4, vsync: this);
-        _projectStatusTabController!.addListener(() {
-          if (!_projectStatusTabController!.indexIsChanging && mounted) {
-            setState(() {});
-          }
-        });
-      }
->>>>>>> branch-Kavinu
       _loadProjects();
     }
     
