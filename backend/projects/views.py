@@ -112,13 +112,16 @@ class ProjectListView(generics.ListCreateAPIView):
             # - Processing agent_info (check existing or create new account)
             # - Sending email credentials for newly created accounts
             serializer.save(coordinator=self.request.user)
+        except serializers.ValidationError:
+            # Re-raise ValidationError as-is (DRF will handle it properly)
+            raise
         except Exception as e:
             # Log the error for debugging
             import logging
             logger = logging.getLogger(__name__)
             logger.error(f"Error creating project: {str(e)}", exc_info=True)
-            # Re-raise as ValidationError so DRF returns JSON
-            raise serializers.ValidationError(f"Error creating project: {str(e)}")
+            # Re-raise as ValidationError with proper format so DRF returns JSON
+            raise serializers.ValidationError({'non_field_errors': [f"Error creating project: {str(e)}"]})
 
 
 class ProjectDetailView(generics.RetrieveUpdateDestroyAPIView):

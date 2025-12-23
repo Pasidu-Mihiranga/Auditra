@@ -273,9 +273,13 @@ class ProjectCreateSerializer(serializers.ModelSerializer):
                         })
             
             # Process agent information - only assign existing users
-            if agent_info and agent_info.get('email') and validated_data.get('has_agent', False):
-                email = agent_info.get('email').strip().lower()
-                existing_user = check_user_by_email(email)
+            # Check has_agent from validated_data before it was modified
+            has_agent = validated_data.get('has_agent', False) or (agent_info is not None and agent_info.get('email'))
+            if agent_info and agent_info.get('email') and has_agent:
+                email = agent_info.get('email')
+                if email:
+                    email = email.strip().lower()
+                    existing_user = check_user_by_email(email)
                 
                 if existing_user:
                     # Check if user has agent role
