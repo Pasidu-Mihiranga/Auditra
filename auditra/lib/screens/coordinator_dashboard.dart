@@ -6219,10 +6219,16 @@ class _CoordinatorDashboardState extends State<CoordinatorDashboard> with Ticker
   Widget _buildProjectsTab() {
     // Filter projects by status
     // Use case-insensitive comparison to handle any potential case variations
-    final pendingProjects = _projects.where((p) => p.status.toLowerCase() == 'pending').toList();
+    // Exclude rejected projects from pending (they should appear in cancelled tab)
+    final pendingProjects = _projects.where((p) => 
+      p.status.toLowerCase() == 'pending' && p.mdGmApprovalStatus != 'rejected'
+    ).toList();
     final ongoingProjects = _projects.where((p) => p.status.toLowerCase() == 'in_progress').toList();
     final completedProjects = _projects.where((p) => p.status.toLowerCase() == 'completed').toList();
-    final cancelledProjects = _projects.where((p) => p.status.toLowerCase() == 'cancelled').toList();
+    // Include both cancelled projects and rejected projects in cancelled tab
+    final cancelledProjects = _projects.where((p) => 
+      p.status.toLowerCase() == 'cancelled' || p.mdGmApprovalStatus == 'rejected'
+    ).toList();
     
     // Initialize search controllers for each tab if not exists
     for (int i = 0; i < 4; i++) {
