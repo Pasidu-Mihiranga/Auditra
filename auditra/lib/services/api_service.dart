@@ -1,61 +1,13 @@
 import 'dart:convert';
-import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
-import 'offline_db_service.dart';
-import 'offline_storage_service.dart';
-import 'network_service.dart';
-import 'sync_engine.dart';
-import '../models/project_model.dart';
-
-// Helper function to safely parse JSON response and handle HTML errors
-Map<String, dynamic>? _safeParseJsonResponse(http.Response response) {
-  // Check if response is HTML (error page) before parsing JSON
-  String contentType = response.headers['content-type'] ?? '';
-  String bodyTrimmed = response.body.trim();
-  
-  if (bodyTrimmed.startsWith('<!DOCTYPE') || 
-      bodyTrimmed.startsWith('<html') ||
-      (!contentType.contains('application/json') && response.body.isNotEmpty && !bodyTrimmed.startsWith('{'))) {
-    return null; // Indicates HTML response
-  }
-
-  // Try to parse JSON response
-  try {
-    if (response.body.isEmpty) {
-      return {};
-    } else {
-      return jsonDecode(response.body) as Map<String, dynamic>;
-    }
-  } catch (e) {
-    // If parsing fails, check if it's HTML
-    if (bodyTrimmed.startsWith('<!DOCTYPE') || bodyTrimmed.startsWith('<html')) {
-      return null; // Indicates HTML response
-    }
-    rethrow; // Re-throw if it's a different parsing error
-  }
-}
-
-// Helper function to get user-friendly error message for HTML responses
-String _getHtmlErrorMessage(http.Response response) {
-  if (response.statusCode != 200 && response.statusCode != 201) {
-    return 'Server error (Status ${response.statusCode}). Please check if the backend server is running correctly.';
-  } else {
-    return 'Server returned HTML instead of JSON. Please check backend configuration.';
-  }
-}
 
 class ApiService {
-  // Production API URL - Update this to your VPS IP or domain
-  // For local development, use: 'http://10.0.2.2:8000/api' (Android emulator)
-  // For production VPS, use: 'http://152.42.240.220/api'
-  // For local development with physical device (USB Debugging)
-  static const String baseUrl = 'http://172.20.10.5:8000/api';
-
-  /// Check if offline mode should be used (only for field officers)
-  static Future<bool> _shouldUseOfflineMode() async {
-    return await OfflineDBService.isOfflineModeEnabled();
-  }
+  // Change this to your computer's IP address when testing on physical device
+  // For emulator, use 10.0.2.2 (Android) or localhost (iOS)
+  // For physical device, use your computer's IP address (e.g., 'http://192.168.1.100:8000/api')
+  // For Chrome/web, use localhost
+  static const String baseUrl = 'http://10.0.2.2:8000/api'; // Using 10.0.2.2 for Android emulator
 
   // Register new user
   static Future<Map<String, dynamic>> register({
@@ -66,6 +18,9 @@ class ApiService {
     String? lastName,
   }) async {
     try {
+      print('🔵 Registering user: $username');
+      print('🔵 API URL: $baseUrl/auth/register/');
+      
       final response = await http.post(
         Uri.parse('$baseUrl/auth/register/'),
         headers: {'Content-Type': 'application/json'},
@@ -78,76 +33,95 @@ class ApiService {
           'last_name': lastName ?? '',
         }),
       ).timeout(
-        const Duration(seconds: 10),
+        const Duration(seconds: 30),
         onTimeout: () {
-          throw Exception('Connection timeout. Please check if the backend server is running.');
+          throw Exception('Request timeout. Please check your connection.');
         },
       );
+      
+      print('🔵 Response status: ${response.statusCode}');
+      print('🔵 Response body: ${response.body}');
 
-      // Check if response is HTML (error page) before parsing JSON
-      final parsedData = _safeParseJsonResponse(response);
-      if (parsedData == null) {
-        // HTML response - server error
-        return {
-          'success': false,
-          'message': _getHtmlErrorMessage(response),
-        };
+      // Parse JSON response
+      Map<String, dynamic> data;
+      try {
+        data = jsonDecode(response.body) as Map<String, dynamic>;
+      } catch (e) {
+        print('❌ Failed to parse JSON: $e');
+        return {'success': false, 'message': 'Invalid response from server'};
       }
-
-      final data = parsedData;
 
       if (response.statusCode == 201) {
         // Save tokens
         final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('access_token', data['access']);
-        await prefs.setString('refresh_token', data['refresh']);
-        await prefs.setString('user_id', data['user']['id'].toString());
-        await prefs.setString('username', data['user']['username']);
+        await prefs.setString('access_token', data['access'] ?? '');
+        await prefs.setString('refresh_token', data['refresh'] ?? '');
+        if (data['user'] != null) {
+          await prefs.setString('user_id', data['user']['id'].toString());
+          await prefs.setString('username', data['user']['username'] ?? '');
+        }
         
         return {'success': true, 'data': data};
       } else {
-        // Extract error message from response (comprehensive error handling)
-        String errorMsg = 'Registration failed';
-        if (data is Map<String, dynamic>) {
-          errorMsg = data['username']?.join(', ') ?? 
-                     data['email']?.join(', ') ?? 
-                     data['password']?.join(', ') ??
-                     data['detail'] ?? 
-                     data['error'] ?? 
-                     data['message'] ?? 
-                     data['non_field_errors']?.toString() ??
-                     errorMsg;
+        // Extract error message from response
+        String errorMessage = 'Registration failed';
+        
+        // Handle field-specific errors
+        if (data.containsKey('username')) {
+          if (data['username'] is List) {
+            errorMessage = 'Username: ${(data['username'] as List).first}';
+          } else {
+            errorMessage = 'Username: ${data['username']}';
+          }
+        } else if (data.containsKey('email')) {
+          if (data['email'] is List) {
+            errorMessage = 'Email: ${(data['email'] as List).first}';
+          } else {
+            errorMessage = 'Email: ${data['email']}';
+          }
+        } else if (data.containsKey('password')) {
+          if (data['password'] is List) {
+            errorMessage = 'Password: ${(data['password'] as List).first}';
+          } else {
+            errorMessage = 'Password: ${data['password']}';
+          }
+        } else if (data.containsKey('error')) {
+          errorMessage = data['error'].toString();
+        } else if (data.containsKey('message')) {
+          errorMessage = data['message'].toString();
+        } else if (data.containsKey('non_field_errors')) {
+          if (data['non_field_errors'] is List) {
+            errorMessage = (data['non_field_errors'] as List).first.toString();
+          } else {
+            errorMessage = data['non_field_errors'].toString();
+          }
+        } else {
+          // Get first error from any field
+          for (var key in data.keys) {
+            if (data[key] is List && (data[key] as List).isNotEmpty) {
+              errorMessage = '$key: ${(data[key] as List).first}';
+              break;
+            } else if (data[key] is String) {
+              errorMessage = '$key: ${data[key]}';
+              break;
+            }
+          }
         }
-        return {'success': false, 'message': errorMsg};
+        
+        print('❌ Registration error: $errorMessage');
+        return {'success': false, 'message': errorMessage};
       }
-    } on SocketException catch (e) {
-      String errorMsg = 'Cannot connect to server.\n\n';
-      if (e.message.contains('Network is unreachable') || 
-          e.message.contains('Connection failed') ||
-          e.message.contains('Failed host lookup')) {
-        errorMsg += 'Please check:\n\n';
-        errorMsg += '1. Backend server is running:\n';
-        errorMsg += '   Run: python manage.py runserver\n\n';
-        errorMsg += '2. Correct IP address:\n';
-        errorMsg += '   • Android Emulator: 10.0.2.2:8000\n';
-        errorMsg += '   • iOS Simulator: localhost:8000\n';
-        errorMsg += '   • Physical Device: Your PC IP (e.g., 192.168.1.100:8000)\n\n';
-        errorMsg += '3. Update baseUrl in:\n';
-        errorMsg += '   auditra/lib/services/api_service.dart\n\n';
-        errorMsg += 'Current server: $baseUrl';
-      } else {
-        errorMsg += 'Error: ${e.message}\n\n';
-        errorMsg += 'Please ensure the backend server is running.';
-      }
-      return {'success': false, 'message': errorMsg};
-    } on HttpException catch (e) {
-      return {'success': false, 'message': 'HTTP error: ${e.message}'};
-    } on FormatException catch (e) {
-      return {'success': false, 'message': 'Invalid server response: ${e.message}'};
-    } on Exception catch (e) {
-      return {'success': false, 'message': e.toString()};
     } catch (e) {
-      return {'success': false, 'message': 'Connection error: $e'};
+      // Handle different types of errors
+      String errorMessage = 'Connection error';
+      if (e.toString().contains('Failed host lookup') || e.toString().contains('Network is unreachable')) {
+        errorMessage = 'Cannot connect to server. Make sure the backend is running at http://10.0.2.2:8000';
+      } else if (e.toString().contains('Connection refused')) {
+        errorMessage = 'Connection refused. Is the backend server running?';
+      } else {
+        errorMessage = 'Error: ${e.toString()}';
+      }
+      return {'success': false, 'message': errorMessage};
     }
   }
 
@@ -157,9 +131,6 @@ class ApiService {
     required String password,
   }) async {
     try {
-      print('DEBUG: Attempting login to $baseUrl/auth/login/');
-      print('DEBUG: Request body: ${jsonEncode({'username': username, 'password': '***'})}');
-
       final response = await http.post(
         Uri.parse('$baseUrl/auth/login/'),
         headers: {'Content-Type': 'application/json'},
@@ -167,27 +138,19 @@ class ApiService {
           'username': username,
           'password': password,
         }),
-      ).timeout(
-        const Duration(seconds: 10),
-        onTimeout: () {
-          throw Exception('Connection timeout. Please check if the backend server is running.');
-        },
       );
 
-      print('DEBUG: Response status: ${response.statusCode}');
-      print('DEBUG: Response body prefix: ${response.body.substring(0, response.body.length > 100 ? 100 : response.body.length)}');
-
-      // Check if response is HTML (error page) before parsing JSON
-      final parsedData = _safeParseJsonResponse(response);
-      if (parsedData == null) {
-        // HTML response - server error
-        return {
-          'success': false,
-          'message': _getHtmlErrorMessage(response),
-        };
+      // Check if response is HTML (error page)
+      if (response.body.trim().startsWith('<!DOCTYPE') || response.body.trim().startsWith('<html')) {
+        return {'success': false, 'message': 'Server returned HTML. Endpoint /api/auth/login/ may not exist or backend has an error (404/500).'};
       }
 
-      final data = parsedData;
+      Map<String, dynamic> data;
+      try {
+        data = jsonDecode(response.body);
+      } catch (e) {
+        return {'success': false, 'message': 'Invalid JSON response. Server may have returned an error page.'};
+      }
 
       if (response.statusCode == 200) {
         // Save tokens
@@ -197,380 +160,20 @@ class ApiService {
         await prefs.setString('user_id', data['user']['id'].toString());
         await prefs.setString('username', data['user']['username']);
         
-        // Include password_change_required flag in response
-        return {
-          'success': true, 
-          'data': data,
-          'password_change_required': data['password_change_required'] ?? false
-        };
+        return {'success': true, 'data': data};
       } else {
-        // Handle validation errors
-        String errorMessage = 'Login failed';
-        if (data.containsKey('error')) {
-          errorMessage = data['error'].toString();
-        } else if (data.containsKey('detail')) {
-          errorMessage = data['detail'].toString();
-        } else if (data.containsKey('non_field_errors')) {
-          errorMessage = data['non_field_errors'].toString();
-        } else if (data.containsKey('message')) {
-          errorMessage = data['message'].toString();
-        } else {
-          errorMessage = data.toString();
-        }
-        return {'success': false, 'message': errorMessage};
+        return {'success': false, 'message': data['error'] ?? 'Login failed'};
       }
-    } on SocketException catch (e) {
-      String errorMsg = 'Cannot connect to server.\n\n';
-      if (e.message.contains('Network is unreachable') || 
-          e.message.contains('Connection failed') ||
-          e.message.contains('Failed host lookup')) {
-        errorMsg += 'Please check:\n\n';
-        errorMsg += '1. Backend server is running:\n';
-        errorMsg += '   Run: python manage.py runserver\n\n';
-        errorMsg += '2. Correct IP address:\n';
-        errorMsg += '   • Android Emulator: 10.0.2.2:8000\n';
-        errorMsg += '   • iOS Simulator: localhost:8000\n';
-        errorMsg += '   • Physical Device: Your PC IP (e.g., 192.168.1.100:8000)\n\n';
-        errorMsg += '3. Update baseUrl in:\n';
-        errorMsg += '   auditra/lib/services/api_service.dart\n\n';
-        errorMsg += 'Current server: $baseUrl';
+    } catch (e) {
+      String errorMsg = 'Connection error';
+      if (e.toString().contains('FormatException') && e.toString().contains('<!DOCTYPE')) {
+        errorMsg = 'Server returned HTML error page. Check if /api/auth/login/ endpoint exists and backend is running.';
+      } else if (e.toString().contains('Connection refused')) {
+        errorMsg = 'Connection refused. Is the backend server running?';
       } else {
-        errorMsg += 'Error: ${e.message}\n\n';
-        errorMsg += 'Please ensure the backend server is running.';
+        errorMsg = 'Connection error: ${e.toString()}';
       }
       return {'success': false, 'message': errorMsg};
-    } on HttpException catch (e) {
-      return {'success': false, 'message': 'HTTP error: ${e.message}'};
-    } on FormatException catch (e) {
-      return {'success': false, 'message': 'Invalid server response: ${e.message}'};
-    } on Exception catch (e) {
-      return {'success': false, 'message': e.toString()};
-    } catch (e) {
-      return {'success': false, 'message': 'Connection error: $e'};
-    }
-  }
-
-  // Change password (one-time for clients/agents)
-  static Future<Map<String, dynamic>> changePassword({
-    required String oldPassword,
-    required String newPassword,
-  }) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString('access_token');
-
-      if (token == null) {
-        return {'success': false, 'message': 'Not authenticated'};
-      }
-
-      final response = await http.post(
-        Uri.parse('$baseUrl/auth/change-password/'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-        body: jsonEncode({
-          'old_password': oldPassword,
-          'new_password': newPassword,
-          'new_password2': newPassword,
-        }),
-      );
-
-      // Check if response is HTML (error page) before parsing JSON
-      final data = _safeParseJsonResponse(response);
-      if (data == null) {
-        // HTML response received
-        return {
-          'success': false,
-          'message': _getHtmlErrorMessage(response)
-        };
-      }
-
-      if (response.statusCode == 200) {
-        return {
-          'success': true,
-          'message': data['message'] ?? 'Password changed successfully'
-        };
-      } else {
-        // Extract error message from response
-        String errorMsg = 'Password change failed';
-        if (data is Map<String, dynamic>) {
-          errorMsg = data['error'] ?? 
-                     data['detail'] ?? 
-                     data['message'] ?? 
-                     data['old_password']?.join(', ') ??
-                     data['new_password']?.join(', ') ??
-                     errorMsg;
-        }
-        return {'success': false, 'message': errorMsg};
-      }
-    } catch (e) {
-      return {'success': false, 'message': 'Connection error: $e'};
-    }
-  }
-
-  // Check if user exists by email
-  static Future<Map<String, dynamic>> checkUserByEmail({
-    required String email,
-    required String roleType, // 'client' or 'agent'
-  }) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString('access_token');
-
-      if (token == null) {
-        return {'success': false, 'message': 'Not authenticated'};
-      }
-
-      final url = '$baseUrl/auth/check-user-by-email/';
-      print('DEBUG API: Calling URL: $url');
-      print('DEBUG API: Email: $email, RoleType: $roleType');
-      
-      final response = await http.post(
-        Uri.parse(url),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-        body: jsonEncode({
-          'email': email.trim().toLowerCase(),
-          'role_type': roleType,
-        }),
-      ).timeout(
-        const Duration(seconds: 3),
-        onTimeout: () {
-          throw Exception('Request timeout - please check your internet connection');
-        },
-      );
-      
-      print('DEBUG API: Response status: ${response.statusCode}');
-      print('DEBUG API: Response body: ${response.body}');
-
-      final data = _safeParseJsonResponse(response);
-      if (data == null) {
-        return {
-          'success': false,
-          'message': _getHtmlErrorMessage(response)
-        };
-      }
-
-      if (response.statusCode == 200) {
-        return {
-          'success': true,
-          'exists': data['exists'] ?? false,
-          'message': data['message'] ?? data['error'] ?? '',
-          'user_id': data['user_id'],
-          'username': data['username'],
-          'name': data['name'],
-        };
-      } else {
-        return {
-          'success': false,
-          'message': data['error'] ?? data['detail'] ?? 'Failed to check user'
-        };
-      }
-    } catch (e) {
-      return {'success': false, 'message': 'Connection error: $e'};
-    }
-  }
-
-  // Create client account
-  static Future<Map<String, dynamic>> createClientAccount({
-    required String email,
-    required String name,
-    String? phone,
-    String? address,
-    String? company,
-  }) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString('access_token');
-
-      if (token == null) {
-        return {'success': false, 'message': 'Not authenticated'};
-      }
-
-      final url = '$baseUrl/auth/create-client-account/';
-      final body = {
-        'email': email.trim().toLowerCase(),
-        'name': name.trim(),
-        if (phone != null && phone.isNotEmpty) 'phone': phone.trim(),
-        if (address != null && address.isNotEmpty) 'address': address.trim(),
-        if (company != null && company.isNotEmpty) 'company': company.trim(),
-      };
-      
-      print('DEBUG API: Creating client account');
-      print('DEBUG API: URL: $url');
-      print('DEBUG API: Body: $body');
-      
-      final response = await http.post(
-        Uri.parse(url),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-        body: jsonEncode(body),
-      ).timeout(
-        const Duration(seconds: 10),
-        onTimeout: () {
-          throw Exception('Request timeout - please check your internet connection');
-        },
-      );
-      
-      print('DEBUG API: Response status: ${response.statusCode}');
-      print('DEBUG API: Response body: ${response.body}');
-
-      final data = _safeParseJsonResponse(response);
-      if (data == null) {
-        return {
-          'success': false,
-          'message': _getHtmlErrorMessage(response)
-        };
-      }
-
-      if (response.statusCode == 201 || response.statusCode == 200) {
-        // Check if response has 'success' field or just return success
-        if (data.containsKey('success') && data['success'] == true) {
-          return {
-            'success': true,
-            'message': data['message'] ?? 'Client account created successfully',
-            'user': data['user'],
-          };
-        } else if (data.containsKey('error')) {
-          return {
-            'success': false,
-            'message': data['error'] ?? 'Failed to create client account'
-          };
-        } else {
-          // Assume success if status is 201/200
-          return {
-            'success': true,
-            'message': data['message'] ?? 'Client account created successfully',
-            'user': data['user'],
-          };
-        }
-      } else if (response.statusCode == 400) {
-        // Handle 400 Bad Request - might be "already exists" which is actually OK
-        if (data.containsKey('error') && data['error'].toString().toLowerCase().contains('already exists')) {
-          return {
-            'success': true, // Treat as success since client exists
-            'message': data['error'] ?? 'Client already exists',
-            'user_id': data.containsKey('user_id') ? data['user_id'] : null,
-            'already_exists': true,
-          };
-        } else {
-          return {
-            'success': false,
-            'message': data['error'] ?? data['detail'] ?? data['message'] ?? 'Failed to create client account'
-          };
-        }
-      } else {
-        return {
-          'success': false,
-          'message': data['error'] ?? data['detail'] ?? data['message'] ?? 'Failed to create client account (Status: ${response.statusCode})'
-        };
-      }
-    } catch (e) {
-      return {'success': false, 'message': 'Connection error: $e'};
-    }
-  }
-
-  // Create agent account
-  static Future<Map<String, dynamic>> createAgentAccount({
-    required String email,
-    required String name,
-    String? phone,
-    String? address,
-  }) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString('access_token');
-
-      if (token == null) {
-        return {'success': false, 'message': 'Not authenticated'};
-      }
-
-      final url = '$baseUrl/auth/create-agent-account/';
-      final body = {
-        'email': email.trim().toLowerCase(),
-        'name': name.trim(),
-        if (phone != null && phone.isNotEmpty) 'phone': phone.trim(),
-        if (address != null && address.isNotEmpty) 'address': address.trim(),
-      };
-      
-      print('DEBUG API: Creating agent account');
-      print('DEBUG API: URL: $url');
-      print('DEBUG API: Body: $body');
-      
-      final response = await http.post(
-        Uri.parse(url),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-        body: jsonEncode(body),
-      ).timeout(
-        const Duration(seconds: 10),
-        onTimeout: () {
-          throw Exception('Request timeout - please check your internet connection');
-        },
-      );
-      
-      print('DEBUG API: Response status: ${response.statusCode}');
-      print('DEBUG API: Response body: ${response.body}');
-
-      final data = _safeParseJsonResponse(response);
-      if (data == null) {
-        return {
-          'success': false,
-          'message': _getHtmlErrorMessage(response)
-        };
-      }
-
-      if (response.statusCode == 201 || response.statusCode == 200) {
-        // Check if response has 'success' field or just return success
-        if (data.containsKey('success') && data['success'] == true) {
-          return {
-            'success': true,
-            'message': data['message'] ?? 'Agent account created successfully',
-            'user': data['user'],
-          };
-        } else if (data.containsKey('error')) {
-          return {
-            'success': false,
-            'message': data['error'] ?? 'Failed to create agent account'
-          };
-        } else {
-          // Assume success if status is 201/200
-          return {
-            'success': true,
-            'message': data['message'] ?? 'Agent account created successfully',
-            'user': data['user'],
-          };
-        }
-      } else if (response.statusCode == 400) {
-        // Handle 400 Bad Request - might be "already exists" which is actually OK
-        if (data.containsKey('error') && data['error'].toString().toLowerCase().contains('already exists')) {
-          return {
-            'success': true, // Treat as success since agent exists
-            'message': data['error'] ?? 'Agent already exists',
-            'user_id': data.containsKey('user_id') ? data['user_id'] : null,
-            'already_exists': true,
-          };
-        } else {
-          return {
-            'success': false,
-            'message': data['error'] ?? data['detail'] ?? data['message'] ?? 'Failed to create agent account'
-          };
-        }
-      } else {
-        return {
-          'success': false,
-          'message': data['error'] ?? data['detail'] ?? data['message'] ?? 'Failed to create agent account (Status: ${response.statusCode})'
-        };
-      }
-    } catch (e) {
-      return {'success': false, 'message': 'Connection error: $e'};
     }
   }
 
@@ -592,14 +195,30 @@ class ApiService {
         },
       );
 
+      // Check if response is HTML (error page)
+      if (response.body.trim().startsWith('<!DOCTYPE') || response.body.trim().startsWith('<html')) {
+        return {'success': false, 'message': 'Server returned HTML instead of JSON. Endpoint may not exist (404).'};
+      }
+
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         return {'success': true, 'data': data};
       } else {
-        return {'success': false, 'message': 'Failed to load profile'};
+        String errorMsg = 'Failed to load profile (Status: ${response.statusCode})';
+        try {
+          final errorData = jsonDecode(response.body);
+          if (errorData is Map && errorData.containsKey('message')) {
+            errorMsg = errorData['message'];
+          }
+        } catch (_) {}
+        return {'success': false, 'message': errorMsg};
       }
     } catch (e) {
-      return {'success': false, 'message': 'Connection error: $e'};
+      String errorMsg = 'Connection error: $e';
+      if (e.toString().contains('FormatException') && e.toString().contains('<!DOCTYPE')) {
+        errorMsg = 'Server returned HTML error page. Check if the API endpoint exists and backend is running correctly.';
+      }
+      return {'success': false, 'message': errorMsg};
     }
   }
 
@@ -705,6 +324,11 @@ class ApiService {
         },
       );
 
+      // Check if response is HTML (error page)
+      if (response.body.trim().startsWith('<!DOCTYPE') || response.body.trim().startsWith('<html')) {
+        return {'success': false, 'message': 'Server returned HTML instead of JSON. Endpoint /api/auth/my-role/ may not exist (404).'};
+      }
+
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         // Store role locally
@@ -712,10 +336,21 @@ class ApiService {
         await prefs.setString('user_role_display', data['role_display'] ?? 'Unassigned');
         return {'success': true, 'data': data};
       } else {
-        return {'success': false, 'message': 'Failed to load role'};
+        String errorMsg = 'Failed to load role (Status: ${response.statusCode})';
+        try {
+          final errorData = jsonDecode(response.body);
+          if (errorData is Map && errorData.containsKey('message')) {
+            errorMsg = errorData['message'];
+          }
+        } catch (_) {}
+        return {'success': false, 'message': errorMsg};
       }
     } catch (e) {
-      return {'success': false, 'message': 'Connection error: $e'};
+      String errorMsg = 'Connection error: $e';
+      if (e.toString().contains('FormatException') && e.toString().contains('<!DOCTYPE')) {
+        errorMsg = 'Server returned HTML error page. Check if /api/auth/my-role/ endpoint exists.';
+      }
+      return {'success': false, 'message': errorMsg};
     }
   }
 
@@ -737,14 +372,30 @@ class ApiService {
         },
       );
 
+      // Check if response is HTML (error page)
+      if (response.body.trim().startsWith('<!DOCTYPE') || response.body.trim().startsWith('<html')) {
+        return {'success': false, 'message': 'Server returned HTML instead of JSON. Endpoint /api/auth/roles/ may not exist (404).'};
+      }
+
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         return {'success': true, 'data': data};
       } else {
-        return {'success': false, 'message': 'Failed to load roles'};
+        String errorMsg = 'Failed to load roles (Status: ${response.statusCode})';
+        try {
+          final errorData = jsonDecode(response.body);
+          if (errorData is Map && errorData.containsKey('message')) {
+            errorMsg = errorData['message'];
+          }
+        } catch (_) {}
+        return {'success': false, 'message': errorMsg};
       }
     } catch (e) {
-      return {'success': false, 'message': 'Connection error: $e'};
+      String errorMsg = 'Connection error: $e';
+      if (e.toString().contains('FormatException') && e.toString().contains('<!DOCTYPE')) {
+        errorMsg = 'Server returned HTML error page. Check if /api/auth/roles/ endpoint exists.';
+      }
+      return {'success': false, 'message': errorMsg};
     }
   }
 
@@ -803,6 +454,11 @@ class ApiService {
         },
       );
 
+      // Check if response is HTML (error page)
+      if (response.body.trim().startsWith('<!DOCTYPE') || response.body.trim().startsWith('<html')) {
+        return {'success': false, 'message': 'Server returned HTML. Endpoint /api/auth/users/ may not exist (404).'};
+      }
+
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         return {'success': true, 'data': data};
@@ -834,15 +490,62 @@ class ApiService {
         },
       );
 
-      final data = jsonDecode(response.body);
+      // Check if response is HTML (error page)
+      final responseBody = response.body.trim();
+      if (responseBody.isEmpty) {
+        return {'success': false, 'message': 'Empty response from server. Backend may have crashed or endpoint does not exist.'};
+      }
+      if (responseBody.startsWith('<!DOCTYPE') || 
+          responseBody.startsWith('<html') || 
+          responseBody.startsWith('<!doctype') ||
+          responseBody.toLowerCase().contains('<!doctype') ||
+          responseBody.toLowerCase().contains('<html')) {
+        return {'success': false, 'message': 'Server returned HTML error page instead of JSON.\n\nThis means the backend endpoint /api/attendance/mark/ may not exist or the backend has an error.\n\nPlease check:\n1. Backend is running (python manage.py runserver)\n2. Backend terminal for error messages\n3. URL in browser: http://127.0.0.1:8000/api/attendance/mark/'};
+      }
+
+      Map<String, dynamic> data;
+      try {
+        data = jsonDecode(response.body);
+      } catch (e) {
+        return {'success': false, 'message': 'Invalid JSON response. Server may have returned an error page.'};
+      }
 
       if (response.statusCode == 200 || response.statusCode == 201) {
         return {'success': true, 'data': data};
       } else {
-        return {'success': false, 'message': data['error'] ?? 'Failed to mark attendance'};
+        String errorMsg = 'Failed to mark attendance';
+        if (data.containsKey('error')) {
+          errorMsg = data['error'].toString();
+        } else if (data.containsKey('message')) {
+          errorMsg = data['message'].toString();
+        } else if (data.containsKey('detail')) {
+          errorMsg = data['detail'].toString();
+        }
+        return {'success': false, 'message': errorMsg};
       }
     } catch (e) {
-      return {'success': false, 'message': 'Connection error: $e'};
+      String errorStr = e.toString();
+      String errorMsg = 'Connection error';
+      
+      // Detect HTML response errors
+      if (errorStr.contains('FormatException') || errorStr.contains('<!DOCTYPE') || errorStr.contains('<html')) {
+        errorMsg = 'Server returned HTML error page instead of JSON. This means:\n'
+            '1. Backend endpoint may not exist (404 error)\n'
+            '2. Backend has a server error (500 error)\n'
+            '3. Backend is not running properly\n\n'
+            'Check your backend terminal for errors. Make sure backend is running: python manage.py runserver';
+      } else if (errorStr.contains('Connection refused')) {
+        errorMsg = 'Connection refused. Backend server is not running. Start it with: python manage.py runserver';
+      } else if (errorStr.contains('Failed host lookup') || errorStr.contains('Network is unreachable')) {
+        errorMsg = 'Cannot connect to server. Check API URL: $baseUrl\nMake sure backend is running on your computer.';
+      } else if (errorStr.contains('TimeoutException')) {
+        errorMsg = 'Request timed out. Backend may be slow or not responding.';
+      } else {
+        errorMsg = 'Error: ${errorStr.length > 150 ? errorStr.substring(0, 150) + "..." : errorStr}';
+      }
+      
+      print('❌ markAttendance error: $errorStr');
+      return {'success': false, 'message': errorMsg};
     }
   }
 
@@ -984,15 +687,29 @@ class ApiService {
         },
       );
 
-      final data = jsonDecode(response.body);
+      // Check if response is HTML (error page)
+      if (response.body.trim().startsWith('<!DOCTYPE') || response.body.trim().startsWith('<html')) {
+        return {'success': false, 'message': 'Server returned HTML. Endpoint /api/attendance/today/ may not exist (404).'};
+      }
+
+      Map<String, dynamic> data;
+      try {
+        data = jsonDecode(response.body);
+      } catch (e) {
+        return {'success': false, 'message': 'Invalid JSON response. Server may have returned an error page.'};
+      }
 
       if (response.statusCode == 200) {
         return {'success': true, 'data': data};
       } else {
-        return {'success': false, 'message': 'Failed to load attendance'};
+        return {'success': false, 'message': 'Failed to load attendance (Status: ${response.statusCode})'};
       }
     } catch (e) {
-      return {'success': false, 'message': 'Connection error: $e'};
+      String errorMsg = 'Connection error: $e';
+      if (e.toString().contains('FormatException') && e.toString().contains('<!DOCTYPE')) {
+        errorMsg = 'Server returned HTML error page. Check if /api/attendance/today/ endpoint exists.';
+      }
+      return {'success': false, 'message': errorMsg};
     }
   }
 
@@ -1014,15 +731,36 @@ class ApiService {
         },
       );
 
-      final data = jsonDecode(response.body);
+      // Check if response is HTML (error page)
+      if (response.body.trim().startsWith('<!DOCTYPE') || response.body.trim().startsWith('<html')) {
+        return {'success': false, 'message': ''}; // Return empty message to suppress error display
+      }
+
+      // Check if response is JSON
+      String contentType = response.headers['content-type'] ?? '';
+      if (!contentType.contains('application/json')) {
+        return {'success': false, 'message': ''}; // Return empty message to suppress error display
+      }
+
+      Map<String, dynamic> data;
+      try {
+        data = jsonDecode(response.body);
+      } catch (e) {
+        return {'success': false, 'message': ''}; // Return empty message to suppress error display
+      }
 
       if (response.statusCode == 200) {
         return {'success': true, 'data': data};
       } else {
-        return {'success': false, 'message': 'Failed to load summary'};
+        // Only return error message for non-server errors
+        if (response.statusCode != 500 && response.statusCode != 404) {
+          return {'success': false, 'message': 'Failed to load summary (Status: ${response.statusCode})'};
+        }
+        return {'success': false, 'message': ''}; // Suppress server errors
       }
     } catch (e) {
-      return {'success': false, 'message': 'Connection error: $e'};
+      // Suppress connection errors - return empty message
+      return {'success': false, 'message': ''};
     }
   }
 
@@ -1038,19 +776,6 @@ class ApiService {
         return {'success': false, 'message': 'Not authenticated'};
       }
 
-      // Check if offline mode and no internet
-      if (await _shouldUseOfflineMode()) {
-        final cachedProjects = OfflineStorageService.getCachedProjects();
-        if (cachedProjects != null && !NetworkService.isOnline) {
-          print('📴 Offline - returning cached projects');
-          return {
-            'success': true,
-            'data': cachedProjects.map((p) => p.toJson()).toList(),
-            'fromCache': true,
-          };
-        }
-      }
-
       final response = await http.get(
         Uri.parse('$baseUrl/projects/'),
         headers: {
@@ -1062,17 +787,6 @@ class ApiService {
       // Check if response is JSON
       String contentType = response.headers['content-type'] ?? '';
       if (!contentType.contains('application/json')) {
-        // If offline mode and cache exists, return cache
-        if (await _shouldUseOfflineMode()) {
-          final cachedProjects = OfflineStorageService.getCachedProjects();
-          if (cachedProjects != null) {
-            return {
-              'success': true,
-              'data': cachedProjects.map((p) => p.toJson()).toList(),
-              'fromCache': true,
-            };
-          }
-        }
         return {
           'success': false,
           'message': 'Server error. Please check if the backend server is running.'
@@ -1083,33 +797,9 @@ class ApiService {
         final data = jsonDecode(response.body);
 
         if (response.statusCode == 200) {
-          final projectsList = data is List ? data : (data['results'] ?? data);
-          
-          // Cache projects for offline access (if field officer)
-          if (await _shouldUseOfflineMode() && projectsList is List) {
-            try {
-              final projects = (projectsList as List)
-                  .map((json) => Project.fromJson(json))
-                  .toList();
-              await OfflineStorageService.cacheProjects(projects);
-            } catch (e) {
-              print('Warning: Failed to cache projects: $e');
-            }
-          }
-          
-          return {'success': true, 'data': projectsList};
+          // Backend returns a list directly, so wrap it in data
+          return {'success': true, 'data': data is List ? data : (data['results'] ?? data)};
         } else {
-          // If offline mode and cache exists, return cache
-          if (await _shouldUseOfflineMode()) {
-            final cachedProjects = OfflineStorageService.getCachedProjects();
-            if (cachedProjects != null) {
-              return {
-                'success': true,
-                'data': cachedProjects.map((p) => p.toJson()).toList(),
-                'fromCache': true,
-              };
-            }
-          }
           return {
             'success': false,
             'message': data is Map && data.containsKey('error')
@@ -1118,32 +808,9 @@ class ApiService {
           };
         }
       } catch (e) {
-        // If offline mode and cache exists, return cache
-        if (await _shouldUseOfflineMode()) {
-          final cachedProjects = OfflineStorageService.getCachedProjects();
-          if (cachedProjects != null) {
-            return {
-              'success': true,
-              'data': cachedProjects.map((p) => p.toJson()).toList(),
-              'fromCache': true,
-            };
-          }
-        }
         return {'success': false, 'message': 'Invalid response from server'};
       }
     } catch (e) {
-      // If offline mode and cache exists, return cache
-      if (await _shouldUseOfflineMode()) {
-        final cachedProjects = OfflineStorageService.getCachedProjects();
-        if (cachedProjects != null) {
-          print('📴 Connection error - returning cached projects: $e');
-          return {
-            'success': true,
-            'data': cachedProjects.map((p) => p.toJson()).toList(),
-            'fromCache': true,
-          };
-        }
-      }
       return {'success': false, 'message': 'Connection error: ${e.toString()}'};
     }
   }
@@ -1191,22 +858,9 @@ class ApiService {
       String contentType = response.headers['content-type'] ?? '';
       if (!contentType.contains('application/json')) {
         // Server returned HTML (likely an error page)
-        // Try to extract error message from HTML or provide a more helpful message
-        String errorMsg = 'Server error. Please check if the backend server is running.';
-        if (response.statusCode == 400) {
-          errorMsg = 'Bad request. Please check your input data.';
-        } else if (response.statusCode == 401) {
-          errorMsg = 'Authentication failed. Please login again.';
-        } else if (response.statusCode == 403) {
-          errorMsg = 'Permission denied. You may not have access to create projects.';
-        } else if (response.statusCode == 500) {
-          errorMsg = 'Internal server error. Please contact support.';
-        }
-        print('DEBUG API: Non-JSON response. Status: ${response.statusCode}, Content-Type: $contentType');
-        print('DEBUG API: Response body (first 500 chars): ${response.body.length > 500 ? response.body.substring(0, 500) : response.body}');
         return {
           'success': false,
-          'message': errorMsg
+          'message': 'Server error. Please check if the backend server is running.'
         };
       }
 
@@ -1278,28 +932,10 @@ class ApiService {
           return {'success': false, 'message': 'Failed to create project'};
         }
       } catch (e) {
-        // If JSON parsing fails, log the actual response for debugging
-        print('DEBUG API: JSON parsing failed. Status: ${response.statusCode}');
-        print('DEBUG API: Content-Type: ${response.headers['content-type']}');
-        print('DEBUG API: Response body (first 1000 chars): ${response.body.length > 1000 ? response.body.substring(0, 1000) : response.body}');
-        print('DEBUG API: Error: $e');
-        
-        // Try to extract error message from HTML if it's an error page
-        String errorMsg = 'Invalid response from server. Please try again.';
-        if (response.body.contains('<title>')) {
-          // Extract title from HTML error page
-          final titleMatch = RegExp(r'<title>([^<]+)</title>').firstMatch(response.body);
-          if (titleMatch != null) {
-            errorMsg = 'Server error: ${titleMatch.group(1)}';
-          }
-        } else if (response.body.isNotEmpty) {
-          // If not HTML, show first part of response
-          errorMsg = 'Server returned invalid data: ${response.body.length > 200 ? response.body.substring(0, 200) + "..." : response.body}';
-        }
-        
+        // If JSON parsing fails, return a user-friendly error
         return {
           'success': false,
-          'message': errorMsg
+          'message': 'Invalid response from server. Please try again.'
         };
       }
     } catch (e) {
@@ -1785,62 +1421,6 @@ class ApiService {
     }
   }
 
-  // Update project workflow stage
-  static Future<Map<String, dynamic>> updateProjectWorkflowStage({
-    required int projectId,
-    String? workflowStage,
-  }) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString('access_token');
-
-      if (token == null) {
-        return {'success': false, 'message': 'Not authenticated'};
-      }
-
-      final response = await http.patch(
-        Uri.parse('$baseUrl/projects/$projectId/'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-        body: jsonEncode({
-          'workflow_stage': workflowStage,
-        }),
-      );
-
-      // Safely parse JSON response (handles HTML error pages)
-      final data = _safeParseJsonResponse(response);
-      
-      if (data == null) {
-        // HTML response detected
-        return {
-          'success': false,
-          'message': _getHtmlErrorMessage(response)
-        };
-      }
-
-      if (response.statusCode == 200) {
-        return {'success': true, 'data': data};
-      } else {
-        // Try to extract error message from various possible formats
-        String errorMessage = 'Failed to update workflow stage';
-        if (data.containsKey('error')) {
-          errorMessage = data['error'].toString();
-        } else if (data.containsKey('message')) {
-          errorMessage = data['message'].toString();
-        } else if (data.containsKey('detail')) {
-          errorMessage = data['detail'].toString();
-        } else if (data.containsKey('non_field_errors')) {
-          errorMessage = (data['non_field_errors'] as List).join(', ');
-        }
-        return {'success': false, 'message': errorMessage};
-      }
-    } catch (e) {
-      return {'success': false, 'message': 'Connection error: ${e.toString()}'};
-    }
-  }
-
   // Upload document to project
   static Future<Map<String, dynamic>> uploadProjectDocument({
     required int projectId,
@@ -1866,22 +1446,6 @@ class ApiService {
         'Authorization': 'Bearer $token',
       });
 
-      // Validate file exists and get file size
-      final file = File(filePath);
-      if (!await file.exists()) {
-        return {'success': false, 'message': 'Selected file does not exist'};
-      }
-      
-      // Check file size (limit to 50MB)
-      final fileSize = await file.length();
-      const maxFileSize = 50 * 1024 * 1024; // 50MB
-      if (fileSize > maxFileSize) {
-        return {
-          'success': false,
-          'message': 'File size exceeds maximum limit of 50MB. Current size: ${(fileSize / (1024 * 1024)).toStringAsFixed(2)}MB'
-        };
-      }
-
       request.fields['project'] = projectId.toString();
       request.fields['name'] = fileName;
       if (description != null) {
@@ -1891,78 +1455,17 @@ class ApiService {
         request.fields['assigned_to'] = assignedToId.toString();
       }
 
-      final multipartFile = await http.MultipartFile.fromPath('file', filePath);
-      request.files.add(multipartFile);
+      final file = await http.MultipartFile.fromPath('file', filePath);
+      request.files.add(file);
 
       final streamedResponse = await request.send();
       final response = await http.Response.fromStream(streamedResponse);
-      
-      // Check if response is JSON before parsing
-      String contentType = response.headers['content-type'] ?? '';
-      
-      // Check if response body starts with HTML (common error indicator)
-      if (response.body.trim().startsWith('<!DOCTYPE') || 
-          response.body.trim().startsWith('<html') ||
-          (!contentType.contains('application/json') && response.body.isNotEmpty && !response.body.trim().startsWith('{'))) {
-        String errorMessage = 'Server returned an error page';
-        if (response.statusCode != 201 && response.statusCode != 200) {
-          errorMessage = 'Server error (Status ${response.statusCode}). Please check if the backend server is running correctly.';
-        } else {
-          errorMessage = 'Server returned HTML instead of JSON. Please check backend configuration.';
-        }
-        return {
-          'success': false,
-          'message': errorMessage
-        };
-      }
-
-      // Try to parse JSON response
-      Map<String, dynamic> data;
-      try {
-        if (response.body.isEmpty) {
-          data = {};
-        } else {
-          data = jsonDecode(response.body);
-        }
-      } catch (e) {
-        // If parsing fails, check if it's HTML
-        if (response.body.trim().startsWith('<!DOCTYPE') || response.body.trim().startsWith('<html')) {
-          return {
-            'success': false,
-            'message': 'Server returned an HTML error page instead of JSON. Status: ${response.statusCode}. Please check backend server.'
-          };
-        }
-        return {
-          'success': false,
-          'message': 'Failed to parse server response. Status: ${response.statusCode}. Response: ${response.body.length > 200 ? response.body.substring(0, 200) + "..." : response.body}'
-        };
-      }
+      final data = jsonDecode(response.body);
 
       if (response.statusCode == 201) {
         return {'success': true, 'data': data};
       } else {
-        // Try to extract error message from various possible formats
-        String errorMessage = 'Failed to upload document';
-        if (data.containsKey('error')) {
-          errorMessage = data['error'].toString();
-        } else if (data.containsKey('message')) {
-          errorMessage = data['message'].toString();
-        } else if (data.containsKey('detail')) {
-          errorMessage = data['detail'].toString();
-        } else if (data.containsKey('non_field_errors')) {
-          errorMessage = (data['non_field_errors'] as List).join(', ');
-        } else if (data.isNotEmpty) {
-          // If there are field errors, format them
-          final fieldErrors = data.entries
-              .where((e) => e.value is List || e.value is String)
-              .map((e) => '${e.key}: ${e.value}')
-              .join(', ');
-          if (fieldErrors.isNotEmpty) {
-            errorMessage = fieldErrors;
-          }
-        }
-        
-        return {'success': false, 'message': errorMessage};
+        return {'success': false, 'message': data['error'] ?? 'Failed to upload document'};
       }
     } catch (e) {
       return {'success': false, 'message': 'Connection error: $e'};
@@ -2122,58 +1625,6 @@ class ApiService {
   }
 
   static Future<Map<String, dynamic>> createValuation(Map<String, dynamic> valuationData) async {
-    // Check if offline mode is enabled (field officers only)
-    final useOfflineMode = await _shouldUseOfflineMode();
-    
-    if (useOfflineMode) {
-      // Check network status first
-      final isOnline = NetworkService.isOnline;
-      
-      if (isOnline) {
-        // ONLINE: Try to send directly to server first
-        try {
-          final syncResult = await syncValuationToServer(valuationData);
-          if (syncResult['success']) {
-            // Successfully sent to server - no need for offline storage
-            print('✅ Valuation sent directly to server (online mode)');
-            return {'success': true, 'data': syncResult['data']};
-          } else {
-            // Server request failed - fall back to offline storage
-            print('⚠️ Server request failed, saving offline: ${syncResult['message']}');
-            final localId = await OfflineStorageService.saveValuationOffline(valuationData);
-            // Trigger background sync retry
-            Future.delayed(const Duration(seconds: 2), () {
-              SyncEngine.syncAll(silent: true);
-            });
-            return {'success': true, 'localId': localId, 'synced': false};
-          }
-        } catch (e) {
-          // Network error - save offline and retry
-          print('⚠️ Network error, saving offline: $e');
-          try {
-            final localId = await OfflineStorageService.saveValuationOffline(valuationData);
-            // Trigger background sync retry
-            Future.delayed(const Duration(seconds: 2), () {
-              SyncEngine.syncAll(silent: true);
-            });
-            return {'success': true, 'localId': localId, 'synced': false};
-          } catch (saveErr) {
-            return {'success': false, 'message': 'Failed to save valuation offline: $saveErr'};
-          }
-        }
-      } else {
-        // OFFLINE: Save to offline storage
-        try {
-          final localId = await OfflineStorageService.saveValuationOffline(valuationData);
-          print('📴 Offline - valuation saved locally, will sync when online');
-          return {'success': true, 'localId': localId, 'synced': false};
-        } catch (e) {
-          return {'success': false, 'message': 'Failed to save valuation offline: $e'};
-        }
-      }
-    }
-    
-    // Normal online flow for non-field officers
     try {
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('access_token');
@@ -2255,66 +1706,6 @@ class ApiService {
       }
     } catch (e) {
       return {'success': false, 'message': 'Connection error: $e'};
-    }
-  }
-
-  /// Helper method to sync valuation to server (used by offline mode and sync engine)
-  /// This method does NOT save offline - it only posts to the server
-  static Future<Map<String, dynamic>> syncValuationToServer(Map<String, dynamic> valuationData) async {
-    final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString('access_token');
-
-    if (token == null) {
-      return {'success': false, 'message': 'Not authenticated'};
-    }
-
-    final response = await http.post(
-      Uri.parse('$baseUrl/valuations/'),
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $token',
-      },
-      body: jsonEncode(valuationData),
-    );
-
-    final responseBody = response.body;
-    Map<String, dynamic> data;
-    
-    try {
-      data = jsonDecode(responseBody);
-    } catch (e) {
-      return {'success': false, 'message': 'Invalid response from server: $responseBody'};
-    }
-
-    if (response.statusCode == 201) {
-      return {'success': true, 'data': data};
-    } else {
-      String errorMessage = 'Failed to create valuation';
-      if (data.containsKey('detail')) {
-        errorMessage = data['detail'].toString();
-      } else if (data.containsKey('message')) {
-        errorMessage = data['message'].toString();
-      } else if (data.containsKey('error')) {
-        errorMessage = data['error'].toString();
-      } else if (data.isNotEmpty) {
-        // Try to extract field errors
-        final fieldErrors = <String>[];
-        data.forEach((key, value) {
-          if (value is List && value.isNotEmpty) {
-            fieldErrors.add('$key: ${value.join(", ")}');
-          } else if (value is String && value.isNotEmpty) {
-            fieldErrors.add('$key: $value');
-          }
-        });
-        if (fieldErrors.isNotEmpty) {
-          errorMessage = fieldErrors.join('\n');
-        } else {
-          errorMessage = 'Validation failed';
-        }
-      }
-      print('❌ Server validation error: $errorMessage');
-      print('Response data: $data');
-      return {'success': false, 'message': errorMessage, 'data': null};
     }
   }
 
@@ -2475,7 +1866,10 @@ class ApiService {
     }
   }
 
-  static Future<Map<String, dynamic>> acceptValuation(int valuationId) async {
+  // ========== PAYMENT SLIP ENDPOINTS ==========
+
+  // Generate payment slips for all users (Admin only)
+  static Future<Map<String, dynamic>> generatePaymentSlips({int? month, int? year}) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('access_token');
@@ -2484,27 +1878,33 @@ class ApiService {
         return {'success': false, 'message': 'Not authenticated'};
       }
 
+      final body = <String, dynamic>{};
+      if (month != null) body['month'] = month;
+      if (year != null) body['year'] = year;
+
       final response = await http.post(
-        Uri.parse('$baseUrl/valuations/$valuationId/accept/'),
+        Uri.parse('$baseUrl/auth/payment-slips/generate/'),
         headers: {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $token',
         },
+        body: jsonEncode(body),
       );
 
       final data = jsonDecode(response.body);
 
-      if (response.statusCode == 200) {
+      if (response.statusCode == 201) {
         return {'success': true, 'data': data};
       } else {
-        return {'success': false, 'message': data['error'] ?? data['detail'] ?? 'Failed to accept valuation'};
+        return {'success': false, 'message': data['error'] ?? 'Failed to generate payment slips'};
       }
     } catch (e) {
       return {'success': false, 'message': 'Connection error: $e'};
     }
   }
 
-  static Future<Map<String, dynamic>> rejectValuation(int valuationId, {required String rejectionReason}) async {
+  // Get current user's payment slips
+  static Future<Map<String, dynamic>> getMyPaymentSlips() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('access_token');
@@ -2513,57 +1913,68 @@ class ApiService {
         return {'success': false, 'message': 'Not authenticated'};
       }
 
-      final response = await http.post(
-        Uri.parse('$baseUrl/valuations/$valuationId/reject/'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-        body: jsonEncode({'rejection_reason': rejectionReason}),
-      );
-
-      final data = jsonDecode(response.body);
-
-      if (response.statusCode == 200) {
-        return {'success': true, 'data': data};
-      } else {
-        return {'success': false, 'message': data['error'] ?? data['detail'] ?? 'Failed to reject valuation'};
-      }
-    } catch (e) {
-      return {'success': false, 'message': 'Connection error: $e'};
-    }
-  }
-
-  static Future<Map<String, dynamic>> deleteValuation(int valuationId) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString('access_token');
-
-      if (token == null) {
-        return {'success': false, 'message': 'Not authenticated'};
-      }
-
-      final response = await http.delete(
-        Uri.parse('$baseUrl/valuations/$valuationId/'),
+      final response = await http.get(
+        Uri.parse('$baseUrl/auth/payment-slips/my/'),
         headers: {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $token',
         },
       );
 
-      if (response.statusCode == 204 || response.statusCode == 200) {
-        return {'success': true};
+      // Check if response is HTML (error page)
+      if (response.body.trim().startsWith('<!DOCTYPE') || response.body.trim().startsWith('<html')) {
+        return {'success': false, 'message': 'Server returned HTML. Endpoint /api/auth/payment-slips/my/ may not exist or backend has an error (404/500).'};
+      }
+
+      // Check if response is JSON
+      String contentType = response.headers['content-type'] ?? '';
+      if (!contentType.contains('application/json')) {
+        return {
+          'success': false,
+          'message': 'Server error. Please check if the backend server is running.'
+        };
+      }
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        // DRF ListAPIView returns a list directly, or wrapped in 'results' for pagination
+        if (data is List) {
+          return {'success': true, 'data': data};
+        } else if (data is Map && data.containsKey('results')) {
+          return {'success': true, 'data': data['results']};
+        } else {
+          return {'success': true, 'data': []};
+        }
       } else {
-        final data = response.body.isNotEmpty ? jsonDecode(response.body) : {};
-        return {'success': false, 'message': data['detail'] ?? 'Failed to delete valuation'};
+        Map<String, dynamic> errorData;
+        try {
+          errorData = jsonDecode(response.body);
+        } catch (e) {
+          return {
+            'success': false,
+            'message': 'Failed to load payment slips (Status: ${response.statusCode})'
+          };
+        }
+        return {
+          'success': false,
+          'message': errorData['detail'] ?? errorData['message'] ?? 'Failed to load payment slips'
+        };
       }
     } catch (e) {
-      return {'success': false, 'message': 'Connection error: $e'};
+      String errorMsg = 'Connection error';
+      if (e.toString().contains('Connection refused')) {
+        errorMsg = 'Connection refused. Is the backend server running?';
+      } else if (e.toString().contains('Failed host lookup') || e.toString().contains('Network is unreachable')) {
+        errorMsg = 'Cannot connect to server. Make sure the backend is running at $baseUrl';
+      } else {
+        errorMsg = 'Connection error: $e';
+      }
+      return {'success': false, 'message': errorMsg};
     }
   }
 
-  // Senior Valuer methods
-  static Future<Map<String, dynamic>> getReviewedValuationsForSeniorValuer({int? projectId}) async {
+  // Get all payment slips (Admin only)
+  static Future<Map<String, dynamic>> getAllPaymentSlips({int? month, int? year, int? userId}) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('access_token');
@@ -2572,9 +1983,14 @@ class ApiService {
         return {'success': false, 'message': 'Not authenticated'};
       }
 
-      String url = '$baseUrl/valuations/senior-valuer/reviewed/';
-      if (projectId != null) {
-        url += '?project=$projectId';
+      final queryParams = <String>[];
+      if (month != null) queryParams.add('month=$month');
+      if (year != null) queryParams.add('year=$year');
+      if (userId != null) queryParams.add('user_id=$userId');
+
+      String url = '$baseUrl/auth/payment-slips/';
+      if (queryParams.isNotEmpty) {
+        url += '?${queryParams.join('&')}';
       }
 
       final response = await http.get(
@@ -2585,23 +2001,19 @@ class ApiService {
         },
       );
 
-      final data = jsonDecode(response.body);
-
       if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
         return {'success': true, 'data': data};
       } else {
-        return {'success': false, 'message': data['error'] ?? data['detail'] ?? 'Failed to load reviewed valuations'};
+        return {'success': false, 'message': 'Failed to load payment slips'};
       }
     } catch (e) {
       return {'success': false, 'message': 'Connection error: $e'};
     }
   }
 
-  static Future<Map<String, dynamic>> submitSeniorValuerProposal({
-    required int valuationId,
-    String? comments,
-    String? finalReportPath,
-  }) async {
+  // Get payment slip detail
+  static Future<Map<String, dynamic>> getPaymentSlipDetail(int slipId) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('access_token');
@@ -2610,68 +2022,29 @@ class ApiService {
         return {'success': false, 'message': 'Not authenticated'};
       }
 
-      final request = http.MultipartRequest(
-        'POST',
-        Uri.parse('$baseUrl/valuations/$valuationId/submit-proposal/'),
-      );
-
-      request.headers['Authorization'] = 'Bearer $token';
-      
-      if (comments != null && comments.isNotEmpty) {
-        request.fields['senior_valuer_comments'] = comments;
-      }
-
-      if (finalReportPath != null && finalReportPath.isNotEmpty) {
-        final file = await http.MultipartFile.fromPath('final_report', finalReportPath);
-        request.files.add(file);
-      }
-
-      final streamedResponse = await request.send();
-      final response = await http.Response.fromStream(streamedResponse);
-      final data = jsonDecode(response.body);
-
-      if (response.statusCode == 200) {
-        return {'success': true, 'data': data};
-      } else {
-        return {'success': false, 'message': data['error'] ?? data['detail'] ?? 'Failed to submit proposal'};
-      }
-    } catch (e) {
-      return {'success': false, 'message': 'Connection error: $e'};
-    }
-  }
-
-  static Future<Map<String, dynamic>> approveValuationBySeniorValuer(int valuationId) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString('access_token');
-
-      if (token == null) {
-        return {'success': false, 'message': 'Not authenticated'};
-      }
-
-      final response = await http.post(
-        Uri.parse('$baseUrl/valuations/$valuationId/approve/'),
+      final response = await http.get(
+        Uri.parse('$baseUrl/auth/payment-slips/$slipId/'),
         headers: {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $token',
         },
       );
 
-      final data = jsonDecode(response.body);
-
       if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
         return {'success': true, 'data': data};
       } else {
-        return {'success': false, 'message': data['error'] ?? data['detail'] ?? 'Failed to approve valuation'};
+        return {'success': false, 'message': 'Failed to load payment slip'};
       }
     } catch (e) {
       return {'success': false, 'message': 'Connection error: $e'};
     }
   }
 
-  static Future<Map<String, dynamic>> rejectValuationBySeniorValuer({
-    required int valuationId,
-    required String rejectionReason,
+  // Upload overtime hours for a specific payment slip
+  static Future<Map<String, dynamic>> uploadOvertimeHours({
+    required int slipId,
+    required double overtimeHours,
   }) async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -2682,12 +2055,95 @@ class ApiService {
       }
 
       final response = await http.post(
-        Uri.parse('$baseUrl/valuations/$valuationId/senior-valuer-reject/'),
+        Uri.parse('$baseUrl/auth/payment-slips/$slipId/upload-overtime/'),
         headers: {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $token',
         },
-        body: jsonEncode({'rejection_reason': rejectionReason}),
+        body: jsonEncode({
+          'overtime_hours': overtimeHours,
+        }),
+      );
+
+      final data = jsonDecode(response.body);
+
+      if (response.statusCode == 200) {
+        return {'success': true, 'data': data['data']};
+      } else {
+        return {'success': false, 'message': data['error'] ?? 'Failed to upload overtime hours'};
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'Connection error: $e'};
+    }
+  }
+
+  // Upload overtime hours for all payment slips
+  static Future<Map<String, dynamic>> uploadAllOvertimeHours({
+    int? month,
+    int? year,
+    required List<Map<String, dynamic>> overtimeData,
+  }) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token');
+
+      if (token == null) {
+        return {'success': false, 'message': 'Not authenticated'};
+      }
+
+      final body = <String, dynamic>{
+        'overtime_data': overtimeData,
+      };
+      if (month != null) body['month'] = month;
+      if (year != null) body['year'] = year;
+
+      final response = await http.post(
+        Uri.parse('$baseUrl/auth/payment-slips/upload-all-overtime/'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode(body),
+      );
+
+      final data = jsonDecode(response.body);
+
+      if (response.statusCode == 200) {
+        return {
+          'success': true,
+          'message': data['message'] ?? 'Overtime hours uploaded successfully',
+          'updated_count': data['updated_count'] ?? 0,
+          'errors': data['errors'],
+        };
+      } else {
+        return {'success': false, 'message': data['error'] ?? 'Failed to upload overtime hours'};
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'Connection error: $e'};
+    }
+  }
+
+  // Upload/publish payment slips for employees to view
+  static Future<Map<String, dynamic>> uploadPaymentSlips({int? month, int? year}) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token');
+
+      if (token == null) {
+        return {'success': false, 'message': 'Not authenticated'};
+      }
+
+      final body = <String, dynamic>{};
+      if (month != null) body['month'] = month;
+      if (year != null) body['year'] = year;
+
+      final response = await http.post(
+        Uri.parse('$baseUrl/auth/payment-slips/upload/'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode(body),
       );
 
       final data = jsonDecode(response.body);
@@ -2695,79 +2151,729 @@ class ApiService {
       if (response.statusCode == 200) {
         return {'success': true, 'data': data};
       } else {
-        return {'success': false, 'message': data['error'] ?? data['detail'] ?? 'Failed to approve valuation'};
+        return {'success': false, 'message': data['error'] ?? 'Failed to upload payment slips'};
       }
     } catch (e) {
       return {'success': false, 'message': 'Connection error: $e'};
     }
   }
-  
-  // MD/GM Project Approval/Rejection
-  static Future<Map<String, dynamic>> approveProjectByMDGM(int projectId) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString('access_token');
-      
-      if (token == null) {
-        return {'success': false, 'message': 'Not authenticated'};
-      }
-      
-      final response = await http.post(
-        Uri.parse('$baseUrl/projects/$projectId/md-gm-approve/'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-      ).timeout(const Duration(seconds: 10));
-      
-      final data = _safeParseJsonResponse(response);
-      if (data == null) {
-        return {'success': false, 'message': _getHtmlErrorMessage(response)};
-      }
-      
-      if (response.statusCode == 200) {
-        return {'success': true, 'data': data, 'message': data['message'] ?? 'Project approved successfully'};
-      } else {
-        return {'success': false, 'message': data['error'] ?? data['detail'] ?? 'Failed to approve project'};
-      }
-    } catch (e) {
-      return {'success': false, 'message': 'Error: ${e.toString()}'};
-    }
-  }
-  
-  static Future<Map<String, dynamic>> rejectProjectByMDGM({
-    required int projectId,
-    required String rejectionReason,
+
+  // Delete payment slip
+  static Future<Map<String, dynamic>> deletePaymentSlip({
+    required int slipId,
   }) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('access_token');
-      
+
       if (token == null) {
         return {'success': false, 'message': 'Not authenticated'};
       }
-      
-      final response = await http.post(
-        Uri.parse('$baseUrl/projects/$projectId/md-gm-reject/'),
+
+      final response = await http.delete(
+        Uri.parse('$baseUrl/auth/payment-slips/$slipId/'),
         headers: {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $token',
         },
-        body: jsonEncode({'rejection_reason': rejectionReason}),
-      ).timeout(const Duration(seconds: 10));
-      
-      final data = _safeParseJsonResponse(response);
-      if (data == null) {
-        return {'success': false, 'message': _getHtmlErrorMessage(response)};
+      );
+
+      // Check if response is HTML (error page)
+      if (response.body.trim().startsWith('<!DOCTYPE') || response.body.trim().startsWith('<html')) {
+        return {'success': false, 'message': 'Server returned HTML instead of JSON. Endpoint may not exist (404).'};
       }
-      
-      if (response.statusCode == 200) {
-        return {'success': true, 'data': data, 'message': data['message'] ?? 'Project rejected successfully'};
+
+      if (response.statusCode == 200 || response.statusCode == 204) {
+        Map<String, dynamic> data = {};
+        if (response.body.isNotEmpty) {
+          try {
+            data = jsonDecode(response.body) as Map<String, dynamic>;
+          } catch (e) {
+            // If response body is empty, that's fine for DELETE
+          }
+        }
+        return {
+          'success': true,
+          'message': data['message'] ?? 'Payment slip deleted successfully',
+          'data': data
+        };
       } else {
-        return {'success': false, 'message': data['error'] ?? data['detail'] ?? 'Failed to reject project'};
+        Map<String, dynamic> errorData = {};
+        try {
+          errorData = jsonDecode(response.body) as Map<String, dynamic>;
+        } catch (e) {
+          // Ignore parse errors
+        }
+        
+        String errorMessage = 'Failed to delete payment slip';
+        if (errorData.containsKey('error')) {
+          errorMessage = errorData['error'].toString();
+        } else if (errorData.containsKey('detail')) {
+          errorMessage = errorData['detail'].toString();
+        } else if (errorData.containsKey('message')) {
+          errorMessage = errorData['message'].toString();
+        }
+        return {'success': false, 'message': errorMessage};
       }
     } catch (e) {
-      return {'success': false, 'message': 'Error: ${e.toString()}'};
+      String errorMsg = 'Connection error: $e';
+      if (e.toString().contains('FormatException') || e.toString().contains('jsonDecode')) {
+        errorMsg = 'Server returned invalid response. Please check your connection and try again.';
+      } else if (e.toString().contains('SocketException') || e.toString().contains('Connection refused')) {
+        errorMsg = 'Connection refused. Is the backend server running?';
+      }
+      return {'success': false, 'message': errorMsg};
+    }
+  }
+
+  // Delete user from database (Admin only)
+  static Future<Map<String, dynamic>> deleteUser({
+    required int userId,
+  }) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token');
+
+      if (token == null) {
+        return {'success': false, 'message': 'Not authenticated'};
+      }
+
+      final response = await http.delete(
+        Uri.parse('$baseUrl/auth/users/$userId/delete/'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      // Check if response is HTML (error page)
+      if (response.body.trim().startsWith('<!DOCTYPE') || response.body.trim().startsWith('<html')) {
+        return {'success': false, 'message': 'Server returned HTML instead of JSON. Endpoint may not exist (404).'};
+      }
+
+      if (response.statusCode == 200) {
+        Map<String, dynamic> data = {};
+        if (response.body.isNotEmpty) {
+          try {
+            data = jsonDecode(response.body) as Map<String, dynamic>;
+          } catch (e) {
+            // If response body is empty, that's fine for DELETE
+          }
+        }
+        return {
+          'success': true,
+          'message': data['message'] ?? 'User deleted successfully',
+          'data': data
+        };
+      } else {
+        Map<String, dynamic> errorData = {};
+        try {
+          errorData = jsonDecode(response.body) as Map<String, dynamic>;
+        } catch (e) {
+          // Ignore parse errors
+        }
+        
+        String errorMessage = 'Failed to delete user';
+        if (errorData.containsKey('error')) {
+          errorMessage = errorData['error'].toString();
+        } else if (errorData.containsKey('detail')) {
+          errorMessage = errorData['detail'].toString();
+        } else if (errorData.containsKey('message')) {
+          errorMessage = errorData['message'].toString();
+        }
+        return {'success': false, 'message': errorMessage};
+      }
+    } catch (e) {
+      String errorMsg = 'Connection error: $e';
+      if (e.toString().contains('FormatException') || e.toString().contains('jsonDecode')) {
+        errorMsg = 'Server returned invalid response. Please check your connection and try again.';
+      } else if (e.toString().contains('SocketException') || e.toString().contains('Connection refused')) {
+        errorMsg = 'Connection refused. Is the backend server running?';
+      }
+      return {'success': false, 'message': errorMsg};
+    }
+  }
+
+  // Update payment slip
+  static Future<Map<String, dynamic>> updatePaymentSlip({
+    required int slipId,
+    double? salary,
+    double? allowances,
+    double? epfContribution,
+    double? overtimePay,
+    double? overtimeHours,
+  }) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token');
+
+      if (token == null) {
+        return {'success': false, 'message': 'Not authenticated'};
+      }
+
+      final body = <String, dynamic>{};
+      if (salary != null) body['salary'] = salary;
+      if (allowances != null) body['allowances'] = allowances;
+      if (epfContribution != null) body['epf_contribution'] = epfContribution;
+      if (overtimePay != null) body['overtime_pay'] = overtimePay;
+      if (overtimeHours != null) body['overtime_hours'] = overtimeHours;
+
+      final response = await http.patch(
+        Uri.parse('$baseUrl/auth/payment-slips/$slipId/'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode(body),
+      );
+
+      // Check if response is HTML (error page)
+      if (response.body.trim().startsWith('<!DOCTYPE') || response.body.trim().startsWith('<html')) {
+        return {'success': false, 'message': 'Server returned HTML instead of JSON. Endpoint may not exist (404).'};
+      }
+
+      Map<String, dynamic> data;
+      try {
+        data = jsonDecode(response.body) as Map<String, dynamic>;
+      } catch (e) {
+        return {'success': false, 'message': 'Invalid response from server: ${response.body.substring(0, 100)}'};
+      }
+
+      if (response.statusCode == 200) {
+        // Success - return success with data
+        return {'success': true, 'data': data};
+      } else if (response.statusCode >= 200 && response.statusCode < 300) {
+        // Any 2xx status is success
+        return {'success': true, 'data': data};
+      } else {
+        // Only return error for actual error status codes (4xx, 5xx)
+        // Extract error message from response
+        String errorMessage = 'Failed to update payment slip';
+        if (data.containsKey('error')) {
+          errorMessage = data['error'].toString();
+        } else if (data.containsKey('detail')) {
+          errorMessage = data['detail'].toString();
+        } else if (data.containsKey('message')) {
+          // Check if message is actually an error or just informational
+          final message = data['message'].toString();
+          if (message.toLowerCase().contains('success') || 
+              message.toLowerCase().contains('updated') ||
+              message.toLowerCase().contains('saved')) {
+            // This is a success message, not an error
+            return {'success': true, 'data': data, 'message': message};
+          }
+          errorMessage = message;
+        } else if (data.containsKey('non_field_errors')) {
+          if (data['non_field_errors'] is List && (data['non_field_errors'] as List).isNotEmpty) {
+            errorMessage = (data['non_field_errors'] as List).first.toString();
+          } else {
+            errorMessage = data['non_field_errors'].toString();
+          }
+        } else {
+          // Get first error from any field
+          for (var key in data.keys) {
+            if (data[key] is List && (data[key] as List).isNotEmpty) {
+              errorMessage = '$key: ${(data[key] as List).first}';
+              break;
+            } else if (data[key] is String) {
+              errorMessage = '$key: ${data[key]}';
+              break;
+            }
+          }
+        }
+        return {'success': false, 'message': errorMessage};
+      }
+    } catch (e) {
+      String errorMsg = 'Connection error: $e';
+      if (e.toString().contains('FormatException') || e.toString().contains('jsonDecode')) {
+        errorMsg = 'Server returned invalid response. Please check your connection and try again.';
+      } else if (e.toString().contains('SocketException') || e.toString().contains('Connection refused')) {
+        errorMsg = 'Connection refused. Is the backend server running?';
+      }
+      return {'success': false, 'message': errorMsg};
+    }
+  }
+
+  // Get form submissions for coordinator
+
+  // Create leave request
+  static Future<Map<String, dynamic>> createLeaveRequest({
+    required String leaveType,
+    required DateTime startDate,
+    required DateTime endDate,
+    required String reason,
+  }) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token');
+
+      if (token == null) {
+        return {'success': false, 'message': 'Not authenticated'};
+      }
+
+      final response = await http.post(
+        Uri.parse('$baseUrl/auth/leave-requests/create/'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({
+          'leave_type': leaveType,
+          'start_date': startDate.toIso8601String().split('T')[0], // YYYY-MM-DD format
+          'end_date': endDate.toIso8601String().split('T')[0],
+          'reason': reason,
+        }),
+      );
+
+      final data = jsonDecode(response.body);
+      
+      if (response.statusCode == 201) {
+        return {'success': true, 'message': data['message'] ?? 'Leave request submitted successfully', 'data': data['data']};
+      } else {
+        return {'success': false, 'message': data['error'] ?? 'Failed to submit leave request', 'errors': data['errors']};
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'Connection error: $e'};
+    }
+  }
+
+  // Get all leave requests (admin only)
+  static Future<Map<String, dynamic>> getAllLeaveRequests() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token');
+
+      if (token == null) {
+        return {'success': false, 'message': 'Not authenticated'};
+      }
+
+      final response = await http.get(
+        Uri.parse('$baseUrl/auth/leave-requests/'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return {'success': true, 'data': data['data'] ?? []};
+      } else {
+        final errorData = jsonDecode(response.body);
+        return {'success': false, 'message': errorData['error'] ?? 'Failed to load leave requests'};
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'Connection error: $e'};
+    }
+  }
+
+  // Get my leave requests (current user)
+  static Future<Map<String, dynamic>> getMyLeaveRequests() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token');
+
+      if (token == null) {
+        return {'success': false, 'message': 'Not authenticated'};
+      }
+
+      final response = await http.get(
+        Uri.parse('$baseUrl/auth/leave-requests/my/'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return {'success': true, 'data': data['data'] ?? []};
+      } else {
+        final errorData = jsonDecode(response.body);
+        return {'success': false, 'message': errorData['error'] ?? 'Failed to load leave requests'};
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'Connection error: $e'};
+    }
+  }
+
+  // Get my leave statistics (current user)
+  static Future<Map<String, dynamic>> getMyLeaveStatistics() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token');
+
+      if (token == null) {
+        return {'success': false, 'message': 'Not authenticated'};
+      }
+
+      final response = await http.get(
+        Uri.parse('$baseUrl/auth/leave-requests/statistics/'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return {'success': true, 'data': data['data']};
+      } else {
+        final errorData = jsonDecode(response.body);
+        return {'success': false, 'message': errorData['error'] ?? 'Failed to load leave statistics'};
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'Connection error: $e'};
+    }
+  }
+
+  // Get monthly leave summary (admin only)
+  static Future<Map<String, dynamic>> getMonthlyLeaveSummary({int? month, int? year}) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token');
+
+      if (token == null) {
+        return {'success': false, 'message': 'Not authenticated'};
+      }
+
+      final now = DateTime.now();
+      final queryParams = <String, String>{};
+      if (month != null) queryParams['month'] = month.toString();
+      if (year != null) queryParams['year'] = year.toString();
+
+      final uri = Uri.parse('$baseUrl/auth/leave-requests/summary/monthly/').replace(
+        queryParameters: queryParams.isNotEmpty ? queryParams : null,
+      );
+
+      final response = await http.get(
+        uri,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return {'success': true, 'data': data['data'] ?? [], 'month': data['month'], 'year': data['year']};
+      } else {
+        final errorData = jsonDecode(response.body);
+        return {'success': false, 'message': errorData['error'] ?? 'Failed to load leave summary'};
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'Connection error: $e'};
+    }
+  }
+
+  // Get weekly attendance summary (admin only)
+  static Future<Map<String, dynamic>> getWeeklyAttendanceSummary({
+    required DateTime weekStart,
+  }) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token');
+
+      if (token == null) {
+        return {'success': false, 'message': 'Not authenticated'};
+      }
+
+      final queryParams = <String, String>{
+        'week_start': '${weekStart.year}-${weekStart.month.toString().padLeft(2, '0')}-${weekStart.day.toString().padLeft(2, '0')}',
+      };
+
+      final uri = Uri.parse('$baseUrl/attendance/summary/weekly/').replace(
+        queryParameters: queryParams,
+      );
+
+      final response = await http.get(
+        uri,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return {'success': true, 'data': data['data'] ?? []};
+      } else {
+        final errorData = jsonDecode(response.body);
+        return {'success': false, 'message': errorData['error'] ?? 'Failed to load attendance summary'};
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'Connection error: $e'};
+    }
+  }
+
+  // Update leave request status (admin only)
+  static Future<Map<String, dynamic>> updateLeaveRequestStatus({
+    required int requestId,
+    required String status,
+    String? notes,
+  }) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token');
+
+      if (token == null) {
+        return {'success': false, 'message': 'Not authenticated'};
+      }
+
+      final body = <String, dynamic>{'status': status};
+      if (notes != null && notes.isNotEmpty) {
+        body['notes'] = notes;
+      }
+
+      final response = await http.patch(
+        Uri.parse('$baseUrl/auth/leave-requests/$requestId/update/'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode(body),
+      );
+
+      final data = jsonDecode(response.body);
+      
+      if (response.statusCode == 200) {
+        return {'success': true, 'message': data['message'] ?? 'Leave request updated successfully', 'data': data['data']};
+      } else {
+        return {'success': false, 'message': data['error'] ?? 'Failed to update leave request'};
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'Connection error: $e'};
+    }
+  }
+
+  // Create employee removal request (HR staff only)
+  static Future<Map<String, dynamic>> createRemovalRequest({
+    required int userId,
+    String? reason,
+  }) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token');
+
+      if (token == null) {
+        return {'success': false, 'message': 'Not authenticated'};
+      }
+
+      final response = await http.post(
+        Uri.parse('$baseUrl/auth/removal-requests/create/'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({
+          'user_id': userId,
+          'reason': reason ?? '',
+        }),
+      );
+
+      // Check if response is HTML (error page)
+      if (response.body.trim().startsWith('<!DOCTYPE') || response.body.trim().startsWith('<html')) {
+        return {'success': false, 'message': 'Server returned HTML instead of JSON. Endpoint may not exist (404).'};
+      }
+
+      Map<String, dynamic> data;
+      try {
+        data = jsonDecode(response.body) as Map<String, dynamic>;
+      } catch (e) {
+        return {'success': false, 'message': 'Invalid JSON response from server'};
+      }
+
+      if (response.statusCode == 201) {
+        return {
+          'success': true,
+          'message': data['message'] ?? 'Removal request created successfully',
+          'data': data['data']
+        };
+      } else {
+        String errorMessage = data['error'] ?? 'Failed to create removal request';
+        return {'success': false, 'message': errorMessage};
+      }
+    } catch (e) {
+      String errorMsg = 'Connection error';
+      if (e.toString().contains('FormatException') && e.toString().contains('<!DOCTYPE')) {
+        errorMsg = 'Server returned HTML error page. Check if the API endpoint exists and backend is running correctly.';
+      } else if (e.toString().contains('Connection refused')) {
+        errorMsg = 'Connection refused. Is the backend server running?';
+      } else {
+        errorMsg = 'Connection error: ${e.toString()}';
+      }
+      return {'success': false, 'message': errorMsg};
+    }
+  }
+
+  // Get all removal requests (Admin only)
+  static Future<Map<String, dynamic>> getAllRemovalRequests() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token');
+
+      if (token == null) {
+        return {'success': false, 'message': 'Not authenticated'};
+      }
+
+      final response = await http.get(
+        Uri.parse('$baseUrl/auth/removal-requests/'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      // Check if response is HTML (error page)
+      if (response.body.trim().startsWith('<!DOCTYPE') || response.body.trim().startsWith('<html')) {
+        return {'success': false, 'message': 'Server returned HTML instead of JSON. Endpoint may not exist (404).'};
+      }
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body) as List<dynamic>;
+        return {
+          'success': true,
+          'data': data
+        };
+      } else {
+        Map<String, dynamic> errorData = {};
+        try {
+          errorData = jsonDecode(response.body) as Map<String, dynamic>;
+        } catch (e) {
+          // Ignore parse errors
+        }
+        
+        String errorMessage = errorData['error'] ?? 'Failed to fetch removal requests';
+        return {'success': false, 'message': errorMessage};
+      }
+    } catch (e) {
+      String errorMsg = 'Connection error';
+      if (e.toString().contains('FormatException') && e.toString().contains('<!DOCTYPE')) {
+        errorMsg = 'Server returned HTML error page. Check if the API endpoint exists and backend is running correctly.';
+      } else if (e.toString().contains('Connection refused')) {
+        errorMsg = 'Connection refused. Is the backend server running?';
+      } else {
+        errorMsg = 'Connection error: ${e.toString()}';
+      }
+      return {'success': false, 'message': errorMsg};
+    }
+  }
+
+  // Approve removal request (Admin only)
+  static Future<Map<String, dynamic>> approveRemovalRequest({
+    required int requestId,
+    String? adminNotes,
+  }) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token');
+
+      if (token == null) {
+        return {'success': false, 'message': 'Not authenticated'};
+      }
+
+      final response = await http.post(
+        Uri.parse('$baseUrl/auth/removal-requests/$requestId/approve/'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({
+          'admin_notes': adminNotes ?? '',
+        }),
+      );
+
+      // Check if response is HTML (error page)
+      if (response.body.trim().startsWith('<!DOCTYPE') || response.body.trim().startsWith('<html')) {
+        return {'success': false, 'message': 'Server returned HTML instead of JSON. Endpoint may not exist (404).'};
+      }
+
+      Map<String, dynamic> data;
+      try {
+        data = jsonDecode(response.body) as Map<String, dynamic>;
+      } catch (e) {
+        return {'success': false, 'message': 'Invalid JSON response from server'};
+      }
+
+      if (response.statusCode == 200) {
+        return {
+          'success': true,
+          'message': data['message'] ?? 'Removal request approved successfully',
+          'data': data['data']
+        };
+      } else {
+        String errorMessage = data['error'] ?? 'Failed to approve removal request';
+        return {'success': false, 'message': errorMessage};
+      }
+    } catch (e) {
+      String errorMsg = 'Connection error';
+      if (e.toString().contains('FormatException') && e.toString().contains('<!DOCTYPE')) {
+        errorMsg = 'Server returned HTML error page. Check if the API endpoint exists and backend is running correctly.';
+      } else if (e.toString().contains('Connection refused')) {
+        errorMsg = 'Connection refused. Is the backend server running?';
+      } else {
+        errorMsg = 'Connection error: ${e.toString()}';
+      }
+      return {'success': false, 'message': errorMsg};
+    }
+  }
+
+  // Reject removal request (Admin only)
+  static Future<Map<String, dynamic>> rejectRemovalRequest({
+    required int requestId,
+    String? adminNotes,
+  }) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token');
+
+      if (token == null) {
+        return {'success': false, 'message': 'Not authenticated'};
+      }
+
+      final response = await http.post(
+        Uri.parse('$baseUrl/auth/removal-requests/$requestId/reject/'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({
+          'admin_notes': adminNotes ?? '',
+        }),
+      );
+
+      // Check if response is HTML (error page)
+      if (response.body.trim().startsWith('<!DOCTYPE') || response.body.trim().startsWith('<html')) {
+        return {'success': false, 'message': 'Server returned HTML instead of JSON. Endpoint may not exist (404).'};
+      }
+
+      Map<String, dynamic> data;
+      try {
+        data = jsonDecode(response.body) as Map<String, dynamic>;
+      } catch (e) {
+        return {'success': false, 'message': 'Invalid JSON response from server'};
+      }
+
+      if (response.statusCode == 200) {
+        return {
+          'success': true,
+          'message': data['message'] ?? 'Removal request rejected successfully',
+          'data': data['data']
+        };
+      } else {
+        String errorMessage = data['error'] ?? 'Failed to reject removal request';
+        return {'success': false, 'message': errorMessage};
+      }
+    } catch (e) {
+      String errorMsg = 'Connection error';
+      if (e.toString().contains('FormatException') && e.toString().contains('<!DOCTYPE')) {
+        errorMsg = 'Server returned HTML error page. Check if the API endpoint exists and backend is running correctly.';
+      } else if (e.toString().contains('Connection refused')) {
+        errorMsg = 'Connection refused. Is the backend server running?';
+      } else {
+        errorMsg = 'Connection error: ${e.toString()}';
+      }
+      return {'success': false, 'message': errorMsg};
     }
   }
 }

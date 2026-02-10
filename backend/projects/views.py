@@ -2,12 +2,8 @@ from rest_framework import status, generics, serializers
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
-from rest_framework.decorators import api_view, permission_classes
 from django.contrib.auth.models import User
-from django.db.models import Q, Count, Case, When, IntegerField, F
-from django.db import transaction
-from django.utils import timezone
-from django.shortcuts import get_object_or_404
+from django.db.models import Q
 from .models import Project, ProjectDocument
 from .serializers import (
     ProjectSerializer,
@@ -19,6 +15,16 @@ from .serializers import (
     AssignAccessorSerializer,
     AssignSeniorValuerSerializer
 )
+
+
+def get_user_role(user):
+    """Safely get user role, returns None if role doesn't exist"""
+    try:
+        if hasattr(user, 'role'):
+            return user.role.role
+    except Exception:
+        pass
+    return None
 
 
 class ProjectListView(generics.ListCreateAPIView):
@@ -33,59 +39,32 @@ class ProjectListView(generics.ListCreateAPIView):
     def get_queryset(self):
         user = self.request.user
         
+        # Get user role safely
+        user_role = get_user_role(user)
+        
         # Coordinators see all projects they created
-        if hasattr(user, 'role') and user.role.role == 'coordinator':
+        if user_role == 'coordinator':
             queryset = Project.objects.filter(coordinator=user)
         
         # Field officers see only assigned projects
-        elif hasattr(user, 'role') and user.role.role == 'field_officer':
+        elif user_role == 'field_officer':
             queryset = Project.objects.filter(assigned_field_officer=user)
         
-        # Clients see only assigned projects that have been approved by MD/GM
-        elif hasattr(user, 'role') and user.role.role == 'client':
-            return Project.objects.filter(
-                assigned_client=user,
-                md_gm_approval_status='approved'
-            )
+        # Clients see only assigned projects
+        elif user_role == 'client':
+            return Project.objects.filter(assigned_client=user)
         
         # Agents see only assigned projects
-        elif hasattr(user, 'role') and user.role.role == 'agent':
+        elif user_role == 'agent':
             return Project.objects.filter(assigned_agent=user)
         
         # Accessors see only assigned projects
-        elif hasattr(user, 'role') and user.role.role == 'accessor':
+        elif user_role == 'accessor':
             return Project.objects.filter(assigned_accessor=user)
         
-        # Senior valuers see only assigned projects with valuations that have been reviewed (sent by assessor)
-        elif hasattr(user, 'role') and user.role.role == 'senior_valuer':
-            # Filter projects assigned to senior valuer that have valuations with status 'reviewed'
-            # (accepted by assessor and sent to senior valuer)
-            return Project.objects.filter(
-                assigned_senior_valuer=user,
-                valuations__status='reviewed'
-            ).distinct()
-        
-        # MD/GM see only projects where ALL valuations are approved by senior valuer
-        elif hasattr(user, 'role') and user.role.role == 'md_gm':
-            # Get all projects that have valuations
-            projects_with_valuations = Project.objects.filter(
-                valuations__isnull=False
-            ).distinct()
-            
-            # Filter to only projects where ALL valuations are approved
-            # This means: project has valuations AND all valuations have status 'approved'
-            queryset = projects_with_valuations.annotate(
-                total_valuations=Count('valuations'),
-                approved_valuations=Count(
-                    Case(
-                        When(valuations__status='approved', then=1),
-                        output_field=IntegerField()
-                    )
-                )
-            ).filter(
-                total_valuations__gt=0,  # Must have at least one valuation
-                total_valuations=F('approved_valuations')  # All valuations must be approved
-            ).distinct()
+        # Senior valuers see only assigned projects
+        elif user_role == 'senior_valuer':
+            return Project.objects.filter(assigned_senior_valuer=user)
         
         # Admins see all projects
         elif user.is_staff or user.is_superuser:
@@ -102,26 +81,14 @@ class ProjectListView(generics.ListCreateAPIView):
     
     def perform_create(self, serializer):
         # Only coordinators can create projects
-        if not hasattr(self.request.user, 'role') or self.request.user.role.role != 'coordinator':
+        user_role = get_user_role(self.request.user)
+        if user_role != 'coordinator':
             raise serializers.ValidationError("Only coordinators can create projects.")
         
-        try:
-            # The serializer.create() method will handle:
-            # - Creating the project
-            # - Processing client_info (check existing or create new account)
-            # - Processing agent_info (check existing or create new account)
-            # - Sending email credentials for newly created accounts
-            serializer.save(coordinator=self.request.user)
-        except serializers.ValidationError:
-            # Re-raise ValidationError as-is (DRF will handle it properly)
-            raise
-        except Exception as e:
-            # Log the error for debugging
-            import logging
-            logger = logging.getLogger(__name__)
-            logger.error(f"Error creating project: {str(e)}", exc_info=True)
-            # Re-raise as ValidationError with proper format so DRF returns JSON
-            raise serializers.ValidationError({'non_field_errors': [f"Error creating project: {str(e)}"]})
+        # Remove client_info and agent_info from request data if present
+        # These are informational and not stored in the Project model
+        # They can be assigned later using the assign endpoints
+        serializer.save(coordinator=self.request.user)
 
 
 class ProjectDetailView(generics.RetrieveUpdateDestroyAPIView):
@@ -132,59 +99,32 @@ class ProjectDetailView(generics.RetrieveUpdateDestroyAPIView):
     def get_queryset(self):
         user = self.request.user
         
+        # Get user role safely
+        user_role = get_user_role(user)
+        
         # Coordinators can see their projects
-        if hasattr(user, 'role') and user.role.role == 'coordinator':
+        if user_role == 'coordinator':
             return Project.objects.filter(coordinator=user)
         
         # Field officers can see assigned projects
-        elif hasattr(user, 'role') and user.role.role == 'field_officer':
+        elif user_role == 'field_officer':
             return Project.objects.filter(assigned_field_officer=user)
         
-        # Clients can see assigned projects that have been approved by MD/GM
-        elif hasattr(user, 'role') and user.role.role == 'client':
-            return Project.objects.filter(
-                assigned_client=user,
-                md_gm_approval_status='approved'
-            )
+        # Clients can see assigned projects
+        elif user_role == 'client':
+            return Project.objects.filter(assigned_client=user)
         
         # Agents can see assigned projects
-        elif hasattr(user, 'role') and user.role.role == 'agent':
+        elif user_role == 'agent':
             return Project.objects.filter(assigned_agent=user)
         
         # Accessors can see assigned projects
-        elif hasattr(user, 'role') and user.role.role == 'accessor':
+        elif user_role == 'accessor':
             return Project.objects.filter(assigned_accessor=user)
         
-        # Senior valuers can see assigned projects with valuations that have been reviewed (sent by assessor)
-        elif hasattr(user, 'role') and user.role.role == 'senior_valuer':
-            # Filter projects assigned to senior valuer that have valuations with status 'reviewed'
-            return Project.objects.filter(
-                assigned_senior_valuer=user,
-                valuations__status='reviewed'
-            ).distinct()
-        
-        # MD/GM can see projects where ALL valuations are approved by senior valuer
-        elif hasattr(user, 'role') and user.role.role == 'md_gm':
-            from valuations.models import Valuation
-            
-            # Get all projects that have valuations
-            projects_with_valuations = Project.objects.filter(
-                valuations__isnull=False
-            ).distinct()
-            
-            # Filter to only projects where ALL valuations are approved
-            return projects_with_valuations.annotate(
-                total_valuations=Count('valuations'),
-                approved_valuations=Count(
-                    Case(
-                        When(valuations__status='approved', then=1),
-                        output_field=IntegerField()
-                    )
-                )
-            ).filter(
-                total_valuations__gt=0,  # Must have at least one valuation
-                total_valuations=F('approved_valuations')  # All valuations must be approved
-            ).distinct()
+        # Senior valuers can see assigned projects
+        elif user_role == 'senior_valuer':
+            return Project.objects.filter(assigned_senior_valuer=user)
         
         # Admins can see all
         elif user.is_staff or user.is_superuser:
@@ -194,7 +134,8 @@ class ProjectDetailView(generics.RetrieveUpdateDestroyAPIView):
     
     def perform_update(self, serializer):
         # Only coordinators can update projects
-        if not hasattr(self.request.user, 'role') or self.request.user.role.role != 'coordinator':
+        user_role = get_user_role(self.request.user)
+        if user_role != 'coordinator':
             raise serializers.ValidationError("Only coordinators can update projects.")
         
         project = serializer.instance
@@ -229,7 +170,8 @@ class AssignFieldOfficerView(APIView):
     
     def post(self, request, project_id):
         # Check if user is coordinator
-        if not hasattr(request.user, 'role') or request.user.role.role != 'coordinator':
+        user_role = get_user_role(request.user)
+        if user_role != 'coordinator':
             return Response({
                 'error': 'Only coordinators can assign field officers to projects'
             }, status=status.HTTP_403_FORBIDDEN)
@@ -262,7 +204,8 @@ class AvailableFieldOfficersView(APIView):
     
     def get(self, request):
         # Only coordinators can view field officers
-        if not hasattr(request.user, 'role') or request.user.role.role != 'coordinator':
+        user_role = get_user_role(request.user)
+        if user_role != 'coordinator':
             return Response({
                 'error': 'Only coordinators can view field officers'
             }, status=status.HTTP_403_FORBIDDEN)
@@ -300,7 +243,8 @@ class AvailableClientsView(APIView):
     
     def get(self, request):
         # Only coordinators can view clients
-        if not hasattr(request.user, 'role') or request.user.role.role != 'coordinator':
+        user_role = get_user_role(request.user)
+        if user_role != 'coordinator':
             return Response({
                 'error': 'Only coordinators can view clients'
             }, status=status.HTTP_403_FORBIDDEN)
@@ -337,7 +281,8 @@ class AvailableAgentsView(APIView):
     
     def get(self, request):
         # Only coordinators can view agents
-        if not hasattr(request.user, 'role') or request.user.role.role != 'coordinator':
+        user_role = get_user_role(request.user)
+        if user_role != 'coordinator':
             return Response({
                 'error': 'Only coordinators can view agents'
             }, status=status.HTTP_403_FORBIDDEN)
@@ -374,7 +319,8 @@ class AssignClientView(APIView):
     
     def post(self, request, project_id):
         # Check if user is coordinator
-        if not hasattr(request.user, 'role') or request.user.role.role != 'coordinator':
+        user_role = get_user_role(request.user)
+        if user_role != 'coordinator':
             return Response({
                 'error': 'Only coordinators can assign clients to projects'
             }, status=status.HTTP_403_FORBIDDEN)
@@ -407,7 +353,8 @@ class AssignAgentView(APIView):
     
     def post(self, request, project_id):
         # Check if user is coordinator
-        if not hasattr(request.user, 'role') or request.user.role.role != 'coordinator':
+        user_role = get_user_role(request.user)
+        if user_role != 'coordinator':
             return Response({
                 'error': 'Only coordinators can assign agents to projects'
             }, status=status.HTTP_403_FORBIDDEN)
@@ -440,7 +387,8 @@ class AssignAccessorView(APIView):
     
     def post(self, request, project_id):
         # Check if user is coordinator
-        if not hasattr(request.user, 'role') or request.user.role.role != 'coordinator':
+        user_role = get_user_role(request.user)
+        if user_role != 'coordinator':
             return Response({
                 'error': 'Only coordinators can assign accessors to projects'
             }, status=status.HTTP_403_FORBIDDEN)
@@ -473,7 +421,8 @@ class AssignSeniorValuerView(APIView):
     
     def post(self, request, project_id):
         # Check if user is coordinator
-        if not hasattr(request.user, 'role') or request.user.role.role != 'coordinator':
+        user_role = get_user_role(request.user)
+        if user_role != 'coordinator':
             return Response({
                 'error': 'Only coordinators can assign senior valuers to projects'
             }, status=status.HTTP_403_FORBIDDEN)
@@ -506,7 +455,8 @@ class AvailableAccessorsView(APIView):
     
     def get(self, request):
         # Only coordinators can view accessors
-        if not hasattr(request.user, 'role') or request.user.role.role != 'coordinator':
+        user_role = get_user_role(request.user)
+        if user_role != 'coordinator':
             return Response({
                 'error': 'Only coordinators can view accessors'
             }, status=status.HTTP_403_FORBIDDEN)
@@ -543,7 +493,8 @@ class AvailableSeniorValuersView(APIView):
     
     def get(self, request):
         # Only coordinators can view senior valuers
-        if not hasattr(request.user, 'role') or request.user.role.role != 'coordinator':
+        user_role = get_user_role(request.user)
+        if user_role != 'coordinator':
             return Response({
                 'error': 'Only coordinators can view senior valuers'
             }, status=status.HTTP_403_FORBIDDEN)
@@ -623,11 +574,12 @@ class ProjectDocumentDeleteView(generics.DestroyAPIView):
     
     def get_queryset(self):
         user = self.request.user
+        user_role = get_user_role(user)
         # Coordinators can delete documents from their projects
         # Field officers can delete documents from assigned projects
-        if hasattr(user, 'role') and user.role.role == 'coordinator':
+        if user_role == 'coordinator':
             return ProjectDocument.objects.filter(project__coordinator=user)
-        elif hasattr(user, 'role') and user.role.role == 'field_officer':
+        elif user_role == 'field_officer':
             return ProjectDocument.objects.filter(project__assigned_field_officer=user)
         return ProjectDocument.objects.none()
 
@@ -638,7 +590,8 @@ class UserAssignedProjectsView(APIView):
     
     def get(self, request, user_id, role_type):
         # Check if user is coordinator
-        if not hasattr(request.user, 'role') or request.user.role.role != 'coordinator':
+        user_role = get_user_role(request.user)
+        if user_role != 'coordinator':
             return Response({
                 'error': 'Only coordinators can view user assigned projects'
             }, status=status.HTTP_403_FORBIDDEN)
@@ -681,84 +634,4 @@ class UserAssignedProjectsView(APIView):
                 'full_name': f"{user.first_name} {user.last_name}".strip() or user.username,
             }
         }, status=status.HTTP_200_OK)
-
-
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-@transaction.atomic
-def md_gm_approve_project(request, pk):
-    """Approve a project - Only MD/GM can do this"""
-    project = get_object_or_404(Project, pk=pk)
-    
-    # Check if user is MD/GM
-    if not hasattr(request.user, 'role') or request.user.role.role != 'md_gm':
-        return Response(
-            {'error': 'Only MD/GM can approve projects.'},
-            status=status.HTTP_403_FORBIDDEN
-        )
-    
-    # Check if project has all valuations approved
-    total_valuations = project.valuations.count()
-    approved_valuations = project.valuations.filter(status='approved').count()
-    
-    if total_valuations == 0:
-        return Response(
-            {'error': 'Project must have at least one approved valuation before MD/GM can approve it.'},
-            status=status.HTTP_400_BAD_REQUEST
-        )
-    
-    if approved_valuations != total_valuations:
-        return Response(
-            {'error': 'All valuations must be approved by Senior Valuer before MD/GM can approve the project.'},
-            status=status.HTTP_400_BAD_REQUEST
-        )
-    
-    # Approve the project
-    project.md_gm_approval_status = 'approved'
-    project.md_gm_approved_at = timezone.now()
-    project.md_gm_rejection_reason = ''  # Clear any previous rejection reason
-    project.md_gm_rejected_at = None
-    project.save(update_fields=['md_gm_approval_status', 'md_gm_approved_at', 'md_gm_rejection_reason', 'md_gm_rejected_at', 'updated_at'])
-    
-    serializer = ProjectSerializer(project, context={'request': request})
-    return Response({
-        **serializer.data,
-        'message': 'Project approved successfully.'
-    }, status=status.HTTP_200_OK)
-
-
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-@transaction.atomic
-def md_gm_reject_project(request, pk):
-    """Reject a project - Only MD/GM can do this"""
-    project = get_object_or_404(Project, pk=pk)
-    
-    # Check if user is MD/GM
-    if not hasattr(request.user, 'role') or request.user.role.role != 'md_gm':
-        return Response(
-            {'error': 'Only MD/GM can reject projects.'},
-            status=status.HTTP_403_FORBIDDEN
-        )
-    
-    # Get rejection reason from request
-    rejection_reason = request.data.get('rejection_reason', '').strip()
-    if not rejection_reason:
-        return Response(
-            {'error': 'Rejection reason is required.'},
-            status=status.HTTP_400_BAD_REQUEST
-        )
-    
-    # Reject the project
-    project.md_gm_approval_status = 'rejected'
-    project.md_gm_rejection_reason = rejection_reason
-    project.md_gm_rejected_at = timezone.now()
-    project.md_gm_approved_at = None  # Clear any previous approval
-    project.save(update_fields=['md_gm_approval_status', 'md_gm_rejection_reason', 'md_gm_rejected_at', 'md_gm_approved_at', 'updated_at'])
-    
-    serializer = ProjectSerializer(project, context={'request': request})
-    return Response({
-        **serializer.data,
-        'message': 'Project rejected successfully.'
-    }, status=status.HTTP_200_OK)
 

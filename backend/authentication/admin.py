@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth.models import User
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
-from .models import UserRole
+from .models import UserRole, PaymentSlip
 
 
 class UserRoleInline(admin.StackedInline):
@@ -32,3 +32,12 @@ class UserRoleAdmin(admin.ModelAdmin):
     list_filter = ('role', 'assigned_at')
     search_fields = ('user__username', 'user__email')
     readonly_fields = ('assigned_at', 'created_at')
+
+
+@admin.register(PaymentSlip)
+class PaymentSlipAdmin(admin.ModelAdmin):
+    list_display = ('user', 'month', 'year', 'salary', 'role_display', 'status', 'generated_at')
+    list_filter = ('status', 'month', 'year', 'role')
+    search_fields = ('user__username', 'user__email', 'user__first_name', 'user__last_name')
+    readonly_fields = ('generated_at', 'paid_at')
+    date_hierarchy = 'generated_at'

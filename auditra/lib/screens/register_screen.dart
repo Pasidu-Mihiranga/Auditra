@@ -33,9 +33,25 @@ class _RegisterScreenState extends State<RegisterScreen> {
   }
 
   Future<void> _register() async {
-    if (!_formKey.currentState!.validate()) return;
+    try {
+      print('🟢 Register button clicked!');
+      
+      if (!_formKey.currentState!.validate()) {
+        print('❌ Form validation failed');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Please fill in all required fields correctly'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+        return;
+      }
+      print('✅ Form validation passed');
 
     if (_passwordController.text != _confirmPasswordController.text) {
+      print('❌ Passwords do not match');
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Passwords do not match'),
@@ -46,6 +62,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     }
 
     setState(() => _isLoading = true);
+    print('🟡 Starting registration...');
 
     final result = await ApiService.register(
       username: _usernameController.text.trim(),
@@ -56,73 +73,39 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
 
     setState(() => _isLoading = false);
+    print('🟡 Registration attempt completed');
+    print('🟡 Result: ${result.toString()}');
 
     if (!mounted) return;
 
     if (result['success']) {
-      // Get user role to route to appropriate dashboard
-      await ApiService.getMyRole();
-      final role = await ApiService.getUserRole();
+      print('✅ Registration successful!');
       
       if (!mounted) return;
       
+      // Navigate directly - role will be fetched later if needed
       Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => HomeScreen(userRole: role ?? 'unassigned')),
+        MaterialPageRoute(builder: (_) => HomeScreen(userRole: 'unassigned')),
       );
     } else {
-      // Show connection errors in a dialog for better visibility
-      final errorMessage = result['message'] ?? 'Registration failed';
-      if (errorMessage.contains('Connection') || 
-          errorMessage.contains('Network') || 
-          errorMessage.contains('timeout') ||
-          errorMessage.contains('Cannot connect') ||
-          errorMessage.contains('SocketException')) {
-        // Show dialog for connection errors with better formatting
-        showDialog(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: const Row(
-              children: [
-                Icon(Icons.error_outline, color: Colors.red, size: 28),
-                SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'Connection Error',
-                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                  ),
-                ),
-              ],
-            ),
-            content: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    errorMessage,
-                    style: const TextStyle(fontSize: 14, height: 1.5),
-                  ),
-                ],
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(),
-                style: TextButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                ),
-                child: const Text('OK', style: TextStyle(fontSize: 16)),
-              ),
-            ],
-          ),
-        );
-      } else {
-        // Show SnackBar for validation errors
+      print('❌ Registration failed: ${result['message']}');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(result['message'] ?? 'Registration failed. Please try again.'),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 5),
+        ),
+      );
+    }
+    } catch (e) {
+      print('❌ Unexpected error in _register: $e');
+      setState(() => _isLoading = false);
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(errorMessage),
+            content: Text('An error occurred: ${e.toString()}'),
             backgroundColor: Colors.red,
-            duration: const Duration(seconds: 4),
+            duration: const Duration(seconds: 5),
           ),
         );
       }
@@ -297,7 +280,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
                 // Register Button
                 ElevatedButton(
-                  onPressed: _isLoading ? null : _register,
+                  onPressed: _isLoading 
+                    ? null 
+                    : () {
+                        print('🟡 Button onPressed triggered');
+                        _register();
+                      },
                   style: ElevatedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 16),
                     shape: RoundedRectangleBorder(

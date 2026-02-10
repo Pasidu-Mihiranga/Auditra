@@ -1,27 +1,31 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:fl_chart/fl_chart.dart';
-import 'package:file_picker/file_picker.dart';
-import 'package:printing/printing.dart';
 import 'dart:math' as math;
-import 'dart:ui';
 import '../services/api_service.dart';
-import '../services/pdf_service.dart';
 import '../models/attendance_model.dart';
 import '../models/project_model.dart';
-import '../models/valuation_model.dart';
 import 'login_screen.dart';
+import 'payment_slips_screen.dart';
+import 'leave_request_screen.dart';
+import 'my_leave_requests_screen.dart';
+import 'view_leave_requests_screen.dart';
+import 'personal_info_screen.dart';
 
 class GenericDashboard extends StatefulWidget {
   final String role;
   final String roleDisplay;
   final bool isEmbedded;
+  final bool showOnlyWeeklyAttendance;
+  final bool showOnlyMonthlyLeave;
   
   const GenericDashboard({
     super.key,
     required this.role,
     required this.roleDisplay,
     this.isEmbedded = false,
+    this.showOnlyWeeklyAttendance = false,
+    this.showOnlyMonthlyLeave = false,
   });
 
   @override
@@ -38,13 +42,13 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
   bool _isWorkingDay = true;
   String _selectedPeriod = 'daily';
   AttendanceSummary? _summary;
-  AttendanceSummary? _monthlySummary; // Separate state for monthly data in main card
   bool _isLoadingSummary = false;
   bool _isMarkingAttendance = false;
   
   late TabController _periodTabController;
-  TabController? _mainTabController; // For Attendance/Projects tabs
-  TabController? _projectStatusTabController; // For project status tabs (senior valuer only)
+  TabController? _mainTabController; // For Profile/Projects tabs (client/agent/accessor/senior_valuer)
+  TabController? _hrTabController; // For HR staff: Profile tab (deprecated, will be replaced)
+  TabController? _profileTabController; // For Profile subtabs: Attendance / Payment / Leave
   
   // Project state (for roles that can view projects)
   List<Project> _projects = [];
@@ -57,26 +61,34 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
   // Timer for overtime
   Duration _overtimeDuration = Duration.zero;
   
+  // Leave statistics state
+  Map<String, dynamic>? _leaveStatistics;
+  bool _isLoadingLeaveStats = false;
+  
+  // HR Staff - Monthly leave summary state (like admin dashboard)
+  List<Map<String, dynamic>> _monthlyLeaveSummary = [];
+  bool _isLoadingLeaveSummary = false;
+  int _selectedMonth = DateTime.now().month;
+  int _selectedYear = DateTime.now().year;
+  
+  // HR Staff - Attendance summary weekly state
+  List<Map<String, dynamic>> _weeklyAttendanceSummary = [];
+  bool _isLoadingAttendanceSummary = false;
+  DateTime _selectedWeekStart = _getWeekStart(DateTime.now());
+  String _attendanceSearchQuery = '';
+  
+  // Helper function to get the start of the week (Monday)
+  static DateTime _getWeekStart(DateTime date) {
+    final daysFromMonday = date.weekday - 1;
+    return DateTime(date.year, date.month, date.day - daysFromMonday);
+  }
+  
   // Check if this role should see projects
   bool get _shouldShowProjects {
     return widget.role == 'client' || 
            widget.role == 'agent' || 
            widget.role == 'accessor' || 
-           widget.role == 'senior_valuer' ||
-           widget.role == 'md_gm';
-  }
-
-  // Check if this role should see attendance tab (clients don't see attendance)
-  bool get _shouldShowAttendanceTab {
-    return _shouldShowProjects && widget.role != 'client';
-  }
-
-  String _formatPriorityLabel(String priority) {
-    if (priority.isEmpty) return 'Medium';
-    final lower = priority.toLowerCase();
-    if (lower == 'high') return 'High';
-    if (lower == 'low') return 'Low';
-    return 'Medium';
+           widget.role == 'senior_valuer';
   }
 
   @override
@@ -97,38 +109,57 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
       }
     });
     
-    // Initialize main tab controller if this role should see projects with attendance tab
-    if (_shouldShowAttendanceTab) {
+    // Initialize Profile tab controller for subtabs (Attendance / Payment / Leave) 
+    // for all roles except admin, client, and agent
+    if (widget.role != 'admin' && widget.role != 'client' && widget.role != 'agent') {
+      _profileTabController = TabController(length: 3, vsync: this);
+      _profileTabController!.addListener(() {
+        if (!_profileTabController!.indexIsChanging && mounted) {
+          setState(() {});
+        }
+      });
+    }
+
+    // Initialize main tab controller if this role should see projects
+    if (_shouldShowProjects) {
       _mainTabController = TabController(length: 2, vsync: this);
       _mainTabController!.addListener(() {
         if (!_mainTabController!.indexIsChanging && mounted) {
           setState(() {});
         }
       });
+      _loadProjects();
     }
     
-    // Initialize project status tab controller for senior valuer
-    if (widget.role == 'senior_valuer') {
-      _projectStatusTabController = TabController(length: 4, vsync: this);
-      _projectStatusTabController!.addListener(() {
-        if (!_projectStatusTabController!.indexIsChanging && mounted) {
+    // Initialize HR staff tab controller (deprecated - will be replaced by Profile tab)
+    // Keeping for now to avoid breaking changes
+    if (widget.role == 'hr_staff') {
+      _hrTabController = TabController(length: 3, vsync: this);
+      _hrTabController!.addListener(() {
+        if (!_hrTabController!.indexIsChanging && mounted) {
           setState(() {});
+          // Load weekly attendance summary when switching to attendance tab (index 0)
+          if (_hrTabController!.index == 0) {
+            _loadWeeklyAttendanceSummary();
+          }
         }
       });
     }
     
-    // Load projects for roles that should see projects
-    if (_shouldShowProjects) {
-      _loadProjects();
+    _loadUserData();
+    _loadTodayAttendance();
+    _loadSummary();
+    _loadLeaveStatistics();
+    _startTimer();
+    
+    // Load weekly attendance summary for HR staff and admin only
+    if (widget.role == 'hr_staff' || widget.role == 'admin') {
+      _loadWeeklyAttendanceSummary();
     }
     
-    _loadUserData();
-    // Only load attendance data if not a client (clients don't see attendance)
-    if (widget.role != 'client') {
-      _loadTodayAttendance();
-      _loadSummary();
-      _loadMonthlySummary(); // Load monthly data for main stats card
-      _startTimer();
+    // Load monthly leave summary for HR staff only
+    if (widget.role == 'hr_staff') {
+      _loadMonthlyLeaveSummary();
     }
   }
 
@@ -136,7 +167,8 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
   void dispose() {
     _periodTabController.dispose();
     _mainTabController?.dispose();
-    _projectStatusTabController?.dispose();
+    _hrTabController?.dispose();
+    _profileTabController?.dispose();
     super.dispose();
   }
   
@@ -235,53 +267,98 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
   }
 
   Future<void> _loadTodayAttendance() async {
-    final result = await ApiService.getTodayAttendance();
-    
-    if (mounted) {
-      setState(() {
-        if (result['success']) {
-          final data = result['data'];
-          _isWorkingDay = data['is_working_day'] ?? true;
-          if (data['data'] != null) {
-            _todayAttendance = Attendance.fromJson(data['data']);
-            // Initialize overtime duration if overtime is active
-            if (_todayAttendance!.isOvertimeActive && _todayAttendance!.overtimeStart != null) {
-              final now = DateTime.now();
-              _overtimeDuration = now.difference(_todayAttendance!.overtimeStart!);
+    try {
+      final result = await ApiService.getTodayAttendance();
+      
+      if (mounted) {
+        setState(() {
+          if (result['success']) {
+            final data = result['data'];
+            _isWorkingDay = data['is_working_day'] ?? true;
+            if (data['data'] != null) {
+              _todayAttendance = Attendance.fromJson(data['data']);
+              // Initialize overtime duration if overtime is active
+              if (_todayAttendance!.isOvertimeActive && _todayAttendance!.overtimeStart != null) {
+                final now = DateTime.now();
+                _overtimeDuration = now.difference(_todayAttendance!.overtimeStart!);
+              }
+            } else {
+              _todayAttendance = null;
+              _overtimeDuration = Duration.zero;
             }
           } else {
             _todayAttendance = null;
             _overtimeDuration = Duration.zero;
+            // Show error message if available
+            if (result['message'] != null && mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(result['message'] ?? 'Failed to load attendance'),
+                  backgroundColor: Colors.red,
+                  duration: const Duration(seconds: 4),
+                ),
+              );
+            }
           }
-        }
-      });
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _todayAttendance = null;
+          _overtimeDuration = Duration.zero;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error loading attendance: $e'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
     }
   }
 
   Future<void> _loadSummary() async {
     setState(() => _isLoadingSummary = true);
-    final result = await ApiService.getAttendanceSummary(period: _selectedPeriod);
-    
-    if (mounted) {
-      setState(() {
-        _isLoadingSummary = false;
-        if (result['success'] && result['data']['data'] != null) {
-          _summary = AttendanceSummary.fromJson(result['data']['data']);
-        }
-      });
-    }
-  }
-
-  // Load monthly data for main stats card
-  Future<void> _loadMonthlySummary() async {
-    final result = await ApiService.getAttendanceSummary(period: 'monthly');
-    
-    if (mounted) {
-      setState(() {
-        if (result['success'] && result['data']['data'] != null) {
-          _monthlySummary = AttendanceSummary.fromJson(result['data']['data']);
-        }
-      });
+    try {
+      final result = await ApiService.getAttendanceSummary(period: _selectedPeriod);
+      
+      if (mounted) {
+        setState(() {
+          _isLoadingSummary = false;
+          if (result['success'] && result['data'] != null && result['data']['data'] != null) {
+            _summary = AttendanceSummary.fromJson(result['data']['data']);
+          } else {
+            _summary = null;
+            // Only show error for non-connection errors (suppress connection/server errors)
+            final errorMessage = result['message'] ?? '';
+            if (errorMessage.isNotEmpty && 
+                !errorMessage.toLowerCase().contains('server error') &&
+                !errorMessage.toLowerCase().contains('connection') &&
+                !errorMessage.toLowerCase().contains('backend server') &&
+                !errorMessage.toLowerCase().contains('html')) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(errorMessage),
+                  backgroundColor: Colors.orange,
+                  duration: const Duration(seconds: 2),
+                ),
+              );
+            }
+          }
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoadingSummary = false;
+          _summary = null;
+        });
+        // Suppress connection errors - don't show error banner
+        // Only log for debugging
+        print('Error loading attendance summary: $e');
+      }
     }
   }
 
@@ -315,7 +392,7 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
                   Expanded(child: Text('Attendance marked successfully!')),
                 ],
               ),
-              backgroundColor: const Color(0xFF84BCDA),
+              backgroundColor: Colors.green,
               behavior: SnackBarBehavior.floating,
               duration: const Duration(seconds: 2),
             ),
@@ -483,7 +560,141 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
   }
 
   Future<void> _logout() async {
-    final confirm = await showModernLogoutDialog(context, themeColor: Colors.blue[600]);
+    final confirm = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        child: Container(
+          width: MediaQuery.of(context).size.width * 0.85,
+          constraints: const BoxConstraints(maxHeight: 400),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Header with gradient
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [Colors.orange[600]!, Colors.orange[400]!],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(20),
+                    topRight: Radius.circular(20),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(Icons.logout, color: Colors.white, size: 24),
+                    ),
+                    const SizedBox(width: 16),
+                    const Expanded(
+                      child: Text(
+                        'Logout',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              // Content
+              Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  children: [
+                    Icon(
+                      Icons.exit_to_app_rounded,
+                      size: 64,
+                      color: Colors.orange[300],
+                    ),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'Are you sure?',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      'You are about to logout from your account.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.grey[700],
+                        height: 1.5,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              // Action Buttons
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: Colors.grey[50],
+                  borderRadius: const BorderRadius.only(
+                    bottomLeft: Radius.circular(20),
+                    bottomRight: Radius.circular(20),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.of(context).pop(false),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        child: const Text('Cancel', style: TextStyle(fontSize: 16)),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: () => Navigator.of(context).pop(true),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.orange[600],
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          elevation: 2,
+                        ),
+                        child: const Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.logout, size: 20),
+                            SizedBox(width: 8),
+                            Text('Logout', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
 
     if (confirm == true) {
       await ApiService.logout();
@@ -524,6 +735,46 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
   @override
   Widget build(BuildContext context) {
     if (widget.isEmbedded) {
+      // When embedded, check if showing only specific sections
+      if (widget.showOnlyWeeklyAttendance) {
+        // Show only Weekly Attendance Summary
+        return _isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : RefreshIndicator(
+                onRefresh: () async {
+                  await _loadWeeklyAttendanceSummary();
+                },
+                child: SingleChildScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.all(16.0),
+                  child: _buildWeeklyAttendanceSummarySection(),
+                ),
+              );
+      }
+      
+      if (widget.showOnlyMonthlyLeave) {
+        // Show only Monthly Leave Summary
+        return _isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : RefreshIndicator(
+                onRefresh: () async {
+                  await _loadMonthlyLeaveSummary();
+                },
+                child: SingleChildScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.all(16.0),
+                  child: _buildMonthlyLeaveSummarySection(),
+                ),
+              );
+      }
+      
+      // When embedded, show Profile tab with subtabs for non-admin roles (except client and agent)
+      if (widget.role != 'admin' && widget.role != 'client' && widget.role != 'agent' && _profileTabController != null) {
+        return _isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : _buildProfileTabBody();
+      }
+      // Otherwise show dashboard body
       final body = _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _buildDashboardBody();
@@ -531,16 +782,18 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
     }
 
     return Scaffold(
-      backgroundColor: widget.isEmbedded ? Colors.transparent : DashboardColors.background,
-      appBar: widget.isEmbedded ? null : AppBar(
+      appBar: AppBar(
         title: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
               _getDashboardTitle(),
-              style: const TextStyle(
+              style: TextStyle(
                 fontWeight: FontWeight.bold,
                 letterSpacing: 0.5,
+                color: Theme.of(context).brightness == Brightness.dark
+                    ? Colors.white
+                    : Colors.black87,
               ),
             ),
             if (_username != null || _profile?['role_display'] != null)
@@ -548,96 +801,109 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
                 padding: const EdgeInsets.only(top: 4.0),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     if (_username != null)
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.person_outline,
-                            size: 14,
-                            color: Theme.of(context).brightness == Brightness.dark
-                                ? Colors.white.withOpacity(0.9)
-                                : Colors.black87.withOpacity(0.8),
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            _username!,
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
+                      Flexible(
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.person_outline,
+                              size: 12,
                               color: Theme.of(context).brightness == Brightness.dark
-                                  ? Colors.white.withOpacity(0.95)
-                                  : Colors.black87,
-                              letterSpacing: 0.3,
+                                  ? Colors.white.withOpacity(0.9)
+                                  : Colors.black87.withOpacity(0.8),
                             ),
-                          ),
-                        ],
+                            const SizedBox(width: 3),
+                            Flexible(
+                              child: Text(
+                                _username!,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                  color: Theme.of(context).brightness == Brightness.dark
+                                      ? Colors.white.withOpacity(0.95)
+                                      : Colors.black87,
+                                  letterSpacing: 0.2,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                                maxLines: 1,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     if (_username != null && _profile?['role_display'] != null)
                       Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                        padding: const EdgeInsets.symmetric(horizontal: 6.0),
                         child: Container(
                           width: 1,
-                          height: 14,
+                          height: 12,
                           color: Theme.of(context).brightness == Brightness.dark
                               ? Colors.white.withOpacity(0.3)
                               : Colors.black26,
                         ),
                       ),
                     if (_profile?['role_display'] != null)
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            colors: Theme.of(context).brightness == Brightness.dark
-                                ? [
-                                    Colors.white.withOpacity(0.25),
-                                    Colors.white.withOpacity(0.15),
-                                  ]
-                                : [
-                                    Colors.blue.withOpacity(0.15),
-                                    Colors.blue.withOpacity(0.1),
-                                  ],
-                          ),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: Theme.of(context).brightness == Brightness.dark
-                                ? Colors.white.withOpacity(0.3)
-                                : Colors.blue.withOpacity(0.3),
-                            width: 1,
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.1),
-                              blurRadius: 4,
-                              offset: const Offset(0, 2),
+                      Flexible(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: Theme.of(context).brightness == Brightness.dark
+                                  ? [
+                                      Colors.white.withOpacity(0.25),
+                                      Colors.white.withOpacity(0.15),
+                                    ]
+                                  : [
+                                      Colors.blue.withOpacity(0.15),
+                                      Colors.blue.withOpacity(0.1),
+                                    ],
                             ),
-                          ],
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              Icons.badge_outlined,
-                              size: 12,
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
                               color: Theme.of(context).brightness == Brightness.dark
-                                  ? Colors.white.withOpacity(0.9)
-                                  : Colors.blue[700],
+                                  ? Colors.white.withOpacity(0.3)
+                                  : Colors.blue.withOpacity(0.3),
+                              width: 1,
                             ),
-                            const SizedBox(width: 4),
-                            Text(
-                              _profile!['role_display'],
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w600,
-                                letterSpacing: 0.5,
-                                color: Theme.of(context).brightness == Brightness.dark
-                                    ? Colors.white
-                                    : Colors.blue[900],
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.1),
+                                blurRadius: 4,
+                                offset: const Offset(0, 2),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.badge_outlined,
+                                size: 10,
+                                color: Theme.of(context).brightness == Brightness.dark
+                                    ? Colors.white.withOpacity(0.9)
+                                    : Colors.blue[700],
+                              ),
+                              const SizedBox(width: 3),
+                              Flexible(
+                                child: Text(
+                                  _profile!['role_display'],
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w600,
+                                    letterSpacing: 0.3,
+                                    color: Theme.of(context).brightness == Brightness.dark
+                                        ? Colors.white
+                                        : Colors.blue[900],
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                  maxLines: 1,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                   ],
@@ -646,113 +912,1749 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
           ],
         ),
         centerTitle: true,
-        actions: widget.isEmbedded ? null : [
+        actions: [
           IconButton(
             icon: const Icon(Icons.logout),
             onPressed: _logout,
             tooltip: 'Logout',
           ),
         ],
-        bottom: widget.isEmbedded ? null : (_shouldShowAttendanceTab && _mainTabController != null
-            ? TabBar(
-                controller: _mainTabController,
-                tabs: const [
-                  Tab(icon: Icon(Icons.access_time), text: 'Attendance'),
-                  Tab(icon: Icon(Icons.folder), text: 'Projects'),
-                ],
-              )
-            : null),
+        bottom: widget.role != 'admin' && widget.role != 'client' && widget.role != 'agent'
+            ? (_shouldShowProjects && _mainTabController != null
+                ? TabBar(
+                    controller: _mainTabController!,
+                    tabs: const [
+                      Tab(icon: Icon(Icons.person), text: 'Profile'),
+                      Tab(icon: Icon(Icons.folder), text: 'Projects'),
+                    ],
+                  )
+                : _profileTabController != null
+                    ? TabBar(
+                        controller: _profileTabController!,
+                        tabs: [
+                          Tab(
+                            icon: Icon(Icons.calendar_today, color: Colors.blue[600]),
+                            text: 'Attendance',
+                          ),
+                          Tab(
+                            icon: Icon(Icons.event_note, color: Colors.orange[600]),
+                            text: 'Leave',
+                          ),
+                          Tab(
+                            icon: Icon(Icons.payment, color: Colors.green[600]),
+                            text: 'Payment',
+                          ),
+                        ],
+                      )
+                    : null)
+            : _shouldShowProjects && _mainTabController != null
+                ? TabBar(
+                    controller: _mainTabController!,
+                    tabs: const [
+                      Tab(icon: Icon(Icons.access_time), text: 'Attendance'),
+                      Tab(icon: Icon(Icons.folder), text: 'Projects'),
+                    ],
+                  )
+                : null,
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : _shouldShowAttendanceTab && _mainTabController != null
+          : _shouldShowProjects && _mainTabController != null
               ? TabBarView(
-                  controller: _mainTabController,
+                  controller: _mainTabController!,
                   children: [
-                    _buildDashboardBody(),
+                    // For client and agent, show dashboard body. For others (accessor, senior_valuer), show Profile tab
+                    (widget.role == 'client' || widget.role == 'agent')
+                        ? _buildDashboardBody()
+                        : _buildProfileTabBody(),
                     _buildProjectsTab(),
                   ],
                 )
-              : widget.role == 'client'
-                  ? _buildProjectsTab()
+              : widget.role != 'admin' && widget.role != 'client' && widget.role != 'agent' && _profileTabController != null
+                  ? _buildProfileTabBody()
                   : _buildDashboardBody(),
     );
   }
 
   Widget _buildDashboardBody() {
+    // For admin, show only charts and weekly attendance summary
+    if (widget.role == 'admin') {
+      return RefreshIndicator(
+        onRefresh: () async {
+          await _loadUserData();
+          await _loadTodayAttendance();
+          await _loadSummary();
+          await _loadLeaveStatistics();
+          await _loadWeeklyAttendanceSummary();
+        },
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Weekly Attendance Summary - Show for admin
+              _buildWeeklyAttendanceSummarySection(),
+              const SizedBox(height: 16),
+              
+              // Charts Section
+              if (_summary != null) _buildChartsSection(),
+            ],
+          ),
+        ),
+      );
+    }
+    
+    // For all non-admin roles, show all content
     return RefreshIndicator(
       onRefresh: () async {
         await _loadUserData();
         await _loadTodayAttendance();
         await _loadSummary();
-        await _loadMonthlySummary();
+        await _loadLeaveStatistics();
+        if (widget.role == 'hr_staff' || widget.role == 'admin') {
+          await _loadWeeklyAttendanceSummary();
+        }
+        if (widget.role == 'hr_staff') {
+          await _loadMonthlyLeaveSummary();
+        }
       },
-      color: const Color(0xFF4CAF50),
       child: SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(16.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Main Stats Card (matching coordinator dashboard style)
-            const SizedBox(height: 14),
-            GenericStatsCard(monthlySummary: _monthlySummary),
-            const SizedBox(height: 24),
-            
             // Today's Attendance Card
             _buildTodayAttendanceCard(),
             const SizedBox(height: 16),
             
-            // Attendance Summary
+            // Summary Section
             _buildSummarySection(),
             const SizedBox(height: 16),
             
             // Charts Section
-            if (_summary != null) _buildChartsSection(),
-            const SizedBox(height: 100), // Extra space at bottom
+            if (_summary != null) ...[
+              _buildChartsSection(),
+              const SizedBox(height: 24),
+            ],
+            
+            // Weekly Attendance Summary - Only show for HR staff and admin
+            if (widget.role == 'hr_staff' || widget.role == 'admin') ...[
+              _buildWeeklyAttendanceSummarySection(),
+              const SizedBox(height: 24),
+            ],
+            
+            // Leave Statistics Section
+            _buildLeaveStatisticsSection(),
+            const SizedBox(height: 24),
+            
+            // Payment Section
+            _buildPaymentSection(),
           ],
         ),
       ),
     );
   }
 
-
+  /// HR Staff - Attendance tab body (like admin "Attendance" navigation)
+  Widget _buildHRAttendanceTabBody() {
+    return RefreshIndicator(
+      onRefresh: () async {
+        await _loadUserData();
+        await _loadTodayAttendance();
+        await _loadSummary();
+        await _loadLeaveStatistics();
+        await _loadWeeklyAttendanceSummary();
+      },
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _buildTodayAttendanceCard(),
+            const SizedBox(height: 16),
+            _buildSummarySection(),
+            const SizedBox(height: 16),
+            if (_summary != null) _buildChartsSection(),
+            // Weekly Attendance Summary - Only show for HR staff and admin
+            if (widget.role == 'hr_staff' || widget.role == 'admin') ...[
+              const SizedBox(height: 24),
+              _buildWeeklyAttendanceSummarySection(),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
   
-  // Project viewing methods (for client, agent, accessor, senior valuer)
-  Widget _buildProjectsTab() {
-    // For senior valuer, show status tabs
-    if (widget.role == 'senior_valuer' && _projectStatusTabController != null) {
-      return Column(
-        children: [
-          TabBar(
-            controller: _projectStatusTabController,
-            tabs: const [
-              Tab(text: 'Pending'),
-              Tab(text: 'In Progress'),
-              Tab(text: 'Completed'),
-              Tab(text: 'Cancelled'),
+  Future<void> _loadWeeklyAttendanceSummary() async {
+    // Only allow HR staff and admin to view weekly attendance summary
+    if (widget.role != 'hr_staff' && widget.role != 'admin') return;
+    
+    setState(() => _isLoadingAttendanceSummary = true);
+    
+    try {
+      final result = await ApiService.getWeeklyAttendanceSummary(
+        weekStart: _selectedWeekStart,
+      );
+      
+      if (!mounted) return;
+      
+      setState(() {
+        _isLoadingAttendanceSummary = false;
+        if (result['success']) {
+          _weeklyAttendanceSummary = (result['data'] as List<dynamic>)
+              .map((item) => item as Map<String, dynamic>)
+              .toList();
+        } else {
+          // Silently fail - don't show error message
+          _weeklyAttendanceSummary = [];
+        }
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isLoadingAttendanceSummary = false;
+        _weeklyAttendanceSummary = [];
+      });
+      // Silently fail - don't show error message
+    }
+  }
+
+  Future<void> _selectWeek() async {
+    final now = DateTime.now();
+    final initialDate = _selectedWeekStart;
+    
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: initialDate,
+      firstDate: DateTime(now.year - 1),
+      lastDate: DateTime(now.year + 1),
+      helpText: 'Select Week Start (Monday)',
+    );
+    
+    if (picked != null) {
+      setState(() {
+        _selectedWeekStart = _getWeekStart(picked);
+      });
+      await _loadWeeklyAttendanceSummary();
+    }
+  }
+
+  Future<void> _loadMonthlyLeaveSummary() async {
+    // Only allow HR staff to view monthly leave summary
+    if (widget.role != 'hr_staff') return;
+    
+    setState(() => _isLoadingLeaveSummary = true);
+    
+    try {
+      final result = await ApiService.getMonthlyLeaveSummary(
+        month: _selectedMonth,
+        year: _selectedYear,
+      );
+      
+      if (!mounted) return;
+      
+      setState(() {
+        _isLoadingLeaveSummary = false;
+        if (result['success']) {
+          _monthlyLeaveSummary = (result['data'] as List<dynamic>)
+              .map((item) => item as Map<String, dynamic>)
+              .toList();
+        } else {
+          // Silently fail - don't show error message
+          _monthlyLeaveSummary = [];
+        }
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isLoadingLeaveSummary = false;
+        _monthlyLeaveSummary = [];
+      });
+      // Silently fail - don't show error message
+    }
+  }
+
+  Future<void> _selectMonthYear() async {
+    final now = DateTime.now();
+    final monthNames = [
+      'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'
+    ];
+    
+    int? selectedMonth = _selectedMonth;
+    int? selectedYear = _selectedYear;
+    
+    final result = await showDialog<Map<String, int>>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Select Month & Year'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              DropdownButtonFormField<int>(
+                value: selectedMonth,
+                decoration: const InputDecoration(
+                  labelText: 'Month',
+                  border: OutlineInputBorder(),
+                ),
+                items: List.generate(12, (index) {
+                  final month = index + 1;
+                  return DropdownMenuItem(
+                    value: month,
+                    child: Text(monthNames[index]),
+                  );
+                }),
+                onChanged: (value) {
+                  setDialogState(() => selectedMonth = value!);
+                },
+              ),
+              const SizedBox(height: 16),
+              DropdownButtonFormField<int>(
+                value: selectedYear,
+                decoration: const InputDecoration(
+                  labelText: 'Year',
+                  border: OutlineInputBorder(),
+                ),
+                items: List.generate(5, (index) {
+                  final year = now.year - 2 + index;
+                  return DropdownMenuItem(
+                    value: year,
+                    child: Text(year.toString()),
+                  );
+                }),
+                onChanged: (value) {
+                  setDialogState(() => selectedYear = value!);
+                },
+              ),
             ],
           ),
-          Expanded(
-            child: RefreshIndicator(
-              onRefresh: _loadProjects,
-              child: _isLoadingProjects
-                  ? const Center(child: CircularProgressIndicator())
-                  : TabBarView(
-                      controller: _projectStatusTabController,
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, null),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context, {
+                'month': selectedMonth!,
+                'year': selectedYear!,
+              }),
+              child: const Text('View'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (result != null) {
+      setState(() {
+        _selectedMonth = result['month']!;
+        _selectedYear = result['year']!;
+      });
+      await _loadMonthlyLeaveSummary();
+    }
+  }
+
+  Widget _buildWeeklyAttendanceSummarySection() {
+    // Only show for HR staff and admin
+    if (widget.role != 'hr_staff' && widget.role != 'admin') {
+      return const SizedBox.shrink();
+    }
+    
+    final weekEnd = _selectedWeekStart.add(const Duration(days: 6));
+    final weekRange = '${_selectedWeekStart.day}/${_selectedWeekStart.month}/${_selectedWeekStart.year} - ${weekEnd.day}/${weekEnd.month}/${weekEnd.year}';
+    
+    return Card(
+      elevation: 4,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(20.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.calendar_today, color: Colors.teal[700], size: 28),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Text(
+                    'Attendance Summary Weekly',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.calendar_month),
+                  onPressed: _selectWeek,
+                  tooltip: 'Select Week',
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Week: $weekRange',
+              style: TextStyle(
+                fontSize: 14,
+                color: Colors.grey[600],
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            const SizedBox(height: 16),
+            // Search bar
+            TextField(
+              decoration: InputDecoration(
+                hintText: 'Search by Employee ID...',
+                prefixIcon: const Icon(Icons.search),
+                suffixIcon: _attendanceSearchQuery.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear),
+                        onPressed: () {
+                          setState(() {
+                            _attendanceSearchQuery = '';
+                          });
+                        },
+                      )
+                    : null,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                filled: true,
+                fillColor: Colors.grey[100],
+              ),
+              onChanged: (value) {
+                setState(() {
+                  _attendanceSearchQuery = value;
+                });
+              },
+            ),
+            const SizedBox(height: 16),
+            if (_isLoadingAttendanceSummary)
+              const Center(
+                child: Padding(
+                  padding: EdgeInsets.all(20.0),
+                  child: CircularProgressIndicator(),
+                ),
+              )
+            else if (_weeklyAttendanceSummary.isEmpty)
+              Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(20.0),
+                  child: Column(
+                    children: [
+                      Icon(Icons.event_busy, size: 48, color: Colors.grey[400]),
+                      const SizedBox(height: 8),
+                      Text(
+                        'No attendance records for this week',
+                        style: TextStyle(color: Colors.grey[600]),
+                      ),
+                    ],
+                  ),
+                ),
+              )
+            else
+              Builder(
+                builder: (context) {
+                  // Filter employees based on search query
+                  List<Map<String, dynamic>> filteredEmployees = _attendanceSearchQuery.isEmpty
+                      ? _weeklyAttendanceSummary
+                      : _weeklyAttendanceSummary.where((employee) {
+                          final employeeNumber = (employee['employee_number'] as String? ?? '').toString();
+                          return employeeNumber.toLowerCase().contains(_attendanceSearchQuery.toLowerCase());
+                        }).toList();
+                  
+                  if (filteredEmployees.isEmpty) {
+                    return Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(20.0),
+                        child: Column(
+                          children: [
+                            Icon(Icons.search_off, size: 48, color: Colors.grey[400]),
+                            const SizedBox(height: 8),
+                            Text(
+                              'No employees found with employee ID: $_attendanceSearchQuery',
+                              style: TextStyle(color: Colors.grey[600]),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }
+                  
+                  return SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _buildProjectListByStatus('pending'),
-                        _buildProjectListByStatus('in_progress'),
-                        _buildProjectListByStatus('completed'),
-                        _buildProjectListByStatus('cancelled'),
+                        // Header row
+                        Container(
+                          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                          decoration: BoxDecoration(
+                            color: Colors.teal[50],
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Row(
+                            children: [
+                              SizedBox(
+                                width: 120,
+                                child: Text(
+                                  'Employee Name',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.teal[900],
+                                    fontSize: 13,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              SizedBox(
+                                width: 100,
+                                child: Text(
+                                  'Employee ID',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.teal[900],
+                                    fontSize: 13,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              SizedBox(
+                                width: 80,
+                                child: Text(
+                                  'Absent Days',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.teal[900],
+                                    fontSize: 13,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              SizedBox(
+                                width: 80,
+                                child: Text(
+                                  'Half Days',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.teal[900],
+                                    fontSize: 13,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              SizedBox(
+                                width: 100,
+                                child: Text(
+                                  'Attendance %',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.teal[900],
+                                    fontSize: 13,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              SizedBox(
+                                width: 100,
+                                child: Text(
+                                  'Overtime Hours',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.teal[900],
+                                    fontSize: 13,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        // Employee rows - Interactive
+                        ...filteredEmployees.map((employee) {
+                          final attendancePercentage = (employee['attendance_percentage'] as num?)?.toDouble() ?? 0.0;
+                          final absentDays = employee['absent_days'] ?? 0;
+                          final halfDays = employee['half_days'] ?? 0;
+                          final overtimeHours = (employee['overtime_hours'] as num?)?.toDouble() ?? 0.0;
+                          
+                          Color percentageColor;
+                          if (attendancePercentage >= 90) {
+                            percentageColor = Colors.green[700]!;
+                          } else if (attendancePercentage >= 80) {
+                            percentageColor = Colors.orange[700]!;
+                          } else {
+                            percentageColor = Colors.red[700]!;
+                          }
+                          
+                          return InkWell(
+                            onTap: () {
+                              showDialog(
+                                context: context,
+                                builder: (context) => AlertDialog(
+                                  title: Text(employee['employee_name'] as String? ?? 'N/A'),
+                                  content: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text('Employee ID: ${employee['employee_number'] ?? 'N/A'}'),
+                                      const SizedBox(height: 12),
+                                      Row(
+                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                'Attendance',
+                                                style: TextStyle(
+                                                  fontSize: 12,
+                                                  color: Colors.grey[600],
+                                                ),
+                                              ),
+                                              Text(
+                                                '${attendancePercentage.toStringAsFixed(1)}%',
+                                                style: TextStyle(
+                                                  fontSize: 18,
+                                                  fontWeight: FontWeight.bold,
+                                                  color: percentageColor,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                          Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                'Absent Days',
+                                                style: TextStyle(
+                                                  fontSize: 12,
+                                                  color: Colors.grey[600],
+                                                ),
+                                              ),
+                                              Text(
+                                                '$absentDays',
+                                                style: TextStyle(
+                                                  fontSize: 18,
+                                                  fontWeight: FontWeight.bold,
+                                                  color: Colors.red[700],
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                          Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                'Half Days',
+                                                style: TextStyle(
+                                                  fontSize: 12,
+                                                  color: Colors.grey[600],
+                                                ),
+                                              ),
+                                              Text(
+                                                '$halfDays',
+                                                style: TextStyle(
+                                                  fontSize: 18,
+                                                  fontWeight: FontWeight.bold,
+                                                  color: Colors.orange[700],
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 12),
+                                      Text(
+                                        'Overtime Hours: ${overtimeHours.toStringAsFixed(1)} hrs',
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          color: Colors.teal[700],
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  actions: [
+                                    TextButton(
+                                      onPressed: () => Navigator.pop(context),
+                                      child: const Text('Close'),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            },
+                            child: Material(
+                              color: Colors.transparent,
+                              child: Container(
+                                margin: const EdgeInsets.only(bottom: 8),
+                                padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                                decoration: BoxDecoration(
+                                  color: Colors.grey[50],
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(color: Colors.grey[200]!),
+                                ),
+                                child: Row(
+                                  children: [
+                                    SizedBox(
+                                      width: 120,
+                                      child: Text(
+                                        employee['employee_name'] as String? ?? 'N/A',
+                                        style: const TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    SizedBox(
+                                      width: 100,
+                                      child: Text(
+                                        employee['employee_number'] as String? ?? 'N/A',
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w500,
+                                          color: Colors.grey[700],
+                                          fontFamily: 'monospace',
+                                        ),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    SizedBox(
+                                      width: 80,
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                                        decoration: BoxDecoration(
+                                          color: Colors.red[50],
+                                          borderRadius: BorderRadius.circular(6),
+                                        ),
+                                        child: Text(
+                                          '$absentDays',
+                                          textAlign: TextAlign.center,
+                                          style: TextStyle(
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.bold,
+                                            color: Colors.red[700],
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    SizedBox(
+                                      width: 80,
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                                        decoration: BoxDecoration(
+                                          color: Colors.orange[50],
+                                          borderRadius: BorderRadius.circular(6),
+                                        ),
+                                        child: Text(
+                                          '$halfDays',
+                                          textAlign: TextAlign.center,
+                                          style: TextStyle(
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.bold,
+                                            color: Colors.orange[700],
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    SizedBox(
+                                      width: 100,
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                                        decoration: BoxDecoration(
+                                          color: percentageColor.withOpacity(0.1),
+                                          borderRadius: BorderRadius.circular(6),
+                                        ),
+                                        child: Text(
+                                          '${attendancePercentage.toStringAsFixed(1)}%',
+                                          textAlign: TextAlign.center,
+                                          style: TextStyle(
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.bold,
+                                            color: percentageColor,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    SizedBox(
+                                      width: 100,
+                                      child: Text(
+                                        '${overtimeHours.toStringAsFixed(1)} hrs',
+                                        textAlign: TextAlign.center,
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.teal[700],
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Icon(
+                                      Icons.visibility,
+                                      color: Colors.teal[600],
+                                      size: 16,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          );
+                        }).toList(),
                       ],
                     ),
+                  );
+                },
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+  
+  // Project viewing methods (for client, agent, accessor, senior valuer)
+  
+  /// HR Staff - Leave tab body (like admin "Leave" navigation)
+  Widget _buildHRLeaveTabBody() {
+    return RefreshIndicator(
+      onRefresh: () async {
+        await _loadUserData();
+        await _loadLeaveStatistics();
+        await _loadMonthlyLeaveSummary();
+      },
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Welcome Card with Quick Actions
+            Card(
+              elevation: 4,
+              child: Padding(
+                padding: const EdgeInsets.all(20.0),
+                child: Column(
+                  children: [
+                    Row(
+                      children: [
+                        const CircleAvatar(
+                          radius: 30,
+                          backgroundColor: Colors.purple,
+                          child: Icon(Icons.event_note,
+                              size: 30, color: Colors.white),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Leave Management',
+                                style: TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              Text(
+                                'Welcome, $_username!',
+                                style: const TextStyle(
+                                  color: Colors.grey,
+                                  fontSize: 14,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+                    // Quick Action Buttons
+                    Row(
+                      children: [
+                        Expanded(
+                          child: InkWell(
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => const ViewLeaveRequestsScreen(),
+                                ),
+                              );
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
+                              decoration: BoxDecoration(
+                                color: Colors.purple[50],
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: Colors.purple[200]!),
+                              ),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.edit_calendar, color: Colors.purple[700], size: 18),
+                                  const SizedBox(height: 4),
+                                  const Text(
+                                    'View',
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: InkWell(
+                            onTap: _selectMonthYear,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
+                              decoration: BoxDecoration(
+                                color: Colors.blue[50],
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: Colors.blue[200]!),
+                              ),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.calendar_today, color: Colors.blue[700], size: 18),
+                                  const SizedBox(height: 4),
+                                  const Text(
+                                    'Month',
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 24),
+            // Monthly Leave Summary
+            _buildMonthlyLeaveSummarySection(),
+          ],
+        ),
+      ),
+    );
+  }
+  
+  Widget _buildMonthlyLeaveSummarySection() {
+    // Only show for HR staff
+    if (widget.role != 'hr_staff') {
+      return const SizedBox.shrink();
+    }
+    
+    final monthNames = [
+      'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'
+    ];
+    
+    return Card(
+      elevation: 4,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(20.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.event_note, color: Colors.purple[700], size: 28),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Text(
+                    'Monthly Leave Summary',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.calendar_today),
+                  onPressed: _selectMonthYear,
+                  tooltip: 'Select Month & Year',
+                ),
+                IconButton(
+                  icon: const Icon(Icons.refresh),
+                  onPressed: _loadMonthlyLeaveSummary,
+                  tooltip: 'Refresh',
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '${monthNames[_selectedMonth - 1]} $_selectedYear',
+              style: TextStyle(
+                fontSize: 14,
+                color: Colors.grey[600],
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            const SizedBox(height: 16),
+            if (_isLoadingLeaveSummary)
+              const Center(
+                child: Padding(
+                  padding: EdgeInsets.all(20.0),
+                  child: CircularProgressIndicator(),
+                ),
+              )
+            else if (_monthlyLeaveSummary.isEmpty)
+              Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(20.0),
+                  child: Column(
+                    children: [
+                      Icon(Icons.event_busy, size: 48, color: Colors.grey[400]),
+                      const SizedBox(height: 8),
+                      Text(
+                        'No leave records for this month',
+                        style: TextStyle(color: Colors.grey[600]),
+                      ),
+                    ],
+                  ),
+                ),
+              )
+            else
+              Column(
+                children: [
+                  // Header row
+                  Container(
+                    padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                    decoration: BoxDecoration(
+                      color: Colors.purple[50],
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          flex: 1,
+                          child: Text(
+                            'Emp ID',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: Colors.purple[900],
+                              fontSize: 12,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        Expanded(
+                          flex: 2,
+                          child: Text(
+                            'Employee Name',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: Colors.purple[900],
+                              fontSize: 12,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        Expanded(
+                          child: Text(
+                            'Leave Taken',
+                            textAlign: TextAlign.right,
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: Colors.purple[900],
+                              fontSize: 12,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  // Employee rows - Interactive
+                  ..._monthlyLeaveSummary.map((employee) {
+                    final leaveDays = employee['leave_taken'] as int;
+                    return InkWell(
+                      onTap: () {
+                        showDialog(
+                          context: context,
+                          builder: (context) => AlertDialog(
+                            title: Text(employee['employee_name'] as String),
+                            content: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('Employee ID: ${employee['employee_id']}'),
+                                const SizedBox(height: 8),
+                                Text('Leave Taken: $leaveDays day(s)'),
+                                const SizedBox(height: 8),
+                                Text(
+                                  'Month: ${monthNames[_selectedMonth - 1]} $_selectedYear',
+                                  style: TextStyle(color: Colors.grey[600]),
+                                ),
+                              ],
+                            ),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(context),
+                                child: const Text('Close'),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                      child: Material(
+                        color: Colors.transparent,
+                        child: Container(
+                          margin: const EdgeInsets.only(bottom: 8),
+                          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                          decoration: BoxDecoration(
+                            color: Colors.grey[50],
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.grey[200]!),
+                          ),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                flex: 1,
+                                child: Text(
+                                  employee['employee_id'] as String,
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.grey[700],
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              Expanded(
+                                flex: 2,
+                                child: Text(
+                                  employee['employee_name'] as String,
+                                  style: const TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              Expanded(
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.end,
+                                  children: [
+                                    Flexible(
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                        decoration: BoxDecoration(
+                                          color: leaveDays > 5 
+                                              ? Colors.red[100] 
+                                              : leaveDays > 2 
+                                                  ? Colors.orange[100] 
+                                                  : Colors.green[100],
+                                          borderRadius: BorderRadius.circular(12),
+                                        ),
+                                        child: Text(
+                                          '$leaveDays day(s)',
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.bold,
+                                            color: leaveDays > 5 
+                                                ? Colors.red[700] 
+                                                : leaveDays > 2 
+                                                    ? Colors.orange[700] 
+                                                    : Colors.green[700],
+                                          ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Icon(
+                                      Icons.chevron_right,
+                                      color: Colors.grey[400],
+                                      size: 18,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                ],
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// HR Staff - Payments tab body (like admin "Payments" navigation)
+  Widget _buildHRPaymentsTabBody() {
+    return RefreshIndicator(
+      onRefresh: () async {
+        await _loadUserData();
+        await _loadSummary();
+      },
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Welcome Card with Quick Stats
+            Card(
+              elevation: 4,
+              child: Padding(
+                padding: const EdgeInsets.all(20.0),
+                child: Column(
+                  children: [
+                    Row(
+                      children: [
+                        const CircleAvatar(
+                          radius: 30,
+                          backgroundColor: Colors.green,
+                          child: Icon(Icons.payment,
+                              size: 30, color: Colors.white),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Payments',
+                                style: TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              Text(
+                                'Welcome, $_username!',
+                                style: const TextStyle(
+                                  color: Colors.grey,
+                                  fontSize: 14,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+                    // Quick Stats Row
+                    Row(
+                      children: [
+                        Expanded(
+                          child: InkWell(
+                            onTap: () {
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (context) => const PaymentSlipsScreen(role: 'hr_staff'),
+                                ),
+                              );
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: Colors.blue[50],
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: Colors.blue[200]!),
+                              ),
+                              child: Column(
+                                children: [
+                                  Icon(Icons.receipt_long, color: Colors.blue[700], size: 24),
+                                  const SizedBox(height: 4),
+                                  const Text(
+                                    'View All',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: InkWell(
+                            onTap: _createPaymentSlips,
+                            child: Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: Colors.green[50],
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: Colors.green[200]!),
+                              ),
+                              child: Column(
+                                children: [
+                                  Icon(Icons.add_circle, color: Colors.green[700], size: 24),
+                                  const SizedBox(height: 4),
+                                  const Text(
+                                    'Create',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: InkWell(
+                            onTap: _uploadPaymentSlips,
+                            child: Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: Colors.orange[50],
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: Colors.orange[200]!),
+                              ),
+                              child: Column(
+                                children: [
+                                  Icon(Icons.upload_file, color: Colors.orange[700], size: 24),
+                                  const SizedBox(height: 4),
+                                  const Text(
+                                    'Upload',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Profile tab with subtabs (Attendance, Payment, Leave)
+  Widget _buildProfileTabBody() {
+    if (_profileTabController == null) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    
+    // If embedded or used as a nested tab (e.g., inside Projects tab structure),
+    // we need to show the subtabs. Otherwise, subtabs are shown in AppBar bottom
+    if (widget.isEmbedded || (_shouldShowProjects && _mainTabController != null)) {
+      // Nested/embedded structure - show subtabs here
+      return Column(
+        children: [
+          // Subtabs for Profile (shown here for nested/embedded case)
+          TabBar(
+            controller: _profileTabController,
+            tabs: [
+              Tab(
+                icon: Icon(Icons.calendar_today, color: Colors.blue[600]),
+                text: 'Attendance',
+              ),
+              Tab(
+                icon: Icon(Icons.event_note, color: Colors.orange[600]),
+                text: 'Leave',
+              ),
+              Tab(
+                icon: Icon(Icons.payment, color: Colors.green[600]),
+                text: 'Payment',
+              ),
+            ],
+          ),
+          // Subtab content
+          Expanded(
+            child: TabBarView(
+              controller: _profileTabController,
+              children: [
+                _buildProfileAttendanceSubtab(),
+                _buildProfileLeaveSubtab(),
+                _buildProfilePaymentSubtab(),
+              ],
             ),
           ),
         ],
       );
+    } else {
+      // Subtabs are in AppBar bottom, just show the content
+      // TabBarView must be used directly when subtabs are in AppBar
+      return TabBarView(
+        controller: _profileTabController!,
+        children: [
+          _buildProfileAttendanceSubtab(),
+          _buildProfileLeaveSubtab(),
+          _buildProfilePaymentSubtab(),
+        ],
+      );
     }
+  }
+
+  /// Profile - Attendance subtab
+  Widget _buildProfileAttendanceSubtab() {
+    return RefreshIndicator(
+      onRefresh: () async {
+        await _loadUserData();
+        await _loadTodayAttendance();
+        await _loadSummary();
+        // Weekly Attendance Summary is not shown in Profile tab (only in View tab or main dashboard)
+      },
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _buildTodayAttendanceCard(),
+            const SizedBox(height: 16),
+            _buildSummarySection(),
+            const SizedBox(height: 16),
+            if (_summary != null) _buildChartsSection(),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Profile - Payment subtab
+  Widget _buildProfilePaymentSubtab() {
+    return PaymentSlipsScreen(
+      role: widget.role,
+      showAppBar: false, // No AppBar when embedded as subtab
+      showOnlyOwn: true, // Always show only own payment slips in Profile tab
+    );
+  }
+
+  /// Profile - Leave subtab
+  Widget _buildProfileLeaveSubtab() {
+    // Check if leave request buttons should be shown (exclude client, agent, admin)
+    // HR staff can now see leave request buttons in Profile tab
+    final showLeaveRequestButtons = widget.role != 'client' && 
+                                   widget.role != 'agent' && 
+                                   widget.role != 'admin';
     
-    // For other roles, show all projects without tabs
+    return RefreshIndicator(
+      onRefresh: () async {
+        await _loadUserData();
+        await _loadLeaveStatistics();
+        // Don't load monthly leave summary for HR staff in Profile tab (they have View tab)
+      },
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _buildLeaveStatisticsSection(),
+            // Leave Request Buttons - Show for roles except client, agent, admin
+            // Now includes HR staff
+            if (showLeaveRequestButtons) ...[
+              const SizedBox(height: 24),
+              _buildLeaveRequestButtonsSection(),
+            ],
+            // Monthly Leave Summary - Not shown for HR staff in Profile tab (they have View tab)
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Build Leave Request Buttons Section
+  Widget _buildLeaveRequestButtonsSection() {
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Padding(
+        padding: const EdgeInsets.all(20.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.event_note, color: Colors.blue[700], size: 28),
+                const SizedBox(width: 12),
+                Text(
+                  'Leave Requests',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+            Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const LeaveRequestScreen(),
+                        ),
+                      ).then((_) {
+                        // Refresh leave statistics after creating/updating leave request
+                        _loadLeaveStatistics();
+                      });
+                    },
+                    icon: const Icon(Icons.add_circle_outline),
+                    label: const Text('Add Leave Request'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue[600],
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const MyLeaveRequestsScreen(),
+                        ),
+                      ).then((_) {
+                        // Refresh leave statistics after viewing/updating leave requests
+                        _loadLeaveStatistics();
+                      });
+                    },
+                    icon: const Icon(Icons.list_alt),
+                    label: const Text('View My Requests'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.blue[700],
+                      side: BorderSide(color: Colors.blue[700]!),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+  
+  Future<void> _createPaymentSlips() async {
+    // Automatically generate payment slips for current month/year for all employees
+    final now = DateTime.now();
+    final currentMonth = now.month;
+    final currentYear = now.year;
+    
+    // Show confirmation dialog
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Create Payment Slips'),
+        content: Text(
+          'Generate payment slips for all employees for ${_getMonthName(currentMonth)} $currentYear.\n\nExisting payment slips for this month will be updated.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Create'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green,
+              foregroundColor: Colors.white,
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    // Show loading
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(child: CircularProgressIndicator()),
+    );
+
+    final generateResult = await ApiService.generatePaymentSlips(
+      month: currentMonth,
+      year: currentYear,
+    );
+
+    if (!mounted) return;
+    Navigator.pop(context); // Close loading dialog
+
+    if (generateResult['success']) {
+      final data = generateResult['data'];
+      final generated = data['generated_count'] ?? 0;
+      final updated = data['updated_count'] ?? 0;
+      final total = data['total_count'] ?? 0;
+      
+      String message;
+      if (total > 0) {
+        if (generated > 0 && updated > 0) {
+          message = 'Payment slips created successfully!\n$generated created, $updated updated\n(Total: $total employees)';
+        } else if (updated > 0) {
+          message = 'Payment slips updated successfully for $updated employees';
+        } else {
+          message = 'Payment slips created successfully for $generated employees';
+        }
+      } else {
+        message = data['message'] ?? 'No payment slips generated. All eligible employees may already have payment slips for this month/year.';
+      }
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: total > 0 ? Colors.green : Colors.orange,
+          duration: Duration(seconds: total > 0 ? 4 : 5),
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(generateResult['message'] ?? 'Failed to create payment slips'),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    }
+  }
+
+  String _getMonthName(int month) {
+    const monthNames = [
+      'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'
+    ];
+    return monthNames[month - 1];
+  }
+
+  Future<void> _uploadPaymentSlips() async {
+    // Upload/publish payment slips for employees to view
+    final now = DateTime.now();
+    final currentMonth = now.month;
+    final currentYear = now.year;
+    
+    // Show confirmation dialog
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Upload Payment Slips'),
+        content: Text(
+          'This will make payment slips visible to all employees for ${_getMonthName(currentMonth)} $currentYear.\n\nEmployees will be able to view their own payment slips after this action.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Upload'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.orange,
+              foregroundColor: Colors.white,
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    // Show loading
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(child: CircularProgressIndicator()),
+    );
+
+    final uploadResult = await ApiService.uploadPaymentSlips(
+      month: currentMonth,
+      year: currentYear,
+    );
+
+    if (!mounted) return;
+    Navigator.pop(context); // Close loading dialog
+
+    if (uploadResult['success']) {
+      final data = uploadResult['data'];
+      final uploaded = data['uploaded_count'] ?? 0;
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Payment slips uploaded successfully for $uploaded employees!'),
+          backgroundColor: Colors.green,
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(uploadResult['message'] ?? 'Failed to upload payment slips'),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    }
+  }
+  
+  // Project viewing methods (for client, agent, accessor, senior valuer)
+  Widget _buildProjectsTab() {
     return RefreshIndicator(
       onRefresh: _loadProjects,
       child: _isLoadingProjects
@@ -781,51 +2683,9 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
                   itemCount: _projects.length,
                   itemBuilder: (context, index) {
                     final project = _projects[index];
-                    return GenericProjectCard(
-                      project: project, 
-                      onTap: _viewProjectDetails,
-                    );
+                    return _buildProjectCard(project);
                   },
                 ),
-    );
-  }
-
-  Widget _buildProjectListByStatus(String status) {
-    List<Project> filteredProjects;
-    
-    if (status == 'cancelled') {
-      // For cancelled tab, include both cancelled projects and rejected projects
-      filteredProjects = _projects.where((p) {
-        return p.status.toLowerCase() == 'cancelled' || 
-               p.mdGmApprovalStatus == 'rejected';
-      }).toList();
-    } else {
-      filteredProjects = _projects.where((p) => p.status.toLowerCase() == status).toList();
-    }
-    
-    if (filteredProjects.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.folder_open, size: 64, color: Colors.grey[400]),
-            const SizedBox(height: 16),
-            Text(
-              'No ${status.replaceAll('_', ' ')} projects',
-              style: TextStyle(fontSize: 18, color: Colors.grey[600]),
-            ),
-          ],
-        ),
-      );
-    }
-    
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: filteredProjects.length,
-      itemBuilder: (context, index) {
-        final project = filteredProjects[index];
-        return _buildProjectCard(project);
-      },
     );
   }
 
@@ -847,103 +2707,6 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const SizedBox(height: 20), // Space for priority label
-                  // Show MD/GM approval/rejection status (for MD/GM, senior valuer and assessor)
-                  if (widget.role == 'md_gm' || widget.role == 'senior_valuer' || widget.role == 'accessor') ...[
-                    if (project.mdGmApprovalStatus == 'approved') ...[
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        margin: const EdgeInsets.only(bottom: 12),
-                        decoration: BoxDecoration(
-                          color: Colors.green[50],
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: Colors.green[200]!),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(Icons.check_circle, color: Colors.green[700], size: 20),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                widget.role == 'md_gm' ? 'Project Approved' : 'Project Approved by MD/GM',
-                                style: TextStyle(
-                                  color: Colors.green[900],
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ] else if (project.mdGmApprovalStatus == 'rejected') ...[
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        margin: const EdgeInsets.only(bottom: 12),
-                        decoration: BoxDecoration(
-                          color: Colors.red[50],
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: Colors.red[200]!),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Icon(Icons.cancel, color: Colors.red[700], size: 20),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Text(
-                                    widget.role == 'md_gm' ? 'Project Rejected' : 'Project Rejected by MD/GM',
-                                    style: TextStyle(
-                                      color: Colors.red[900],
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            if (project.mdGmRejectionReason != null && project.mdGmRejectionReason!.isNotEmpty) ...[
-                              const SizedBox(height: 8),
-                              Text(
-                                'Reason: ${project.mdGmRejectionReason}',
-                                style: TextStyle(
-                                  color: Colors.red[800],
-                                  fontSize: 12,
-                                ),
-                              ),
-                            ],
-                          ],
-                        ),
-                      ),
-                    ] else if (widget.role == 'md_gm' && project.mdGmApprovalStatus == 'pending') ...[
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        margin: const EdgeInsets.only(bottom: 12),
-                        decoration: BoxDecoration(
-                          color: Colors.orange[50],
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: Colors.orange[200]!),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(Icons.pending, color: Colors.orange[700], size: 20),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                'Pending Approval',
-                                style: TextStyle(
-                                  color: Colors.orange[900],
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ],
                   Row(
                     children: [
                       Expanded(
@@ -1090,27 +2853,26 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
     );
   }
 
+  Color _getProjectStatusColor(String status) {
+    switch (status) {
+      case 'pending':
+        return Colors.orange[100]!;
+      case 'in_progress':
+        return Colors.blue[100]!;
+      case 'completed':
+        return Colors.green[100]!;
+      case 'cancelled':
+        return Colors.red[100]!;
+      default:
+        return Colors.grey[200]!;
+    }
+  }
 
   Future<void> _viewProjectDetails(Project project) async {
-    // For senior valuer, show reviewed valuations
-    if (widget.role == 'senior_valuer') {
-      await _showSeniorValuerProjectDetails(project);
-      return;
-    }
-    
-    // For MD/GM, show all valuation reports
-    if (widget.role == 'md_gm') {
-      await _showMDGMProjectDetails(project);
-      return;
-    }
-    
     await showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text(
-          project.title,
-          style: const TextStyle(fontWeight: FontWeight.bold, fontFamily: 'Calibri'),
-        ),
+        title: Text(project.title),
         content: SingleChildScrollView(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1119,69 +2881,36 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
               if (project.description != null) ...[
                 const Text(
                   'Description:',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontFamily: 'Calibri'),
+                  style: TextStyle(fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 4),
-                Text(
-                  project.description!,
-                  style: const TextStyle(fontFamily: 'Calibri'),
-                ),
+                Text(project.description!),
                 const SizedBox(height: 16),
               ],
-              Text.rich(
-                TextSpan(
-                  children: [
-                    const TextSpan(
-                      text: 'Status: ',
-                      style: TextStyle(fontWeight: FontWeight.bold, fontFamily: 'Calibri'),
-                    ),
-                    TextSpan(
-                      text: project.statusDisplay,
-                      style: const TextStyle(fontFamily: 'Calibri'),
-                    ),
-                  ],
-                ),
+              Text(
+                'Status: ${project.statusDisplay}',
+                style: const TextStyle(fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 8),
-              Text.rich(
-                TextSpan(
-                  children: [
-                    const TextSpan(
-                      text: 'Priority: ',
-                      style: TextStyle(fontWeight: FontWeight.bold, fontFamily: 'Calibri'),
-                    ),
-                    TextSpan(
-                      text: _formatPriorityLabel(project.priority ?? 'medium'),
-                      style: const TextStyle(fontFamily: 'Calibri'),
-                    ),
-                  ],
-                ),
+              Text(
+                'Priority: ${_formatPriorityLabel(project.priority ?? 'medium')}',
+                style: const TextStyle(fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 8),
-              Text.rich(
-                TextSpan(
-                  children: [
-                    const TextSpan(
-                      text: 'Coordinator: ',
-                      style: TextStyle(fontWeight: FontWeight.bold, fontFamily: 'Calibri'),
-                    ),
-                    TextSpan(
-                      text: project.coordinatorName ?? project.coordinatorUsername,
-                      style: const TextStyle(fontFamily: 'Calibri'),
-                    ),
-                  ],
-                ),
+              Text(
+                'Coordinator: ${project.coordinatorName ?? project.coordinatorUsername}',
+                style: const TextStyle(fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 16),
               if (project.documents.isNotEmpty) ...[
                 const Text(
                   'Documents:',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontFamily: 'Calibri'),
+                  style: TextStyle(fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 8),
                 ...project.documents.map((doc) => ListTile(
-                      title: Text(doc.name, style: const TextStyle(fontFamily: 'Calibri')),
-                      subtitle: Text(doc.fileSizeFormatted, style: const TextStyle(fontFamily: 'Calibri')),
+                      title: Text(doc.name),
+                      subtitle: Text(doc.fileSizeFormatted),
                       trailing: doc.fileUrl != null
                           ? IconButton(
                               icon: const Icon(Icons.download),
@@ -1200,883 +2929,29 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Close', style: TextStyle(fontFamily: 'Calibri')),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _showSeniorValuerProjectDetails(Project project) async {
-    // Load reviewed valuations for this project
-    final result = await ApiService.getReviewedValuationsForSeniorValuer(projectId: project.id);
-    List<Valuation> reviewedValuations = [];
-    
-    if (result['success'] && result['data'] != null) {
-      final valuationsList = result['data'] as List<dynamic>;
-      reviewedValuations = valuationsList
-          .map((v) => Valuation.fromJson(v))
-          .toList();
-    }
-    
-    if (!mounted) return;
-    
-    await showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(project.title),
-        content: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (project.description != null) ...[
-                const Text(
-                  'Description:',
-                  style: TextStyle(fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 4),
-                Text(project.description!),
-                const SizedBox(height: 16),
-              ],
-              const Divider(),
-              const SizedBox(height: 8),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.blue[50],
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.blue[200]!),
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.info_outline, color: Colors.blue[700], size: 20),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'These valuations have been approved by the Assessor and are pending your final approval.',
-                        style: TextStyle(
-                          color: Colors.blue[900],
-                          fontSize: 13,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 12),
-              const Text(
-                'Reviewed Valuations (Pending Your Approval):',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-              ),
-              const SizedBox(height: 12),
-              if (reviewedValuations.isEmpty)
-                const Padding(
-                  padding: EdgeInsets.all(16.0),
-                  child: Center(
-                    child: Text(
-                      'No reviewed valuations available',
-                      style: TextStyle(color: Colors.grey),
-                    ),
-                  ),
-                )
-              else
-                ...reviewedValuations.map((valuation) => Card(
-                      margin: const EdgeInsets.only(bottom: 8),
-                      child: ListTile(
-                        title: Text(valuation.categoryDisplay),
-                        subtitle: Text(
-                          'Field Officer: ${valuation.fieldOfficerName ?? valuation.fieldOfficerUsername}\n'
-                          'Status: ${valuation.statusDisplay}',
-                        ),
-                        trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                        onTap: () {
-                          Navigator.of(context).pop();
-                          _viewValuationPDFAndApprove(valuation, project);
-                        },
-                      ),
-                    )),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
             child: const Text('Close'),
           ),
         ],
       ),
     );
-  }
-
-  Future<void> _showMDGMProjectDetails(Project project) async {
-    // Get all valuations from the project (already loaded)
-    final valuations = project.valuations;
-    
-    if (!mounted) return;
-    
-    await showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(project.title),
-        content: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (project.description != null) ...[
-                const Text(
-                  'Description:',
-                  style: TextStyle(fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 4),
-                Text(project.description!),
-                const SizedBox(height: 16),
-              ],
-              const Divider(),
-              const SizedBox(height: 8),
-              // Show approval status if already approved/rejected
-              if (project.mdGmApprovalStatus == 'approved')
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.green[50],
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.green[200]!),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(Icons.check_circle, color: Colors.green[700], size: 20),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          'Project has been approved by MD/GM.',
-                          style: TextStyle(
-                            color: Colors.green[900],
-                            fontSize: 13,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                )
-              else if (project.mdGmApprovalStatus == 'rejected')
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.red[50],
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.red[200]!),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Icon(Icons.cancel, color: Colors.red[700], size: 20),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              'Project has been rejected by MD/GM.',
-                              style: TextStyle(
-                                color: Colors.red[900],
-                                fontSize: 13,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      if (project.mdGmRejectionReason != null && project.mdGmRejectionReason!.isNotEmpty) ...[
-                        const SizedBox(height: 8),
-                        Text(
-                          'Reason: ${project.mdGmRejectionReason}',
-                          style: TextStyle(
-                            color: Colors.red[900],
-                            fontSize: 12,
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                )
-              else
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.blue[50],
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.blue[200]!),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(Icons.info_outline, color: Colors.blue[700], size: 20),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          'All valuation reports for this project are shown below. All reports have been approved by the Senior Valuer. Please review and approve or reject the project.',
-                          style: TextStyle(
-                            color: Colors.blue[900],
-                            fontSize: 13,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              const SizedBox(height: 12),
-              Text(
-                'Valuation Reports (${valuations.length}):',
-                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-              ),
-              const SizedBox(height: 12),
-              if (valuations.isEmpty)
-                const Padding(
-                  padding: EdgeInsets.all(16.0),
-                  child: Center(
-                    child: Text(
-                      'No valuation reports available',
-                      style: TextStyle(color: Colors.grey),
-                    ),
-                  ),
-                )
-              else
-                ...valuations.map((valuation) => Card(
-                      margin: const EdgeInsets.only(bottom: 8),
-                      child: ListTile(
-                        title: Text(valuation.categoryDisplay),
-                        subtitle: Text(
-                          'Field Officer: ${valuation.fieldOfficerName ?? valuation.fieldOfficerUsername}\n'
-                          'Status: ${valuation.statusDisplay}\n'
-                          'Created: ${DateFormat('yyyy-MM-dd').format(valuation.createdAt)}',
-                        ),
-                        trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                        onTap: () {
-                          Navigator.of(context).pop();
-                          _viewValuationPDFForMDGM(valuation, project);
-                        },
-                      ),
-                    )),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Close'),
-          ),
-          // Show approve/reject buttons only if not already approved/rejected
-          if (project.mdGmApprovalStatus != 'approved' && project.mdGmApprovalStatus != 'rejected') ...[
-            ElevatedButton(
-              onPressed: () async {
-                Navigator.of(context).pop();
-                await _rejectProjectByMDGM(project);
-              },
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-              child: const Text('Reject'),
-            ),
-            ElevatedButton(
-              onPressed: () async {
-                Navigator.of(context).pop();
-                await _approveProjectByMDGM(project);
-              },
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-              child: const Text('Approve'),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Future<void> _approveProjectByMDGM(Project project) async {
-    // Show confirmation
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Approve Project'),
-        content: Text('Are you sure you want to approve the project "${project.title}"?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-            child: const Text('Approve'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirm != true) return;
-
-    // Show loading
-    if (!mounted) return;
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => const Center(child: CircularProgressIndicator()),
-    );
-
-    final result = await ApiService.approveProjectByMDGM(project.id);
-
-    if (!mounted) return;
-    Navigator.of(context).pop(); // Close loading
-
-    if (result['success']) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(result['message'] ?? 'Project approved successfully'),
-          backgroundColor: Colors.green,
-        ),
-      );
-      _loadProjects();
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(result['message'] ?? 'Failed to approve project'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
-  }
-
-  Future<void> _rejectProjectByMDGM(Project project) async {
-    final reasonController = TextEditingController();
-
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Reject Project'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Are you sure you want to reject the project "${project.title}"?'),
-              const SizedBox(height: 16),
-              const Text(
-                'Rejection Reason:',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: reasonController,
-                decoration: const InputDecoration(
-                  labelText: 'Rejection Reason',
-                  hintText: 'Enter reason for rejection...',
-                  border: OutlineInputBorder(),
-                ),
-                maxLines: 3,
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              if (reasonController.text.trim().isEmpty) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Please provide a rejection reason'),
-                    backgroundColor: Colors.orange,
-                  ),
-                );
-                return;
-              }
-              Navigator.of(context).pop(true);
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            child: const Text('Reject'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirm != true) return;
-
-    final rejectionReason = reasonController.text.trim();
-    if (rejectionReason.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Rejection reason is required'),
-          backgroundColor: Colors.orange,
-        ),
-      );
-      return;
-    }
-
-    // Show loading
-    if (!mounted) return;
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => const Center(child: CircularProgressIndicator()),
-    );
-
-    final result = await ApiService.rejectProjectByMDGM(
-      projectId: project.id,
-      rejectionReason: rejectionReason,
-    );
-
-    if (!mounted) return;
-    Navigator.of(context).pop(); // Close loading
-
-    if (result['success']) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(result['message'] ?? 'Project rejected successfully'),
-          backgroundColor: Colors.orange,
-        ),
-      );
-      _loadProjects();
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(result['message'] ?? 'Failed to reject project'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
-  }
-
-  Future<void> _viewValuationPDFForMDGM(Valuation valuation, Project project) async {
-    // Show loading while generating PDF
-    if (!mounted) return;
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => const Center(
-        child: Card(
-          child: Padding(
-            padding: EdgeInsets.all(20.0),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                CircularProgressIndicator(),
-                SizedBox(height: 16),
-                Text('Generating PDF report...'),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-
-    try {
-      // Generate PDF
-      final pdfFile = await PdfService.generateValuationReport(
-        valuation: valuation,
-        project: project,
-      );
-
-      // Close loading dialog
-      if (!mounted) return;
-      Navigator.of(context).pop();
-
-      // Show PDF viewer (read-only for MD/GM)
-      if (!mounted) return;
-      await showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: Text('${valuation.categoryDisplay} Valuation Report'),
-          content: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.green[50],
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.green[200]!),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(Icons.info_outline, color: Colors.green[700], size: 20),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          'This valuation report has been approved by the Senior Valuer.',
-                          style: TextStyle(
-                            color: Colors.green[900],
-                            fontSize: 13,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 16),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    onPressed: () async {
-                      // View PDF using printing package
-                      final bytes = await pdfFile.readAsBytes();
-                      await Printing.layoutPdf(
-                        onLayout: (format) async => bytes,
-                      );
-                    },
-                    icon: const Icon(Icons.picture_as_pdf),
-                    label: const Text('View PDF Report'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.blue[700],
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                const Divider(),
-                const SizedBox(height: 16),
-                Text(
-                  'Report Details:',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                ),
-                const SizedBox(height: 8),
-                _buildReportDetailRow('Status', valuation.statusDisplay),
-                _buildReportDetailRow('Field Officer', valuation.fieldOfficerName ?? valuation.fieldOfficerUsername),
-                _buildReportDetailRow('Category', valuation.categoryDisplay),
-                _buildReportDetailRow('Created', DateFormat('yyyy-MM-dd HH:mm').format(valuation.createdAt)),
-                if (valuation.updatedAt != valuation.createdAt)
-                  _buildReportDetailRow('Last Updated', DateFormat('yyyy-MM-dd HH:mm').format(valuation.updatedAt)),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Close'),
-            ),
-          ],
-        ),
-      );
-    } catch (e) {
-      // Close loading dialog if still open
-      if (mounted) {
-        Navigator.of(context).pop();
-      }
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error generating PDF: ${e.toString()}'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
-  }
-
-  Widget _buildReportDetailRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4.0),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 100,
-            child: Text(
-              '$label:',
-              style: TextStyle(
-                fontWeight: FontWeight.w500,
-                color: Colors.grey[700],
-                fontSize: 13,
-              ),
-            ),
-          ),
-          Expanded(
-            child: Text(
-              value,
-              style: const TextStyle(fontSize: 13),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _viewValuationPDFAndApprove(Valuation valuation, Project project) async {
-    // Show loading while generating PDF
-    if (!mounted) return;
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => const Center(
-        child: Card(
-          child: Padding(
-            padding: EdgeInsets.all(20.0),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                CircularProgressIndicator(),
-                SizedBox(height: 16),
-                Text('Generating PDF report...'),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-
-    try {
-      // Generate PDF
-      final pdfFile = await PdfService.generateValuationReport(
-        valuation: valuation,
-        project: project,
-      );
-
-      // Close loading dialog
-      if (!mounted) return;
-      Navigator.of(context).pop();
-
-      // Show PDF viewer with Accept/Reject buttons
-      final rejectionReasonController = TextEditingController();
-      
-      if (!mounted) return;
-      await showDialog(
-        context: context,
-        builder: (context) => StatefulBuilder(
-          builder: (context, setDialogState) => AlertDialog(
-            title: Text('${valuation.categoryDisplay} Valuation Report'),
-            content: SingleChildScrollView(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.blue[50],
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.blue[200]!),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(Icons.info_outline, color: Colors.blue[700], size: 20),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            'Please review the PDF report and approve or reject the valuation.',
-                            style: TextStyle(
-                              color: Colors.blue[900],
-                              fontSize: 13,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      onPressed: () async {
-                        // View PDF using printing package
-                        final bytes = await pdfFile.readAsBytes();
-                        await Printing.layoutPdf(
-                          onLayout: (format) async => bytes,
-                        );
-                      },
-                      icon: const Icon(Icons.picture_as_pdf),
-                      label: const Text('View PDF Report'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.blue[700],
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  const Divider(),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'Rejection Reason (if rejecting):',
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: rejectionReasonController,
-                    decoration: const InputDecoration(
-                      labelText: 'Rejection Reason',
-                      hintText: 'Enter reason for rejection (required if rejecting)...',
-                      border: OutlineInputBorder(),
-                    ),
-                    maxLines: 3,
-                  ),
-                ],
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: const Text('Cancel'),
-              ),
-              ElevatedButton(
-                onPressed: () async {
-                  final rejectionReason = rejectionReasonController.text.trim();
-                  if (rejectionReason.isEmpty) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Please provide a rejection reason'),
-                        backgroundColor: Colors.orange,
-                      ),
-                    );
-                    return;
-                  }
-
-                  // Show loading
-                  if (!mounted) return;
-                  showDialog(
-                    context: context,
-                    barrierDismissible: false,
-                    builder: (context) => const Center(child: CircularProgressIndicator()),
-                  );
-
-                  final result = await ApiService.rejectValuationBySeniorValuer(
-                    valuationId: valuation.id,
-                    rejectionReason: rejectionReason,
-                  );
-
-                  if (!mounted) return;
-                  Navigator.of(context).pop(); // Close loading
-                  Navigator.of(context).pop(); // Close dialog
-
-                  if (result['success']) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Valuation rejected successfully'),
-                        backgroundColor: Colors.orange,
-                      ),
-                    );
-                    _loadProjects();
-                  } else {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(result['message'] ?? 'Failed to reject valuation'),
-                        backgroundColor: Colors.red,
-                      ),
-                    );
-                  }
-                },
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-                child: const Text('Reject'),
-              ),
-              ElevatedButton(
-                onPressed: () async {
-                  // Show confirmation
-                  final confirm = await showDialog<bool>(
-                    context: context,
-                    builder: (context) => AlertDialog(
-                      title: const Text('Approve Valuation'),
-                      content: Text('Are you sure you want to approve this ${valuation.categoryDisplay} valuation?'),
-                      actions: [
-                        TextButton(
-                          onPressed: () => Navigator.of(context).pop(false),
-                          child: const Text('Cancel'),
-                        ),
-                        ElevatedButton(
-                          onPressed: () => Navigator.of(context).pop(true),
-                          style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-                          child: const Text('Approve'),
-                        ),
-                      ],
-                    ),
-                  );
-
-                  if (confirm != true) return;
-
-                  // Show loading
-                  if (!mounted) return;
-                  showDialog(
-                    context: context,
-                    barrierDismissible: false,
-                    builder: (context) => const Center(child: CircularProgressIndicator()),
-                  );
-
-                  final result = await ApiService.approveValuationBySeniorValuer(valuation.id);
-
-                  if (!mounted) return;
-                  Navigator.of(context).pop(); // Close loading
-                  Navigator.of(context).pop(); // Close dialog
-
-                  if (result['success']) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Valuation approved successfully'),
-                        backgroundColor: Colors.green,
-                      ),
-                    );
-                    _loadProjects();
-                  } else {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(result['message'] ?? 'Failed to approve valuation'),
-                        backgroundColor: Colors.red,
-                      ),
-                    );
-                  }
-                },
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-                child: const Text('Accept'),
-              ),
-            ],
-          ),
-        ),
-      );
-    } catch (e) {
-      // Close loading dialog if still open
-      if (mounted) {
-        Navigator.of(context).pop();
-      }
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error generating PDF: ${e.toString()}'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
   }
 
   Widget _buildTodayAttendanceCard() {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.08),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
+    return Card(
+      elevation: 4,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: Padding(
-        padding: const EdgeInsets.all(24.0),
+        padding: const EdgeInsets.all(20.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text(
               'Today\'s Attendance',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w900,
-                color: Colors.grey[900],
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.bold,
               ),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 16),
             
             if (!_isWorkingDay)
               Container(
@@ -2376,110 +3251,80 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
   }
 
   Widget _buildSummarySection() {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.08),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: Padding(
-        padding: const EdgeInsets.all(24.0),
+        padding: const EdgeInsets.all(16.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Attendance Summary',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w900,
-                    color: Colors.grey[900],
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  _getPeriodLabel(),
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w500,
-                    color: Colors.grey[600],
-                    fontFamily: 'Inter',
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            // Period Selection - Circular Bubble Navigation with Arrows (Contained)
-            Container(
-              height: 110,
-              padding: const EdgeInsets.symmetric(horizontal: 0),
-              child: ClipRect(
-                child: Stack(
-                clipBehavior: Clip.hardEdge,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    child: _buildPeriodNavigation(),
-                  ),
-                  // Left arrow
-                  Positioned(
-                    left: 8,
-                    top: 65,
-                    child: _buildPeriodNavigationArrow(
-                      icon: Icons.arrow_back_ios_new_rounded,
-                      onTap: () {
-                        final currentIndex = _periodTabController.index;
-                        final newIndex = currentIndex > 0 ? currentIndex - 1 : 3;
-                        _periodTabController.animateTo(newIndex);
-                        setState(() {});
-                      },
-                    ),
-                  ),
-                  // Right arrow
-                  Positioned(
-                    right: 8,
-                    top: 65,
-                    child: _buildPeriodNavigationArrow(
-                      icon: Icons.arrow_forward_ios_rounded,
-                      onTap: () {
-                        final currentIndex = _periodTabController.index;
-                        final newIndex = currentIndex < 3 ? currentIndex + 1 : 0;
-                        _periodTabController.animateTo(newIndex);
-                        setState(() {});
-                      },
-                    ),
-                  ),
-                  // Dot Indicator
-                  Positioned(
-                    top: 88,
-                    left: 0,
-                    right: 0,
-                    child: _buildPeriodDotIndicator(
-                      selectedIndex: _periodTabController.index,
-                      itemCount: 4,
-                    ),
-                  ),
-                ],
-              ),
+            Text(
+              'Attendance Summary',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.bold,
               ),
             ),
             const SizedBox(height: 12),
+            // Period Selection Tabs
+            Container(
+              decoration: BoxDecoration(
+                color: Colors.grey[200]?.withOpacity(0.5),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: TabBar(
+                controller: _periodTabController,
+                indicator: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [Colors.blue[400]!, Colors.blue[600]!],
+                  ),
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.blue.withOpacity(0.3),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                labelColor: Colors.white,
+                unselectedLabelColor: Colors.grey[700],
+                labelStyle: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 13,
+                ),
+                unselectedLabelStyle: const TextStyle(
+                  fontWeight: FontWeight.w500,
+                  fontSize: 13,
+                ),
+                indicatorSize: TabBarIndicatorSize.tab,
+                dividerColor: Colors.transparent,
+                tabs: const [
+                  Tab(
+                    icon: Icon(Icons.today, size: 18),
+                    text: 'Daily',
+                  ),
+                  Tab(
+                    icon: Icon(Icons.date_range, size: 18),
+                    text: 'Weekly',
+                  ),
+                  Tab(
+                    icon: Icon(Icons.calendar_month, size: 18),
+                    text: 'Monthly',
+                  ),
+                  Tab(
+                    icon: Icon(Icons.calendar_today, size: 18),
+                    text: 'Yearly',
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
             
-            SizedBox(
-              height: 260, // Fixed height to prevent card resizing (increased to fix overflow)
-              child: _isLoadingSummary
-                ? const Center(child: CircularProgressIndicator())
-                : _summary != null
-                  ? Column(
+            if (_isLoadingSummary)
+              const Center(child: CircularProgressIndicator())
+            else if (_summary != null)
+              Column(
                 children: [
                   Row(
                     children: [
@@ -2487,7 +3332,7 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
                         child: _buildSummaryCard(
                           'Present',
                           _summary!.presentDays.toString(),
-                          const Color(0xFF84BCDA),
+                          Colors.green,
                         ),
                       ),
                       const SizedBox(width: 8),
@@ -2500,7 +3345,7 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
                       ),
                     ],
                   ),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 8),
                   Row(
                     children: [
                       Expanded(
@@ -2520,7 +3365,7 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
                       ),
                     ],
                   ),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 12),
                   Row(
                     children: [
                       Expanded(
@@ -2535,330 +3380,131 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
                         child: _buildSummaryCard(
                           'Overtime',
                           '${_summary!.totalOvertimeHours.toStringAsFixed(1)}h',
-                          const Color(0xFF0570B0),
+                          Colors.teal,
                         ),
                       ),
                     ],
                   ),
                 ],
-                    )
-                  : const Center(child: Text('No data available')),
-            ),
+              )
+            else
+              const Center(child: Text('No data available')),
           ],
         ),
       ),
     );
   }
 
-  // Get current period label
-  String _getPeriodLabel() {
-    switch (_periodTabController.index) {
-      case 0:
-        return 'Daily';
-      case 1:
-        return 'Weekly';
-      case 2:
-        return 'Monthly';
-      case 3:
-        return 'Yearly';
-      default:
-        return 'Daily';
+  Future<void> _loadLeaveStatistics() async {
+    // Load for all non-admin roles
+    if (widget.role == 'admin') {
+      return;
     }
-  }
-
-  // Period Navigation with Circular Bubbles (Carousel Style)
-  Widget _buildPeriodNavigation() {
-    final periods = [
-      {'icon': Icons.today, 'label': 'Daily', 'index': 0},
-      {'icon': Icons.date_range, 'label': 'Weekly', 'index': 1},
-      {'icon': Icons.calendar_month, 'label': 'Monthly', 'index': 2},
-      {'icon': Icons.calendar_today, 'label': 'Yearly', 'index': 3},
-    ];
-
-    final selectedIndex = _periodTabController.index;
-    final baseSize = 44.0; // Increased from 38.0
-    final activeSize = baseSize * 1.35; // Active tab 35% larger
-    final spacing = baseSize * 1.3; // Increased spacing between tabs
-
-    return GestureDetector(
-      onHorizontalDragEnd: (details) {
-        // Detect swipe direction based on velocity
-        if (details.primaryVelocity != null) {
-          if (details.primaryVelocity! < -500) {
-            // Swipe left - go to next period
-            final currentIndex = _periodTabController.index;
-            final newIndex = currentIndex < 3 ? currentIndex + 1 : 0;
-            _periodTabController.animateTo(newIndex);
-            setState(() {});
-          } else if (details.primaryVelocity! > 500) {
-            // Swipe right - go to previous period
-            final currentIndex = _periodTabController.index;
-            final newIndex = currentIndex > 0 ? currentIndex - 1 : 3;
-            _periodTabController.animateTo(newIndex);
-            setState(() {});
-          }
-        }
-      },
-      child: TweenAnimationBuilder<double>(
-      duration: const Duration(milliseconds: 600),
-      curve: Curves.easeInOutCubic,
-      tween: Tween<double>(begin: selectedIndex.toDouble(), end: selectedIndex.toDouble()),
-      builder: (context, animatedIndex, child) {
-        return LayoutBuilder(
-          builder: (context, constraints) {
-            final centerX = constraints.maxWidth / 2;
-            
-            return SizedBox(
-              height: 110,
-              width: constraints.maxWidth,
-              child: Stack(
-                clipBehavior: Clip.hardEdge,
-                children: List.generate(4, (index) {
-                  final distanceFromCenter = (index - animatedIndex);
-                  final isActive = index == selectedIndex;
-                  
-                  // Layered positioning
-                  final offset = distanceFromCenter * spacing;
-                  
-                  // Scale based on distance
-                  final targetScale = isActive ? 1.0 : math.max(0.65, 1.0 - (distanceFromCenter.abs() * 0.15));
-                  
-                  // Opacity
-                  final targetOpacity = isActive ? 1.0 : math.max(0.4, 1.0 - (distanceFromCenter.abs() * 0.2));
-                  
-                  // Size based on active state
-                  final size = isActive ? activeSize : baseSize;
-                  
-                  // Vertical position - active tab higher
-                  final topPosition = isActive ? 12.0 : 18.0;
-                  
-                  return TweenAnimationBuilder<double>(
-                    duration: const Duration(milliseconds: 600),
-                    curve: Curves.easeInOutCubic,
-                    tween: Tween<double>(begin: 0, end: 1),
-                    builder: (context, animation, child) {
-                      return AnimatedPositioned(
-                        duration: const Duration(milliseconds: 600),
-                        curve: Curves.easeInOutCubic,
-                        left: centerX + offset - size / 2,
-                        top: topPosition,
-                        child: TweenAnimationBuilder<double>(
-                          duration: const Duration(milliseconds: 600),
-                          curve: Curves.easeInOutCubic,
-                          tween: Tween<double>(begin: targetOpacity, end: targetOpacity),
-                          builder: (context, opacity, child) {
-                            return TweenAnimationBuilder<double>(
-                              duration: const Duration(milliseconds: 600),
-                              curve: Curves.easeInOutCubic,
-                              tween: Tween<double>(begin: targetScale, end: targetScale),
-                              builder: (context, scale, child) {
-                                return Opacity(
-                                  opacity: opacity,
-                                  child: Transform.scale(
-                                    scale: scale,
-                                    child: Column(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        AnimatedContainer(
-                                          duration: const Duration(milliseconds: 600),
-                                          curve: Curves.easeInOutCubic,
-                                          decoration: BoxDecoration(
-                                            shape: BoxShape.circle,
-                                            boxShadow: isActive ? [
-                                              BoxShadow(
-                                                color: Colors.black.withOpacity(0.25),
-                                                blurRadius: 16,
-                                                spreadRadius: 2,
-                                                offset: const Offset(0, 8),
-                                              ),
-                                              BoxShadow(
-                                                color: const Color(0xFF10B981).withOpacity(0.3),
-                                                blurRadius: 20,
-                                                spreadRadius: 0,
-                                                offset: const Offset(0, 4),
-                                              ),
-                                            ] : [],
-                                          ),
-                                          child: _buildPeriodTab(
-                                            icon: periods[index]['icon'] as IconData,
-                                            label: periods[index]['label'] as String,
-                                            isActive: isActive,
-                                            onTap: () {
-                                              _periodTabController.animateTo(index);
-                                              setState(() {});
-                                            },
-                                            size: size,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                );
-                              },
-                            );
-                          },
-                        ),
-                      );
-                    },
-                  );
-                }),
-              ),
-            );
-          },
-        );
-      },
-      ),
-    );
-  }
-
-  Widget _buildPeriodTab({
-    required IconData icon,
-    required String label,
-    required bool isActive,
-    required VoidCallback onTap,
-    required double size,
-  }) {
-    final baseIconSize = 18.0; // Increased from 16.0
-    final iconSize = isActive ? baseIconSize * 1.25 : baseIconSize;
     
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeInOut,
-        width: size,
-        height: size,
-        decoration: BoxDecoration(
-          color: Colors.white,
-          shape: BoxShape.circle,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.1),
-              blurRadius: 4,
-              offset: const Offset(0, 4),
-            ),
-            BoxShadow(
-              color: Colors.black.withOpacity(0.06),
-              blurRadius: 6,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Stack(
-          alignment: Alignment.center,
-          children: [
-            // Animated black circle background
-            AnimatedScale(
-              scale: isActive ? 1.0 : 0.0,
-              duration: const Duration(milliseconds: 300),
-              curve: Curves.easeInOut,
-              child: AnimatedOpacity(
-                opacity: isActive ? 1.0 : 0.0,
-                duration: const Duration(milliseconds: 250),
-                child: Container(
-                  width: size - 6,
-                  height: size - 6,
-                  decoration: const BoxDecoration(
-                    color: Color(0xFF111827),
-                    shape: BoxShape.circle,
-                  ),
-                ),
-              ),
-            ),
-            // Animated icon
-            AnimatedSwitcher(
-              duration: const Duration(milliseconds: 300),
-              transitionBuilder: (child, animation) {
-                return ScaleTransition(
-                  scale: animation,
-                  child: child,
-                );
-              },
-              child: Icon(
-                icon,
-                key: ValueKey<bool>(isActive),
-                size: iconSize,
-                color: isActive ? Colors.white : const Color(0xFF9CA3AF),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
+    setState(() => _isLoadingLeaveStats = true);
+    
+    final result = await ApiService.getMyLeaveStatistics();
+    
+    if (!mounted) return;
+    
+    setState(() {
+      _isLoadingLeaveStats = false;
+      if (result['success']) {
+        _leaveStatistics = result['data'];
+      }
+    });
   }
 
-  // Navigation Arrow for Period Selection
-  Widget _buildPeriodNavigationArrow({
-    required IconData icon,
-    required VoidCallback onTap,
-  }) {
-    const size = 28.0; // Reduced from 36.0
-    const iconSize = 12.0; // Reduced from 16.0
-
-    return GestureDetector(
-      onTap: onTap,
-      child: ClipOval(
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-          child: Container(
-            width: size,
-            height: size,
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.2),
-              shape: BoxShape.circle,
-              border: Border.all(
-                color: Colors.white.withOpacity(0.3),
-                width: 1,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.08),
-                  blurRadius: 8,
-                  offset: const Offset(0, 4),
+  Widget _buildLeaveStatisticsSection() {
+    // Show for all non-admin roles
+    if (widget.role == 'admin') {
+      return const SizedBox.shrink();
+    }
+    
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.event_available, color: Colors.teal[700], size: 28),
+                const SizedBox(width: 12),
+                Text(
+                  'Leave Statistics',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ],
             ),
-            child: Icon(
-              icon,
-              size: iconSize,
-              color: const Color(0xFF10B981),
-            ),
-          ),
+            const SizedBox(height: 16),
+            if (_isLoadingLeaveStats)
+              const Center(child: CircularProgressIndicator())
+            else if (_leaveStatistics != null)
+              Row(
+                children: [
+                  Expanded(
+                    child: _buildLeaveStatCard(
+                      'Remaining Leaves',
+                      '${_leaveStatistics!['remaining_leaves'] ?? 0}',
+                      Colors.green,
+                      Icons.event_available,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: _buildLeaveStatCard(
+                      'Leave Taken',
+                      '${_leaveStatistics!['leave_taken'] ?? 0}',
+                      Colors.orange,
+                      Icons.event_busy,
+                    ),
+                  ),
+                ],
+              )
+            else
+              const Center(child: Text('Unable to load leave statistics')),
+          ],
         ),
       ),
     );
   }
 
-  // Dot Indicator for Period Selection
-  Widget _buildPeriodDotIndicator({
-    required int selectedIndex,
-    required int itemCount,
-  }) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: List.generate(itemCount, (index) {
-        final isActive = index == selectedIndex;
-        return AnimatedContainer(
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeInOut,
-          margin: const EdgeInsets.symmetric(horizontal: 3),
-          width: isActive ? 12 : 4,
-          height: 5,
-          decoration: BoxDecoration(
-            color: isActive 
-                ? const Color.fromARGB(255, 0, 0, 0) 
-                : const Color.fromARGB(255, 0, 0, 0).withOpacity(0.3),
-            borderRadius: BorderRadius.circular(3),
-            boxShadow: isActive ? [
-              BoxShadow(
-                color: const Color.fromARGB(255, 0, 0, 0).withOpacity(0.4),
-                blurRadius: 6,
-                offset: const Offset(0, 2),
-              ),
-            ] : [],
+  Widget _buildLeaveStatCard(String title, String value, Color color, IconData icon) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withOpacity(0.3)),
+      ),
+      child: Column(
+        children: [
+          Icon(icon, color: color, size: 32),
+          const SizedBox(height: 8),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+              color: color,
+            ),
           ),
-        );
-      }),
+          const SizedBox(height: 4),
+          Text(
+            title,
+            style: TextStyle(
+              fontSize: 12,
+              color: Colors.grey[600],
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
     );
   }
 
@@ -2894,20 +3540,103 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
     );
   }
 
+  Widget _buildPaymentSection() {
+    // Show payment section for all non-admin roles
+    if (widget.role == 'admin') {
+      return const SizedBox.shrink();
+    }
+    
+    return Card(
+      elevation: 4,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Padding(
+        padding: const EdgeInsets.all(20.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.payment, color: Colors.green[700], size: 28),
+                const SizedBox(width: 12),
+                Text(
+                  'Payment Slips',
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'View your own monthly payment slips and salary information.',
+              style: TextStyle(color: Colors.grey),
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton.icon(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => PaymentSlipsScreen(
+                      role: widget.role,
+                      showOnlyOwn: true, // Always show only own payment slips in Profile tab
+                    ),
+                  ),
+                ).catchError((error) {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Error opening payment slips: $error'),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                  }
+                });
+              },
+              icon: const Icon(Icons.visibility),
+              label: const Text('View My Payment Slips'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildChartsSection() {
     if (_summary == null || _summary!.dailyData.isEmpty) {
       return const SizedBox.shrink();
     }
 
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 20),
+      margin: const EdgeInsets.only(top: 16),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
+        gradient: LinearGradient(
+          colors: [
+            Theme.of(context).cardColor,
+            Theme.of(context).cardColor.withOpacity(0.95),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.08),
-            blurRadius: 12,
+            color: Colors.black.withOpacity(0.1),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+            spreadRadius: 2,
+          ),
+          BoxShadow(
+            color: Colors.blue.withOpacity(0.05),
+            blurRadius: 10,
             offset: const Offset(0, 4),
           ),
         ],
@@ -2917,12 +3646,38 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(
-              'Attendance Chart',
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.w900,
-                fontSize: 20,
-              ),
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [Colors.blue[400]!, Colors.blue[600]!],
+                    ),
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.blue.withOpacity(0.3),
+                        blurRadius: 8,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: const Icon(
+                    Icons.bar_chart,
+                    color: Colors.white,
+                    size: 24,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  'Attendance Chart',
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 20,
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 20),
             SizedBox(
@@ -3219,7 +3974,7 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
   Color _getStatusColor(String status) {
     switch (status) {
       case 'present':
-        return const Color(0xFF84BCDA);
+        return Colors.green;
       case 'half_day':
         return Colors.orange;
       case 'absent':
@@ -3335,8 +4090,8 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [
-            const Color(0xFF84BCDA)!,
-            const Color(0xFF0570B0)!,
+            Colors.green[400]!,
+            Colors.green[600]!,
           ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
@@ -3344,7 +4099,7 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF84BCDA).withOpacity(0.4),
+            color: Colors.green.withOpacity(0.4),
             blurRadius: 15,
             offset: const Offset(0, 8),
           ),
@@ -3809,511 +4564,6 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
       },
     );
   }
-
-  Widget _buildHistoryTab() {
-    // Get all valuations from all projects
-    List<Valuation> allValuations = [];
-    for (var project in _projects) {
-      allValuations.addAll(project.valuations);
-    }
-    
-    // Sort by date (newest first)
-    allValuations.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-    
-    return RefreshIndicator(
-      onRefresh: _loadProjects,
-      child: allValuations.isEmpty
-          ? Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.history, size: 64, color: Colors.grey[400]),
-                  const SizedBox(height: 16),
-                  Text(
-                    'No valuation history yet',
-                    style: TextStyle(
-                      fontSize: 18,
-                      color: Colors.grey[600],
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'All received valuations will appear here',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.grey[500],
-                    ),
-                  ),
-                ],
-              ),
-            )
-          : ListView.builder(
-              padding: const EdgeInsets.all(16),
-              itemCount: allValuations.length,
-              itemBuilder: (context, index) {
-                final valuation = allValuations[index];
-                final project = _projects.firstWhere(
-                  (p) => p.id == valuation.projectId,
-                  orElse: () => _projects.first,
-                );
-                return _buildHistoryValuationCard(valuation, project);
-              },
-            ),
-    );
-  }
-
-  Widget _buildHistoryValuationCard(Valuation valuation, Project project) {
-    Color statusColor;
-    IconData statusIcon;
-    String statusText;
-    
-    switch (valuation.status) {
-      case 'approved':
-        statusColor = Colors.green;
-        statusIcon = Icons.check_circle;
-        statusText = 'Approved';
-        break;
-      case 'reviewed':
-        statusColor = Colors.blue;
-        statusIcon = Icons.visibility;
-        statusText = 'Reviewed (Pending Approval)';
-        break;
-      case 'rejected':
-        statusColor = Colors.red;
-        statusIcon = Icons.cancel;
-        statusText = 'Rejected';
-        break;
-      case 'submitted':
-        statusColor = Colors.orange;
-        statusIcon = Icons.send;
-        statusText = 'Submitted';
-        break;
-      case 'draft':
-        statusColor = Colors.grey;
-        statusIcon = Icons.edit;
-        statusText = 'Draft';
-        break;
-      default:
-        statusColor = Colors.grey;
-        statusIcon = Icons.description;
-        statusText = valuation.statusDisplay;
-    }
-    
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: InkWell(
-        onTap: () => _viewHistoryValuationDetails(valuation, project),
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: statusColor.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Icon(statusIcon, color: statusColor, size: 24),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          project.title,
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          valuation.categoryDisplay,
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: Colors.grey[700],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: statusColor.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: statusColor.withOpacity(0.3)),
-                    ),
-                    child: Text(
-                      statusText,
-                      style: TextStyle(
-                        color: _getShadeColor(statusColor, 700),
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              if (valuation.rejectionReason != null && valuation.rejectionReason!.isNotEmpty) ...[
-                const SizedBox(height: 12),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.red[50],
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.red[200]!),
-                  ),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Icon(Icons.info_outline, color: Colors.red[700], size: 18),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          'Rejection Reason: ${valuation.rejectionReason}',
-                          style: TextStyle(
-                            color: Colors.red[900],
-                            fontSize: 12,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Icon(Icons.calendar_today, size: 14, color: Colors.grey[600]),
-                  const SizedBox(width: 6),
-                  Text(
-                    'Created: ${DateFormat('MMM dd, yyyy').format(valuation.createdAt)}',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.grey[600],
-                    ),
-                  ),
-                  if (valuation.submittedAt != null) ...[
-                    const SizedBox(width: 16),
-                    Icon(Icons.send, size: 14, color: Colors.grey[600]),
-                    const SizedBox(width: 6),
-                    Text(
-                      'Submitted: ${DateFormat('MMM dd, yyyy').format(valuation.submittedAt!)}',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey[600],
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Future<void> _viewHistoryValuationDetails(Valuation valuation, Project project) async {
-    // Fetch fresh project data
-    final projectResult = await ApiService.getProject(project.id);
-    Project? updatedProject = project;
-    
-    if (projectResult['success'] && projectResult['data'] != null) {
-      try {
-        updatedProject = Project.fromJson(projectResult['data']);
-      } catch (e) {
-        print('Error parsing updated project: $e');
-      }
-    }
-    
-    final finalProject = updatedProject ?? project;
-    final updatedValuation = finalProject.valuations.firstWhere(
-      (v) => v.id == valuation.id,
-      orElse: () => valuation,
-    );
-    
-    await showDialog(
-      context: context,
-      builder: (context) => Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        child: Container(
-          width: MediaQuery.of(context).size.width * 0.9,
-          constraints: BoxConstraints(
-            maxHeight: MediaQuery.of(context).size.height * 0.8,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Header
-              Container(
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: Colors.blue[50],
-                  borderRadius: const BorderRadius.only(
-                    topLeft: Radius.circular(20),
-                    topRight: Radius.circular(20),
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.blue[100],
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: const Icon(Icons.description, color: Colors.blue, size: 24),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            finalProject.title,
-                            style: const TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            updatedValuation.categoryDisplay,
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: Colors.grey[700],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    IconButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                      icon: const Icon(Icons.close),
-                    ),
-                  ],
-                ),
-              ),
-              // Content
-              Expanded(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.all(20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Status
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: _getValuationStatusColor(updatedValuation.status).withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(
-                            color: _getValuationStatusColor(updatedValuation.status).withOpacity(0.3),
-                          ),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(
-                              _getStatusIcon(updatedValuation.status),
-                              color: _getValuationStatusColor(updatedValuation.status),
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              'Status: ${updatedValuation.statusDisplay}',
-                              style: TextStyle(
-                                color: _getValuationStatusColor(updatedValuation.status),
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      // Description
-                      if (updatedValuation.description != null && updatedValuation.description!.isNotEmpty) ...[
-                        const Text(
-                          'Description:',
-                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(updatedValuation.description!),
-                        const SizedBox(height: 16),
-                      ],
-                      // Estimated Value
-                      if (updatedValuation.estimatedValue != null) ...[
-                        const Text(
-                          'Estimated Value:',
-                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'Rs. ${NumberFormat('#,##0.00').format(updatedValuation.estimatedValue)}',
-                          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-                        ),
-                        const SizedBox(height: 16),
-                      ],
-                      // Rejection Reason
-                      if (updatedValuation.rejectionReason != null && updatedValuation.rejectionReason!.isNotEmpty) ...[
-                        Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: Colors.red[50],
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: Colors.red[200]!),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text(
-                                'Rejection Reason:',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.red,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(updatedValuation.rejectionReason!),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                      ],
-                      // Dates
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Text(
-                                  'Created:',
-                                  style: TextStyle(fontSize: 12, color: Colors.grey),
-                                ),
-                                Text(
-                                  DateFormat('MMM dd, yyyy').format(updatedValuation.createdAt),
-                                  style: const TextStyle(fontWeight: FontWeight.w500),
-                                ),
-                              ],
-                            ),
-                          ),
-                          if (updatedValuation.submittedAt != null)
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const Text(
-                                    'Submitted:',
-                                    style: TextStyle(fontSize: 12, color: Colors.grey),
-                                  ),
-                                  Text(
-                                    DateFormat('MMM dd, yyyy').format(updatedValuation.submittedAt!),
-                                    style: const TextStyle(fontWeight: FontWeight.w500),
-                                  ),
-                                ],
-                              ),
-                            ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                      // View PDF Button (view-only, no accept/reject)
-                      SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton.icon(
-                          onPressed: () async {
-                            Navigator.of(context).pop();
-                            await _viewValuationPDF(updatedValuation, finalProject);
-                          },
-                          icon: const Icon(Icons.picture_as_pdf),
-                          label: const Text('View PDF Report'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.blue[700],
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  IconData _getStatusIcon(String status) {
-    switch (status) {
-      case 'approved':
-        return Icons.check_circle;
-      case 'reviewed':
-        return Icons.visibility;
-      case 'rejected':
-        return Icons.cancel;
-      case 'submitted':
-        return Icons.send;
-      case 'draft':
-        return Icons.edit;
-      default:
-        return Icons.description;
-    }
-  }
-
-  Color _getValuationStatusColor(String status) {
-    switch (status) {
-      case 'draft':
-        return Colors.grey[600]!;
-      case 'submitted':
-        return Colors.blue[600]!;
-      case 'reviewed':
-        return Colors.purple[600]!;
-      case 'approved':
-        return Colors.green[600]!;
-      case 'rejected':
-        return Colors.red[600]!;
-      default:
-        return Colors.grey[400]!;
-    }
-  }
-
-  Future<void> _viewValuationPDF(Valuation valuation, Project project) async {
-    try {
-      final pdfFile = await PdfService.generateValuationReport(
-        valuation: valuation,
-        project: project,
-      );
-      await PdfService.saveAndOpenPdf(pdfFile);
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error viewing PDF: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
-  }
-
-  Color _getShadeColor(Color color, int shade) {
-    if (color == Colors.green) return Colors.green[shade]!;
-    if (color == Colors.blue) return Colors.blue[shade]!;
-    if (color == Colors.red) return Colors.red[shade]!;
-    if (color == Colors.orange) return Colors.orange[shade]!;
-    if (color == Colors.grey) return Colors.grey[shade]!;
-    return color;
-  }
 }
 
 // Animated Widgets
@@ -4466,5 +4716,4 @@ class _RotatingIconState extends State<_RotatingIcon>
     );
   }
 }
-
 

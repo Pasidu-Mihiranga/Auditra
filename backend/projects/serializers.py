@@ -1,8 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
-from django.db import transaction
 from .models import Project, ProjectDocument
-from .utils import check_user_by_email
 
 
 class ProjectDocumentSerializer(serializers.ModelSerializer):
@@ -105,7 +103,6 @@ class ProjectSerializer(serializers.ModelSerializer):
         allow_null=True
     )
     status_display = serializers.CharField(source='get_status_display', read_only=True)
-    md_gm_approval_status_display = serializers.SerializerMethodField()
     documents = ProjectDocumentSerializer(many=True, read_only=True)
     documents_count = serializers.IntegerField(source='documents.count', read_only=True)
     valuations = serializers.SerializerMethodField()
@@ -123,10 +120,9 @@ class ProjectSerializer(serializers.ModelSerializer):
             'assigned_accessor_username', 'assigned_accessor_name', 'assigned_accessor_email',
             'assigned_senior_valuer', 'assigned_senior_valuer_username', 'assigned_senior_valuer_name',
             'assigned_senior_valuer_email', 'has_agent', 'client_info', 'agent_info',
-            'status', 'status_display', 'workflow_stage', 'priority', 'start_date', 'end_date',
-            'md_gm_approval_status', 'md_gm_approval_status_display', 'md_gm_rejection_reason',
-            'md_gm_approved_at', 'md_gm_rejected_at',
-            'documents', 'documents_count', 'valuations', 'valuations_count', 'created_at', 'updated_at'
+            'status', 'status_display', 'priority', 'start_date', 'end_date',
+            'documents', 'documents_count', 'valuations', 'valuations_count',
+            'created_at', 'updated_at'
         )
         read_only_fields = ('coordinator', 'created_at', 'updated_at')
     
@@ -141,7 +137,7 @@ class ProjectSerializer(serializers.ModelSerializer):
                 return f"{obj.assigned_field_officer.first_name} {obj.assigned_field_officer.last_name}".strip()
             return obj.assigned_field_officer.username
         return None
-    
+
     def get_assigned_client_name(self, obj):
         if obj.assigned_client:
             # Format as "Client + first_name" if first_name exists, otherwise just "Client"
@@ -171,42 +167,15 @@ class ProjectSerializer(serializers.ModelSerializer):
             return obj.assigned_senior_valuer.username
         return None
     
-    def get_md_gm_approval_status_display(self, obj):
-        status_map = {
-            'pending': 'Pending',
-            'approved': 'Approved',
-            'rejected': 'Rejected',
-        }
-        return status_map.get(obj.md_gm_approval_status, 'Pending')
-    
     def get_valuations(self, obj):
         """Get valuations for this project"""
         # Import here to avoid circular import
         from valuations.serializers import ValuationSerializer
-        request = self.context.get('request')
-        
-        # Filter valuations based on user role
         valuations = obj.valuations.all().select_related('field_officer').prefetch_related('photos')
-        
-        # Senior valuer should only see reviewed valuations (sent by assessor)
-        if request and hasattr(request.user, 'role') and request.user.role.role == 'senior_valuer':
-            valuations = valuations.filter(status='reviewed')
-        
-        # MD/GM should see all valuations for projects they receive
-        # (Projects are already filtered to only show those with all approved valuations)
-        # No need to filter valuations here - show all reports
-        
         return ValuationSerializer(valuations, many=True, context=self.context).data
     
     def get_valuations_count(self, obj):
         """Get count of valuations for this project"""
-        request = self.context.get('request')
-        
-        # Senior valuer should only count reviewed valuations
-        if request and hasattr(request.user, 'role') and request.user.role.role == 'senior_valuer':
-            return obj.valuations.filter(status='reviewed').count()
-        
-        # MD/GM should see all valuations count for projects they receive
         return obj.valuations.count()
 
 
@@ -240,62 +209,8 @@ class ProjectCreateSerializer(serializers.ModelSerializer):
         return super().to_internal_value(data)
     
     def create(self, validated_data):
-        # Extract client_info and agent_info before creating project
-        client_info = validated_data.pop('client_info', None)
-        agent_info = validated_data.pop('agent_info', None)
-        
-        # Set coordinator
         validated_data['coordinator'] = self.context['request'].user
-        
-        # Create project within a transaction
-        with transaction.atomic():
-            project = super().create(validated_data)
-            
-            # Process client information - only assign existing users
-            if client_info and client_info.get('email'):
-                email = client_info.get('email')
-                if email:
-                    email = email.strip().lower()
-                    existing_user = check_user_by_email(email)
-                    
-                    if existing_user:
-                        # Check if user has client role
-                        if hasattr(existing_user, 'role') and existing_user.role.role == 'client':
-                            project.assigned_client = existing_user
-                            project.save()
-                        else:
-                            raise serializers.ValidationError({
-                                'client_info': f'User with email {email} exists but is not a client'
-                            })
-                    else:
-                        raise serializers.ValidationError({
-                            'client_info': f'Client with email {email} does not exist. Please create the client account first.'
-                        })
-            
-            # Process agent information - only assign existing users
-            # Check has_agent from validated_data before it was modified
-            has_agent = validated_data.get('has_agent', False) or (agent_info is not None and agent_info.get('email'))
-            if agent_info and agent_info.get('email') and has_agent:
-                email = agent_info.get('email')
-                if email:
-                    email = email.strip().lower()
-                    existing_user = check_user_by_email(email)
-                
-                if existing_user:
-                    # Check if user has agent role
-                    if hasattr(existing_user, 'role') and existing_user.role.role == 'agent':
-                        project.assigned_agent = existing_user
-                        project.save()
-                    else:
-                        raise serializers.ValidationError({
-                            'agent_info': f'User with email {email} exists but is not an agent'
-                        })
-                else:
-                    raise serializers.ValidationError({
-                        'agent_info': f'Agent with email {email} does not exist. Please create the agent account first.'
-                    })
-            
-            return project
+        return super().create(validated_data)
 
 
 class AssignFieldOfficerSerializer(serializers.Serializer):

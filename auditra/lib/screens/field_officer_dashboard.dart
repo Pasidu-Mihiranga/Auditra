@@ -1,37 +1,14 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:fl_chart/fl_chart.dart';
-import 'package:open_file/open_file.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
-import 'dart:io';
 import 'dart:math' as math;
-import 'dart:async';
 import '../services/api_service.dart';
-import '../services/pdf_service.dart';
-import '../services/offline_db_service.dart';
-import '../services/sync_engine.dart';
-import '../services/network_service.dart';
 import '../models/attendance_model.dart';
 import '../models/project_model.dart';
-import '../models/valuation_model.dart';
-import '../widgets/sync_status_indicator.dart';
-import '../widgets/shared_dashboard_widgets.dart';
-import '../services/offline_storage_service.dart';
-import 'field_officer/components/offline_queue_section.dart';
-import 'field_officer/components/field_officer_project_card.dart';
 import 'login_screen.dart';
 import 'generic_dashboard.dart';
 import 'valuation_form_screen.dart';
-import 'field_officer/styles/field_officer_styles.dart';
-import 'field_officer/components/field_officer_header.dart';
-import 'field_officer/tabs/field_officer_projects_tab.dart';
-import 'field_officer/utils/field_officer_document_manager.dart';
-import 'field_officer/dialogs/project_details_modal.dart';
-import 'field_officer/utils/field_officer_ui_helpers.dart';
-import 'field_officer/dialogs/project_details_modal.dart';
-import 'field_officer/dialogs/valuation_reports_modal.dart';
+import 'payment_slips_screen.dart';
 
 class FieldOfficerDashboard extends StatefulWidget {
   const FieldOfficerDashboard({super.key});
@@ -60,114 +37,25 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
   DateTime? _countdownEnd;
   Duration _remainingTime = Duration.zero;
   
-  // Network monitoring for auto-refresh
-  StreamSubscription<bool>? _networkSubscription;
-  
-  // Sync event listener for refreshing offline queue
-  Function(Map<String, dynamic>)? _syncListener;
-  
+  // Leave statistics state
+  Map<String, dynamic>? _leaveStatistics;
+  bool _isLoadingLeaveStats = false;
 
-  
-  // Document Manager
-  late FieldOfficerDocumentManager _documentManager;
-  
   @override
   void initState() {
     super.initState();
-    _documentManager = FieldOfficerDocumentManager(
-      context: context,
-      setState: setState,
-    );
     _tabController = TabController(length: 2, vsync: this);
     _tabController.addListener(() {
       if (!_tabController.indexIsChanging) {
         setState(() {});
       }
     });
-    _initOfflineMode();
     _loadUserInfo();
     _loadProjects();
-    
-    // Initialize network monitoring for auto-refresh
-    _initNetworkMonitoring();
-    
-    // Initialize sync event listener
-    _initSyncListener();
-    
-  }
-
-  String _formatPriorityLabel(String priority) {
-    if (priority.isEmpty) return 'Medium';
-    final lower = priority.toLowerCase();
-    if (lower == 'high') return 'High';
-    if (lower == 'low') return 'Low';
-    return 'Medium';
-  }
-
-  Future<void> _initOfflineMode() async {
-    try {
-      // Initialize offline mode for field officers
-      await OfflineDBService.initOfflineDB();
-      await NetworkService.init();
-      await SyncEngine.init();
-      
-      // Clean up old synced valuations on startup
-      final cleanedCount = await OfflineStorageService.cleanupSyncedValuations();
-      if (cleanedCount > 0) {
-        print('ðŸ§¹ Cleaned up $cleanedCount old synced valuations on startup');
-      }
-      
-      // Delete all unsynced valuations that are failing (they have invalid data and can't sync)
-      // This removes valuations that fail validation (like estimated_value > 15 digits)
-      final deletedCount = await OfflineStorageService.deleteAllUnsyncedValuations();
-      if (deletedCount > 0) {
-        print('ðŸ—‘ï¸ Deleted $deletedCount unsynced valuations with invalid data on startup');
-        // Refresh the UI after cleanup
-        if (mounted) {
-          setState(() {});
-        }
-      }
-      
-      print('âœ… Offline mode initialized for field officer');
-    } catch (e) {
-      print('Warning: Failed to initialize offline mode: $e');
-    }
-  }
-  
-  void _initNetworkMonitoring() {
-    // NetworkService is already initialized in _initOfflineMode()
-    _networkSubscription = NetworkService.networkStatusStream.listen((isOnline) {
-      if (mounted) {
-        print('ðŸ“¶ Field Officer Dashboard: Network status changed to ${isOnline ? "Online" : "Offline"}');
-        // Refresh projects when network status changes
-        _loadProjects();
-      }
-    });
-  }
-  
-  void _initSyncListener() {
-    // Listen to sync events to refresh offline queue when valuations are synced
-    _syncListener = (event) {
-      if (mounted) {
-        final eventType = event['event'] as String?;
-        if (eventType == 'syncComplete' || eventType == 'valuationSynced' || eventType == 'syncSuccess') {
-          print('ðŸ”„ Sync event received: $eventType - Refreshing offline queue and projects');
-          // Trigger rebuild to refresh offline queue (reads from local storage)
-          // Also reload projects to get updated valuations from server
-          setState(() {});
-          _loadProjects();
-        }
-      }
-    };
-    SyncEngine.addListener(_syncListener!);
   }
 
   @override
   void dispose() {
-    _networkSubscription?.cancel();
-    if (_syncListener != null) {
-      SyncEngine.removeListener(_syncListener!);
-    }
     _tabController.dispose();
     super.dispose();
   }
@@ -256,16 +144,10 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
   }
 
   Future<void> _loadProjects() async {
-    // Only show loading indicator if we don't have projects yet (initial load)
-    final isInitialLoad = _projects.isEmpty;
-    
-    if (isInitialLoad) {
-      setState(() {
-        _isLoading = true;
-        _isLoadingProjects = true;
-      });
-    }
-    
+    setState(() {
+      _isLoading = true;
+      _isLoadingProjects = true;
+    });
     final result = await ApiService.getProjects();
     
     if (mounted) {
@@ -328,7 +210,7 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
                   Expanded(child: Text('Attendance marked successfully!')),
                 ],
               ),
-              backgroundColor: const Color(0xFF84BCDA),
+              backgroundColor: Colors.green,
               behavior: SnackBarBehavior.floating,
               duration: const Duration(seconds: 2),
             ),
@@ -491,7 +373,11 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
               Container(
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
-                  color: Colors.orange[500]!,
+                  gradient: LinearGradient(
+                    colors: [Colors.orange[600]!, Colors.orange[400]!],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
                   borderRadius: const BorderRadius.only(
                     topLeft: Radius.circular(20),
                     topRight: Radius.circular(20),
@@ -502,7 +388,7 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: Colors.orange[400]!,
+                        color: Colors.white.withOpacity(0.2),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: const Icon(Icons.logout, color: Colors.white, size: 24),
@@ -566,7 +452,7 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
                   children: [
                     Expanded(
                       child: OutlinedButton(
-            onPressed: () => Navigator.of(context).pop(false),
+                        onPressed: () => Navigator.of(context).pop(false),
                         style: OutlinedButton.styleFrom(
                           padding: const EdgeInsets.symmetric(vertical: 16),
                           shape: RoundedRectangleBorder(
@@ -579,7 +465,7 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
                     const SizedBox(width: 12),
                     Expanded(
                       child: ElevatedButton(
-            onPressed: () => Navigator.of(context).pop(true),
+                        onPressed: () => Navigator.of(context).pop(true),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.orange[600],
                           foregroundColor: Colors.white,
@@ -625,68 +511,65 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
     return '$hours:$minutes:$seconds';
   }
 
-
-
-
-
-
-
-
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: _username != null || _roleDisplay != null
-            ? Row(
-                mainAxisSize: MainAxisSize.min,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  if (_username != null)
-                    Flexible(
-                      child: Row(
+        title: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'Field Officer Dashboard',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                letterSpacing: 0.5,
+              ),
+            ),
+            if (_username != null || _roleDisplay != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 4.0),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (_username != null)
+                      Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Icon(
                             Icons.person_outline,
-                            size: 16,
+                            size: 14,
                             color: Theme.of(context).brightness == Brightness.dark
                                 ? Colors.white.withOpacity(0.9)
                                 : Colors.black87.withOpacity(0.8),
                           ),
-                          const SizedBox(width: 6),
-                          Flexible(
-                            child: Text(
-                              _username!,
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                                color: Theme.of(context).brightness == Brightness.dark
-                                    ? Colors.white.withOpacity(0.95)
-                                    : Colors.black87,
-                                letterSpacing: 0.3,
-                              ),
-                              overflow: TextOverflow.ellipsis,
+                          const SizedBox(width: 4),
+                          Text(
+                            _username!,
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: Theme.of(context).brightness == Brightness.dark
+                                  ? Colors.white.withOpacity(0.95)
+                                  : Colors.black87,
+                              letterSpacing: 0.3,
                             ),
                           ),
                         ],
                       ),
-                    ),
-                  if (_username != null && _roleDisplay != null)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 10.0),
-                      child: Container(
-                        width: 1,
-                        height: 18,
-                        color: Theme.of(context).brightness == Brightness.dark
-                            ? Colors.white.withOpacity(0.3)
-                            : Colors.black26,
+                    if (_username != null && _roleDisplay != null)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                        child: Container(
+                          width: 1,
+                          height: 14,
+                          color: Theme.of(context).brightness == Brightness.dark
+                              ? Colors.white.withOpacity(0.3)
+                              : Colors.black26,
+                        ),
                       ),
-                    ),
-                  if (_roleDisplay != null)
-                    Flexible(
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    if (_roleDisplay != null)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                         decoration: BoxDecoration(
                           gradient: LinearGradient(
                             colors: Theme.of(context).brightness == Brightness.dark
@@ -719,37 +602,33 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
                           children: [
                             Icon(
                               Icons.badge_outlined,
-                              size: 14,
+                              size: 12,
                               color: Theme.of(context).brightness == Brightness.dark
                                   ? Colors.white.withOpacity(0.9)
                                   : Colors.blue[700],
                             ),
-                            const SizedBox(width: 6),
-                            Flexible(
-                              child: Text(
-                                _roleDisplay!,
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w600,
-                                  letterSpacing: 0.5,
-                                  color: Theme.of(context).brightness == Brightness.dark
-                                      ? Colors.white
-                                      : Colors.blue[900],
-                                ),
-                                overflow: TextOverflow.ellipsis,
+                            const SizedBox(width: 4),
+                            Text(
+                              _roleDisplay!,
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                letterSpacing: 0.5,
+                                color: Theme.of(context).brightness == Brightness.dark
+                                    ? Colors.white
+                                    : Colors.blue[900],
                               ),
                             ),
                           ],
                         ),
                       ),
-                    ),
-                ],
-              )
-            : null,
+                  ],
+                ),
+              ),
+          ],
+        ),
         centerTitle: true,
         actions: [
-          const SyncStatusIndicator(),
-          const SizedBox(width: 8),
           IconButton(
             icon: const Icon(Icons.logout),
             onPressed: _logout,
@@ -759,7 +638,7 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
         bottom: TabBar(
           controller: _tabController,
           tabs: const [
-            Tab(icon: Icon(Icons.access_time), text: 'Attendance'),
+            Tab(icon: Icon(Icons.person), text: 'Profile'),
             Tab(icon: Icon(Icons.folder), text: 'Projects'),
           ],
         ),
@@ -780,52 +659,10 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
     );
   }
 
-  List<Project> _filterAndSortProjects(List<Project> projects) {
-    // Get search query
-    final searchQuery = _searchController.text.toLowerCase().trim();
-    
-    // Filter by search query
-    var filtered = projects.where((p) {
-      if (searchQuery.isEmpty) return true;
-      return p.title.toLowerCase().contains(searchQuery) ||
-          (p.description?.toLowerCase().contains(searchQuery) ?? false);
-    }).toList();
-    
-    // Sort projects
-    switch (_sortOption) {
-      case 'date_desc':
-        filtered.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-        break;
-      case 'title_asc':
-        filtered.sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
-        break;
-      case 'title_desc':
-        filtered.sort((a, b) => b.title.toLowerCase().compareTo(a.title.toLowerCase()));
-        break;
-      case 'priority':
-        final priorityOrder = {'high': 3, 'medium': 2, 'low': 1};
-        filtered.sort((a, b) {
-          final aPriority = priorityOrder[a.priority?.toLowerCase() ?? 'medium'] ?? 2;
-          final bPriority = priorityOrder[b.priority?.toLowerCase() ?? 'medium'] ?? 2;
-          if (aPriority != bPriority) return bPriority.compareTo(aPriority);
-          return a.createdAt.compareTo(b.createdAt);
-        });
-        break;
-      case 'date_asc':
-      default:
-        filtered.sort((a, b) => a.createdAt.compareTo(b.createdAt));
-        break;
-    }
-    
-    return filtered;
-  }
-
   Widget _buildProjectsTab() {
-    final filteredProjects = _filterAndSortProjects(_projects);
-    
     return RefreshIndicator(
       onRefresh: _loadProjects,
-      child: _isLoadingProjects && _projects.isEmpty
+      child: _isLoadingProjects
           ? const Center(child: CircularProgressIndicator())
           : _projects.isEmpty
               ? Center(
@@ -846,225 +683,13 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
                     ],
                   ),
                 )
-              : Column(
-                  children: [
-                    _buildOfflineQueueSection(),
-                    // Search and Sort Bar
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                      color: Colors.white,
-                      child: Row(
-                        children: [
-                          // Search field
-                          Expanded(
-                            child: TextField(
-                              controller: _searchController,
-                              decoration: InputDecoration(
-                                hintText: 'Search projects...',
-                                prefixIcon: const Icon(Icons.search, size: 20),
-                                suffixIcon: _searchController.text.isNotEmpty
-                                    ? IconButton(
-                                        icon: const Icon(Icons.clear, size: 18),
-                                        onPressed: () {
-                                          _searchController.clear();
-                                        },
-                                      )
-                                    : null,
-                                filled: true,
-                                fillColor: Colors.grey[100],
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                  borderSide: BorderSide.none,
-                                ),
-                                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                                isDense: true,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          // Sort dropdown
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: Colors.blue[50],
-                              borderRadius: BorderRadius.circular(10),
-                              border: Border.all(color: Colors.blue[200]!, width: 1.5),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.grey[200]!,
-                                  blurRadius: 4,
-                                  offset: const Offset(0, 2),
-                                ),
-                              ],
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(Icons.sort, size: 20, color: Colors.blue[700]),
-                                const SizedBox(width: 6),
-                                DropdownButton<String>(
-                                  value: _sortOption,
-                                  underline: const SizedBox(),
-                                  icon: Icon(Icons.arrow_drop_down, size: 22, color: Colors.blue[700]),
-                                  isDense: false,
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w600,
-                                    color: Colors.blue[900],
-                                  ),
-                                  items: const [
-                                    DropdownMenuItem(
-                                      value: 'date_asc',
-                                      child: Text('Date ↑', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
-                                    ),
-                                    DropdownMenuItem(
-                                      value: 'date_desc',
-                                      child: Text('Date ↓', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
-                                    ),
-                                    DropdownMenuItem(
-                                      value: 'title_asc',
-                                      child: Text('Title A-Z', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
-                                    ),
-                                    DropdownMenuItem(
-                                      value: 'title_desc',
-                                      child: Text('Title Z-A', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
-                                    ),
-                                    DropdownMenuItem(
-                                      value: 'priority',
-                                      child: Text('Priority', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
-                                    ),
-                                  ],
-                                  onChanged: (value) {
-                                    setState(() {
-                                      _sortOption = value!;
-                                    });
-                                  },
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Expanded(
-                      child: filteredProjects.isEmpty
-                          ? Center(
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(Icons.search_off, size: 64, color: Colors.grey[400]),
-                                  const SizedBox(height: 16),
-                                  Text(
-                                    'No projects found',
-                                    style: TextStyle(fontSize: 18, color: Colors.grey[600]),
-                                  ),
-                                  const SizedBox(height: 8),
-                                  Text(
-                                    'Try adjusting your search criteria',
-                                    style: TextStyle(color: Colors.grey[500]),
-                                  ),
-                                ],
-                              ),
-                            )
-                          : ListView.builder(
-                              padding: const EdgeInsets.all(16),
-                              itemCount: filteredProjects.length,
-                              itemBuilder: (context, index) {
-                                final project = filteredProjects[index];
-                                return _buildProjectCard(project);
-                              },
-                            ),
-                    ),
-                  ],
-                ),
-    );
-  }
-
-  Widget _buildOfflineQueueSection() {
-    final unsyncedValuations = OfflineStorageService.getUnsyncedValuations();
-    final isOnline = NetworkService.isOnline;
-    
-    // Don't show queue if there are no unsynced items
-    if (unsyncedValuations.isEmpty) {
-      return const SizedBox.shrink();
-    }
-    
-    return Container(
-      margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.orange[50],
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.orange[300]!),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.cloud_upload, color: Colors.orange[700], size: 24),
-              const SizedBox(width: 8),
-              Text(
-                'Offline Queue',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.orange[900],
-                ),
-              ),
-              const Spacer(),
-              Chip(
-                label: Text(
-                  '${unsyncedValuations.length}',
-                  style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
-                ),
-                backgroundColor: Colors.orange[700],
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Text(
-            isOnline 
-              ? 'Syncing reports... They will be submitted automatically.'
-              : 'Reports saved offline. They will be submitted when internet connects.',
-            style: TextStyle(
-              fontSize: 14,
-              color: Colors.orange[800],
-            ),
-          ),
-          const SizedBox(height: 12),
-          ...unsyncedValuations.take(3).map((valuation) => Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: Row(
-              children: [
-                Icon(Icons.description, size: 16, color: Colors.orange[700]),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    '${valuation['category'] ?? 'Valuation'} - ${valuation['description'] ?? 'No description'}',
-                    style: TextStyle(fontSize: 13, color: Colors.orange[900]),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                if (!isOnline)
-                  Icon(Icons.cloud_off, size: 16, color: Colors.orange[700]),
-              ],
-            ),
-          )),
-          if (unsyncedValuations.length > 3)
-            Padding(
-              padding: const EdgeInsets.only(top: 4),
-              child: Text(
-                'And ${unsyncedValuations.length - 3} more...',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontStyle: FontStyle.italic,
-                  color: Colors.orange[700],
-                ),
-              ),
-            ),
-        ],
+              : ListView.builder(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: _projects.length,
+                  itemBuilder: (context, index) {
+                    final project = _projects[index];
+                    return _buildProjectCard(project);
+                  },
                 ),
     );
   }
@@ -1078,81 +703,15 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
           elevation: 2,
           margin: const EdgeInsets.only(bottom: 12),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          child: InkWell(
+            onTap: () => _viewProjectDetails(project),
+            borderRadius: BorderRadius.circular(12),
             child: Padding(
               padding: const EdgeInsets.all(16.0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const SizedBox(height: 20), // Space for priority label
-                  // Show MD/GM approval/rejection status
-                  if (project.mdGmApprovalStatus == 'approved') ...[
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      margin: const EdgeInsets.only(bottom: 12),
-                      decoration: BoxDecoration(
-                        color: Colors.green[50],
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.green[200]!),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(Icons.check_circle, color: Colors.green[700], size: 20),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              'Project Approved by MD/GM',
-                              style: TextStyle(
-                                color: Colors.green[900],
-                                fontSize: 14,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ] else if (project.mdGmApprovalStatus == 'rejected') ...[
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      margin: const EdgeInsets.only(bottom: 12),
-                      decoration: BoxDecoration(
-                        color: Colors.red[50],
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.red[200]!),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Icon(Icons.cancel, color: Colors.red[700], size: 20),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  'Project Rejected by MD/GM',
-                                  style: TextStyle(
-                                    color: Colors.red[900],
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                          if (project.mdGmRejectionReason != null && project.mdGmRejectionReason!.isNotEmpty) ...[
-                            const SizedBox(height: 8),
-                            Text(
-                              'Reason: ${project.mdGmRejectionReason}',
-                              style: TextStyle(
-                                color: Colors.red[800],
-                                fontSize: 12,
-                              ),
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                  ],
                   Row(
                     children: [
                       Expanded(
@@ -1179,1063 +738,367 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
                   style: TextStyle(color: Colors.grey[600]),
                 ),
               ],
-            ),
-    );
-  }
-
-
-
-
-
-
-
-  Future<void> _viewProjectDetails(Project project) async {
-    // Fetch fresh project data to ensure valuations are loaded
-    final projectResult = await ApiService.getProject(project.id);
-    Project? updatedProject = project;
-    
-    if (projectResult['success'] && projectResult['data'] != null) {
-      try {
-        updatedProject = Project.fromJson(projectResult['data']);
-        print('Loaded project with ${updatedProject.valuations.length} valuations');
-        print('Valuations count: ${updatedProject.valuationsCount}');
-      } catch (e) {
-        print('Error parsing updated project: $e');
-        print('Error details: ${e.toString()}');
-        // Fall back to original project if parsing fails
-      }
-    } else {
-      print('Failed to fetch project data: ${projectResult['message']}');
-    }
-    
-    // Ensure updatedProject is never null
-    final finalProject = updatedProject ?? project;
-    
-    final screenWidth = MediaQuery.of(context).size.width;
-    final screenHeight = MediaQuery.of(context).size.height;
-    final isSmallScreen = screenWidth < 360;
-    
-    if (!mounted) return;
-
-    await showDialog(
-      context: context,
-      builder: (context) => ProjectDetailsModal(project: finalProject),
-    );
-  }
-
-  Future<void> _viewValuationReports(Project project) async {
-    // Fetch fresh project data to ensure valuations are loaded
-    final projectResult = await ApiService.getProject(project.id);
-    Project? updatedProject = project;
-    
-    if (projectResult['success'] && projectResult['data'] != null) {
-      try {
-        updatedProject = Project.fromJson(projectResult['data']);
-      } catch (e) {
-        print('Error parsing updated project: $e');
-      }
-    }
-    
-    final finalProject = updatedProject ?? project;
-    final screenWidth = MediaQuery.of(context).size.width;
-    final screenHeight = MediaQuery.of(context).size.height;
-    final isSmallScreen = screenWidth < 360;
-    
-    await showDialog(
-      context: context,
-      builder: (context) => Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(isSmallScreen ? 16 : 20)),
-        child: Container(
-          width: screenWidth * (isSmallScreen ? 0.95 : 0.9),
-          constraints: BoxConstraints(
-            maxHeight: screenHeight * (isSmallScreen ? 0.9 : 0.85),
-          ),
-          child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-              // Header with gradient
-              Container(
-                padding: EdgeInsets.all(isSmallScreen ? 16 : 20),
-                decoration: BoxDecoration(
-                  color: Colors.blue[500]!,
-                  borderRadius: const BorderRadius.only(
-                    topLeft: Radius.circular(20),
-                    topRight: Radius.circular(20),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Icon(Icons.person, size: 16, color: Colors.grey[600]),
+                  const SizedBox(width: 4),
+                  Text(
+                    'Coordinator: ${project.coordinatorName ?? project.coordinatorUsername}',
+                    style: TextStyle(color: Colors.grey[700]),
                   ),
-                ),
-                child: Row(
+                  const Spacer(),
+                  Icon(Icons.attach_file, size: 16, color: Colors.grey[600]),
+                  const SizedBox(width: 4),
+                  Text(
+                    '${project.documentsCount} docs',
+                    style: TextStyle(color: Colors.grey[600]),
+                  ),
+                ],
+              ),
+              if (project.startDate != null || project.endDate != null) ...[
+                const SizedBox(height: 8),
+                Row(
                   children: [
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.blue[400]!,
-                        borderRadius: BorderRadius.circular(12),
+                    if (project.startDate != null) ...[
+                      Icon(Icons.calendar_today, size: 14, color: Colors.grey[600]),
+                      const SizedBox(width: 4),
+                      Text(
+                        DateFormat('MMM dd, yyyy').format(project.startDate!),
+                        style: TextStyle(fontSize: 12, color: Colors.grey[600]),
                       ),
-                      child: const Icon(Icons.assessment, color: Colors.white, size: 24),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                    ],
+                    if (project.endDate != null) ...[
+                      const SizedBox(width: 16),
+                      Icon(Icons.event, size: 14, color: Colors.grey[600]),
+                      const SizedBox(width: 4),
+                      Text(
+                        DateFormat('MMM dd, yyyy').format(project.endDate!),
+                        style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                      ),
+                    ],
+                  ],
+                ),
+              ],
+              if (project.valuationsCount > 0) ...[
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.blue[50],
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.blue[200]!),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
                         children: [
+                          Icon(Icons.assessment, size: 16, color: Colors.blue[700]),
+                          const SizedBox(width: 6),
                           Text(
-                            'Valuation Reports',
+                            'Valuations (${project.valuationsCount})',
                             style: TextStyle(
-                              color: Colors.white,
-                              fontSize: isSmallScreen ? 18 : 20,
+                              fontSize: 14,
                               fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            finalProject.title,
-                            style: TextStyle(
-                              color: Colors.white.withOpacity(0.9),
-                              fontSize: isSmallScreen ? 12 : 14,
+                              color: Colors.blue[900],
                             ),
                           ),
                         ],
                       ),
-                    ),
-                            IconButton(
-                      icon: const Icon(Icons.close, color: Colors.white),
-                      onPressed: () => Navigator.of(context).pop(),
-                    ),
-                  ],
-                ),
-              ),
-              // Content
-              Expanded(
-                child: SingleChildScrollView(
-                  physics: const BouncingScrollPhysics(),
-                  padding: EdgeInsets.all(isSmallScreen ? 16 : 20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Generated Reports Section
-                      Card(
-                        elevation: 2,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                      const SizedBox(height: 8),
+                      ...project.valuations.take(3).map((valuation) => Padding(
+                        padding: const EdgeInsets.only(bottom: 6),
+                        child: Row(
                           children: [
                             Container(
-                              padding: EdgeInsets.all(isSmallScreen ? 12 : 16),
+                              width: 8,
+                              height: 8,
                               decoration: BoxDecoration(
-                                color: Colors.blue[50],
-                                borderRadius: const BorderRadius.only(
-                                  topLeft: Radius.circular(12),
-                                  topRight: Radius.circular(12),
-                                ),
-                              ),
-                              child: Row(
-                                children: [
-                                  Container(
-                                    padding: const EdgeInsets.all(8),
-                                    decoration: BoxDecoration(
-                                      color: Colors.blue[100],
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                    child: Icon(Icons.assessment, color: Colors.blue[700], size: 20),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  const Expanded(
-                                    child: Text(
-                                      'Generated Reports',
-                                      style: TextStyle(
-                                        fontSize: 18,
-                                        fontWeight: FontWeight.bold,
-                                        color: Colors.black87,
-                                      ),
-                                    ),
-                                  ),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                                    decoration: BoxDecoration(
-                                      color: Colors.blue[700],
-                                      borderRadius: BorderRadius.circular(16),
-                                    ),
-                                    child: Text(
-                                      '${finalProject.valuations.length}',
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 14,
-                                      ),
-                                    ),
-                                  ),
-                                ],
+                                color: _getValuationStatusColor(valuation.status),
+                                shape: BoxShape.circle,
                               ),
                             ),
-                            const Divider(height: 1),
-                            if (finalProject.valuations.isEmpty)
-                              Padding(
-                                padding: const EdgeInsets.all(24),
-                                child: Center(
-                                  child: Column(
-                                    children: [
-                                      Icon(Icons.description_outlined, size: 48, color: Colors.grey[400]),
-                                      const SizedBox(height: 12),
-                                      Text(
-                                        'No reports generated yet',
-                                        style: TextStyle(
-                                          fontSize: 16,
-                                          color: Colors.grey[600],
-                                          fontWeight: FontWeight.w500,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        'Create a valuation report to get started',
-                                        style: TextStyle(
-                                          fontSize: 14,
-                                          color: Colors.grey[500],
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              )
-                            else
-                              Padding(
-                                padding: EdgeInsets.all(isSmallScreen ? 12 : 16),
-                                child: Column(
-                                  children: finalProject.valuations.map((valuation) => Padding(
-                                    padding: const EdgeInsets.only(bottom: 12),
-                                    child: Card(
-                                      elevation: 2,
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(12),
-                                      ),
-                                      child: Padding(
-                                        padding: EdgeInsets.all(isSmallScreen ? 12 : 16),
-                                        child: Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
-                                          children: [
-                                            Row(
-                                              children: [
-                                                Container(
-                                                  width: 48,
-                                                  height: 48,
-                                                  decoration: BoxDecoration(
-                                                    color: _getValuationStatusColor(valuation.status).withOpacity(0.15),
-                                                    borderRadius: BorderRadius.circular(12),
-                                                  ),
-                                                  child: Center(
-                                                    child: Icon(
-                                                      Icons.description,
-                                                      color: _getValuationStatusColor(valuation.status),
-                                                      size: 24,
-                                                    ),
-                                                  ),
-                                                ),
-                                                const SizedBox(width: 12),
-                                                Expanded(
-                                                  child: Column(
-                                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                                    children: [
-                                                      Text(
-                                                        valuation.categoryDisplay,
-                                                        style: const TextStyle(
-                                                          fontWeight: FontWeight.w600,
-                                                          fontSize: 16,
-                                                        ),
-                                                      ),
-                                                      const SizedBox(height: 6),
-                                                      Container(
-                                                        padding: const EdgeInsets.symmetric(
-                                                          horizontal: 10,
-                                                          vertical: 4,
-                                                        ),
-                                                        decoration: BoxDecoration(
-                                                          color: _getValuationStatusColor(valuation.status).withOpacity(0.2),
-                                                          borderRadius: BorderRadius.circular(6),
-                                                        ),
-                                                        child: Text(
-                                                          valuation.status == 'draft' ? 'Saved' : valuation.statusDisplay,
-                                                          style: TextStyle(
-                                                            fontSize: 12,
-                                                            fontWeight: FontWeight.w500,
-                                                            color: _getValuationStatusColor(valuation.status),
-                                                          ),
-                                                        ),
-                                                      ),
-                                                    ],
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                            const SizedBox(height: 12),
-                                            Row(
-                                              children: [
-                                                Icon(Icons.calendar_today, size: 14, color: Colors.grey[600]),
-                                                const SizedBox(width: 6),
-                                                Text(
-                                                  'Created: ${DateFormat('MMM dd, yyyy').format(valuation.createdAt)}',
-                                                  style: TextStyle(
-                                                    fontSize: 12,
-                                                    color: Colors.grey[600],
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                            // Assessor and Senior Valuer Status
-                                            if (valuation.status != 'draft' && valuation.status != 'submitted') ...[
-                                              const SizedBox(height: 12),
-                                              const Divider(height: 1),
-                                              const SizedBox(height: 12),
-                                              _buildReviewerStatusSection(valuation),
-                                            ],
-                                            const SizedBox(height: 12),
-                                            // Action buttons row
-                                            Row(
-                                              mainAxisAlignment: MainAxisAlignment.end,
-                                              children: [
-                                                Container(
-                                                  decoration: BoxDecoration(
-                                                    color: Colors.orange[50],
-                                                    borderRadius: BorderRadius.circular(8),
-                                                  ),
-                                                  child: IconButton(
-                                                    icon: const Icon(Icons.article, size: 20),
-                                                    color: Colors.orange[700],
-                                                    tooltip: 'Generate PDF Report',
-                                                    padding: const EdgeInsets.all(8),
-                                                    constraints: const BoxConstraints(
-                                                      minWidth: 40,
-                                                      minHeight: 40,
-                                                    ),
-                                                    onPressed: () async {
-                                                      await _generatePdfReport(valuation, finalProject);
-                                                    },
-                                                  ),
-                                                ),
-                                                // Show edit button if valuation can be edited (within 2 days of creation) and not rejected
-                                                if (_canEditValuation(valuation) && valuation.status != 'rejected') ...[
-                                                  const SizedBox(width: 8),
-                                                  Container(
-                                                    decoration: BoxDecoration(
-                                                      color: Colors.blue[50],
-                                                      borderRadius: BorderRadius.circular(8),
-                                                    ),
-                                                    child: IconButton(
-                                                      icon: const Icon(Icons.edit_outlined, size: 20),
-                                                      color: Colors.blue[700],
-                                                      tooltip: 'Edit Report',
-                                                      padding: const EdgeInsets.all(8),
-                                                      constraints: const BoxConstraints(
-                                                        minWidth: 40,
-                                                        minHeight: 40,
-                                                      ),
-                                                      onPressed: () async {
-                                                        Navigator.of(context).pop();
-                                                        final result = await Navigator.of(context).push(
-                                                          MaterialPageRoute(
-                                                            builder: (_) => ValuationFormScreen(
-                                                              project: finalProject,
-                                                              existingValuation: valuation,
-                                                            ),
-                                                          ),
-                                                        );
-                                                        // Refresh projects when form returns (valuation saved/submitted)
-                                                        if (result == true) {
-                                                          _loadProjects();
-                                                        }
-                                                      },
-                                                    ),
-                                                  ),
-                                                ],
-                                                // Show delete button if valuation was created within 2 days
-                                                if (_canDeleteValuation(valuation)) ...[
-                                                  const SizedBox(width: 8),
-                                                  Container(
-                                                    decoration: BoxDecoration(
-                                                      color: Colors.red[50],
-                                                      borderRadius: BorderRadius.circular(8),
-                                                    ),
-                                                    child: IconButton(
-                                                      icon: const Icon(Icons.delete_outline, size: 20),
-                                                      color: Colors.red[700],
-                                                      tooltip: 'Delete Report',
-                                                      padding: const EdgeInsets.all(8),
-                                                      constraints: const BoxConstraints(
-                                                        minWidth: 40,
-                                                        minHeight: 40,
-                                                      ),
-                                                      onPressed: () async {
-                                                        await _deleteValuation(valuation, finalProject);
-                                                      },
-                                                    ),
-                                                  ),
-                                                ],
-                                              ],
-                                            ),
-                                            // Show "Update the report" button for rejected valuations (full-width button)
-                                            if (valuation.status == 'rejected') ...[
-                                              const SizedBox(height: 12),
-                                              SizedBox(
-                                                width: double.infinity,
-                                                child: ElevatedButton.icon(
-                                                  onPressed: () async {
-                                                    Navigator.of(context).pop();
-                                                    final result = await Navigator.of(context).push(
-                                                      MaterialPageRoute(
-                                                        builder: (_) => ValuationFormScreen(
-                                                          project: finalProject,
-                                                          existingValuation: valuation,
-                                                        ),
-                                                      ),
-                                                    );
-                                                    // Refresh projects when form returns (valuation saved/submitted)
-                                                    if (result == true) {
-                                                      _loadProjects();
-                                                    }
-                                                  },
-                                                  icon: const Icon(Icons.update, size: 20),
-                                                  label: const Text(
-                                                    'Update the report',
-                                                    style: TextStyle(
-                                                      fontSize: 14,
-                                                      fontWeight: FontWeight.w600,
-                                                    ),
-                                                  ),
-                                                  style: ElevatedButton.styleFrom(
-                                                    backgroundColor: Colors.green[700],
-                                                    foregroundColor: Colors.white,
-                                                    padding: const EdgeInsets.symmetric(vertical: 12),
-                                                    shape: RoundedRectangleBorder(
-                                                      borderRadius: BorderRadius.circular(8),
-                                                    ),
-                                                  ),
-                                                ),
-                                              ),
-                                            ],
-                                          ],
-                                        ),
-                                      ),
-                                    ),
-                                  )).toList(),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                '${valuation.categoryDisplay} - ${valuation.statusDisplay}',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey[800],
                                 ),
                               ),
-            ],
-          ),
-        ),
+                            ),
+                            if (valuation.canBeEdited && valuation.status == 'submitted')
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: Colors.orange[100],
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Text(
+                                  'Editable',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    color: Colors.orange[900],
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      )),
+                      if (project.valuationsCount > 3)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Text(
+                            '+ ${project.valuationsCount - 3} more',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.blue[700],
+                              fontStyle: FontStyle.italic,
+                            ),
+                          ),
+                        ),
                     ],
                   ),
                 ),
-              ),
-              // Footer Actions
-              Container(
-                padding: EdgeInsets.all(isSmallScreen ? 16 : 20),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: const BorderRadius.only(
-                    bottomLeft: Radius.circular(20),
-                    bottomRight: Radius.circular(20),
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.05),
-                      blurRadius: 10,
-                      offset: const Offset(0, -2),
-                    ),
-                  ],
-                ),
-                child: SizedBox(
-                  width: double.infinity,
-                  height: 60,
-                  child: ElevatedButton.icon(
-                    onPressed: () async {
-              Navigator.of(context).pop();
-                      final result = await Navigator.of(context).push(
-                MaterialPageRoute(
-                          builder: (_) => ValuationFormScreen(project: finalProject),
-                        ),
-                      );
-                      // Refresh projects when form returns (valuation saved/submitted)
-                      if (result == true) {
-                        _loadProjects();
-                      }
-                    },
-                    icon: Container(
-                      padding: const EdgeInsets.all(4),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.2),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: const Icon(Icons.add_rounded, size: 20),
-                    ),
-                    label: const Text(
-                      'Create New Report',
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                        letterSpacing: 0.3,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.blue[700],
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      elevation: 0,
-                      shadowColor: Colors.transparent,
-                    ),
-                  ),
-                ),
-              ),
+              ],
             ],
           ),
         ),
       ),
-    );
-  }
-
-  Widget _buildModernInfoCard({
-    required IconData icon,
-    required String label,
-    required String value,
-    required Color color,
-  }) {
-    return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(6),
-                  decoration: BoxDecoration(
-                    color: color.withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Icon(icon, color: color, size: 16),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    label,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.grey[600],
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text(
-              value,
-              style: const TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.bold,
-                color: Colors.black87,
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ],
-        ),
       ),
+      // Priority ribbon at top-left corner
+      Positioned(
+        top: 4,
+        left: 8,
+        child: _buildPriorityRibbon(priority),
+      ),
+    ],
     );
   }
-
-  Widget _buildInfoSection({required String title, required Widget child}) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          title,
-          style: const TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.bold,
-            color: Colors.black87,
-          ),
-        ),
-        const SizedBox(height: 8),
-        child,
-      ],
-    );
+  
+  Color _getPriorityColor(String priority) {
+    switch (priority.toLowerCase()) {
+      case 'high':
+        return Colors.red[600]!;
+      case 'low':
+        return Colors.green[600]!;
+      case 'medium':
+      default:
+        return Colors.orange[600]!;
+    }
   }
-
-  /// Build reviewer status section showing assessor and senior valuer status
-  Widget _buildReviewerStatusSection(Valuation valuation) {
-    // Determine assessor status
-    // Logic: If status is 'reviewed' or 'approved', assessor accepted
-    // If status is 'rejected' and has senior_valuer_comments, assessor accepted (it reached senior valuer)
-    // If status is 'rejected' and no senior_valuer_comments, assessor rejected
-    String assessorStatus;
-    Color assessorStatusColor;
-    IconData assessorStatusIcon;
-    String? assessorRejectionReason;
-    
-    final hasSeniorValuerComments = valuation.seniorValuerComments != null && 
-                                     valuation.seniorValuerComments!.isNotEmpty;
-    
-    if (valuation.status == 'reviewed' || valuation.status == 'approved') {
-      assessorStatus = 'Accepted';
-      assessorStatusColor = Colors.green;
-      assessorStatusIcon = Icons.check_circle;
-    } else if (valuation.status == 'rejected') {
-      if (hasSeniorValuerComments) {
-        // Reached senior valuer, so assessor accepted it first
-        assessorStatus = 'Accepted';
-        assessorStatusColor = Colors.green;
-        assessorStatusIcon = Icons.check_circle;
-      } else {
-        // Rejected by assessor (never reached senior valuer)
-        assessorStatus = 'Rejected';
-        assessorStatusColor = Colors.red;
-        assessorStatusIcon = Icons.cancel;
-        assessorRejectionReason = valuation.rejectionReason;
-      }
-    } else {
-      assessorStatus = 'Pending';
-      assessorStatusColor = Colors.orange;
-      assessorStatusIcon = Icons.pending;
-    }
-    
-    // Determine senior valuer status
-    // Logic: If status is 'approved', senior valuer accepted
-    // If status is 'reviewed', pending senior valuer review
-    // If status is 'rejected' and has senior_valuer_comments, senior valuer rejected
-    // Otherwise, not applicable (never reached senior valuer)
-    String seniorValuerStatus;
-    Color seniorValuerStatusColor;
-    IconData seniorValuerStatusIcon;
-    String? seniorValuerRejectionReason;
-    
-    if (valuation.status == 'approved') {
-      seniorValuerStatus = 'Accepted';
-      seniorValuerStatusColor = Colors.green;
-      seniorValuerStatusIcon = Icons.check_circle;
-    } else if (valuation.status == 'reviewed') {
-      seniorValuerStatus = 'Pending Review';
-      seniorValuerStatusColor = Colors.blue;
-      seniorValuerStatusIcon = Icons.pending;
-    } else if (valuation.status == 'rejected' && hasSeniorValuerComments) {
-      // Rejected by senior valuer (it was reviewed first, so assessor accepted)
-      seniorValuerStatus = 'Rejected';
-      seniorValuerStatusColor = Colors.red;
-      seniorValuerStatusIcon = Icons.cancel;
-      seniorValuerRejectionReason = valuation.rejectionReason;
-    } else {
-      seniorValuerStatus = 'Not Applicable';
-      seniorValuerStatusColor = Colors.grey;
-      seniorValuerStatusIcon = Icons.remove_circle_outline;
-    }
-    
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'Review Status:',
-          style: TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.bold,
-            color: Colors.black87,
-          ),
-        ),
-        const SizedBox(height: 8),
-        // Assessor Status
-        Container(
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            color: assessorStatusColor.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: assessorStatusColor.withOpacity(0.3)),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Icon(assessorStatusIcon, size: 16, color: assessorStatusColor),
-                  const SizedBox(width: 6),
-                  const Text(
-                    'Assessor:',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    assessorStatus,
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: assessorStatusColor,
-                    ),
-                  ),
-                ],
-              ),
-              if (assessorRejectionReason != null && assessorRejectionReason!.isNotEmpty) ...[
-                const SizedBox(height: 6),
-                Padding(
-                  padding: const EdgeInsets.only(left: 22),
-                  child: Text(
-                    'Reason: $assessorRejectionReason',
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: Colors.red[700],
-                      fontStyle: FontStyle.italic,
-                    ),
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ),
-        const SizedBox(height: 8),
-        // Senior Valuer Status
-        Container(
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            color: seniorValuerStatusColor.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: seniorValuerStatusColor.withOpacity(0.3)),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Icon(seniorValuerStatusIcon, size: 16, color: seniorValuerStatusColor),
-                  const SizedBox(width: 6),
-                  const Text(
-                    'Senior Valuer:',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    seniorValuerStatus,
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: seniorValuerStatusColor,
-                    ),
-                  ),
-                ],
-              ),
-              if (seniorValuerRejectionReason != null && seniorValuerRejectionReason!.isNotEmpty) ...[
-                const SizedBox(height: 6),
-                Padding(
-                  padding: const EdgeInsets.only(left: 22),
-                  child: Text(
-                    'Reason: $seniorValuerRejectionReason',
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: Colors.red[700],
-                      fontStyle: FontStyle.italic,
-                    ),
-                  ),
-                ),
-              ],
-              if (valuation.seniorValuerComments != null && 
-                  valuation.seniorValuerComments!.isNotEmpty && 
-                  valuation.status != 'rejected') ...[
-                const SizedBox(height: 6),
-                Padding(
-                  padding: const EdgeInsets.only(left: 22),
-                  child: Text(
-                    'Comments: ${valuation.seniorValuerComments}',
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: Colors.blue[700],
-                      fontStyle: FontStyle.italic,
-                    ),
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ),
-      ],
-    );
+  
+  String _formatPriorityLabel(String priority) {
+    if (priority.isEmpty) return 'Medium';
+    final lower = priority.toLowerCase();
+    if (lower == 'high') return 'High';
+    if (lower == 'low') return 'Low';
+    return 'Medium';
   }
-
-  /// Check if a valuation can be edited (created within 2 days)
-  bool _canEditValuation(Valuation valuation) {
-    final now = DateTime.now();
-    final createdAt = valuation.createdAt;
-    final difference = now.difference(createdAt);
+  
+  Widget _buildPriorityRibbon(String priority) {
+    final color = _getPriorityColor(priority);
+    final label = _formatPriorityLabel(priority);
     
-    // Allow editing if created within 2 days (48 hours)
-    return difference.inDays < 2;
-  }
-
-
-
-
-  Future<void> _submitReportsToAccessor(Project project) async {
-    // Check if accessor is assigned
-    if (project.assignedAccessorId == null) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('No accessor assigned to this project. Please contact the coordinator.'),
-            backgroundColor: Colors.orange,
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: color.withOpacity(0.3),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
           ),
-        );
-      }
-      return;
-    }
-
-    // Fetch fresh project data to ensure valuations are loaded
-    final projectResult = await ApiService.getProject(project.id);
-    Project? updatedProject = project;
-    
-    if (projectResult['success'] && projectResult['data'] != null) {
-      try {
-        updatedProject = Project.fromJson(projectResult['data']);
-      } catch (e) {
-        print('Error parsing updated project: $e');
-      }
-    }
-    
-    final finalProject = updatedProject ?? project;
-    
-    // Filter draft valuations
-    final draftValuations = finalProject.valuations.where((v) => v.status == 'draft').toList();
-    
-    if (draftValuations.isEmpty) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('No draft reports to submit. All reports are already submitted.'),
-            backgroundColor: Colors.orange,
+        ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            priority.toLowerCase() == 'high'
+                ? Icons.priority_high
+                : priority.toLowerCase() == 'low'
+                    ? Icons.arrow_downward
+                    : Icons.remove_circle_outline,
+            size: 14,
+            color: Colors.white,
           ),
-        );
-      }
-      return;
-    }
-
-    // Show confirmation dialog
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Submit Reports to Accessor'),
-        content: Text(
-          'Are you sure you want to submit ${draftValuations.length} report(s) to ${finalProject.assignedAccessorName ?? finalProject.assignedAccessorUsername ?? 'the accessor'} for review?\n\n'
-          'Once submitted, you will not be able to edit these reports.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.lightBlue,
-              foregroundColor: Colors.white,
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
             ),
-            child: const Text('Submit'),
           ),
         ],
       ),
     );
+  }
 
-    if (confirm != true) return;
-
-    // Show loading indicator
-    if (mounted) {
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => const Center(
-          child: Card(
-            child: Padding(
-              padding: EdgeInsets.all(20.0),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  CircularProgressIndicator(),
-                  SizedBox(height: 16),
-                  Text('Submitting reports...'),
-                ],
-              ),
-            ),
-          ),
-        ),
-      );
-    }
-
-    int successCount = 0;
-    int failCount = 0;
-    List<String> errors = [];
-
-    // Submit each draft valuation
-    for (var valuation in draftValuations) {
-      try {
-        final result = await ApiService.submitValuation(valuation.id);
-        if (result['success']) {
-          successCount++;
-        } else {
-          failCount++;
-          errors.add('${valuation.categoryDisplay}: ${result['message'] ?? 'Failed to submit'}');
-        }
-      } catch (e) {
-        failCount++;
-        errors.add('${valuation.categoryDisplay}: ${e.toString()}');
-      }
-    }
-
-    // Close loading dialog
-    if (mounted) {
-      Navigator.of(context).pop();
-    }
-
-    // Show results
-    if (mounted) {
-      if (failCount == 0) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Successfully submitted $successCount report(s) to the accessor!'),
-            backgroundColor: const Color(0xFF84BCDA),
-            duration: const Duration(seconds: 3),
-          ),
-        );
-      } else if (successCount > 0) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Submitted $successCount report(s), but $failCount failed. ${errors.join('; ')}'),
-            backgroundColor: Colors.orange,
-            duration: const Duration(seconds: 5),
-          ),
-        );
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to submit reports. ${errors.join('; ')}'),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 5),
-          ),
-        );
-      }
-      
-      // Refresh projects list
-      await _loadProjects();
+  Color _getProjectStatusColor(String status) {
+    switch (status) {
+      case 'pending':
+        return Colors.orange[100]!;
+      case 'in_progress':
+        return Colors.blue[100]!;
+      case 'completed':
+        return Colors.green[100]!;
+      case 'cancelled':
+        return Colors.red[100]!;
+      default:
+        return Colors.grey[200]!;
     }
   }
 
-  Future<void> _generatePdfReport(Valuation valuation, Project project) async {
-    // Show loading indicator
-    showDialog(
+  Color _getValuationStatusColor(String status) {
+    switch (status) {
+      case 'draft':
+        return Colors.grey[600]!;
+      case 'submitted':
+        return Colors.blue[600]!;
+      case 'reviewed':
+        return Colors.purple[600]!;
+      case 'approved':
+        return Colors.green[600]!;
+      case 'rejected':
+        return Colors.red[600]!;
+      default:
+        return Colors.grey[400]!;
+    }
+  }
+
+  Future<void> _viewProjectDetails(Project project) async {
+    await showDialog(
       context: context,
-      barrierDismissible: false,
-      builder: (context) => const Center(
-        child: Card(
-          child: Padding(
-            padding: EdgeInsets.all(20.0),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                CircularProgressIndicator(),
-                SizedBox(height: 16),
-                Text('Generating PDF report...'),
+      builder: (context) => AlertDialog(
+        title: Text(project.title),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (project.description != null) ...[
+                Text(
+                  'Description:',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 4),
+                Text(project.description!),
+                const SizedBox(height: 16),
               ],
-            ),
+              Text(
+                'Status: ${project.statusDisplay}',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Priority: ${_formatPriorityLabel(project.priority ?? 'medium')}',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Coordinator: ${project.coordinatorName ?? project.coordinatorUsername}',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 16),
+              if (project.documents.isNotEmpty) ...[
+                const Text(
+                  'Documents:',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                ...project.documents.map((doc) => ListTile(
+                      title: Text(doc.name),
+                      subtitle: Text(doc.fileSizeFormatted),
+                      trailing: doc.fileUrl != null
+                          ? IconButton(
+                              icon: const Icon(Icons.download),
+                              onPressed: () {
+                                // TODO: Implement file download
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text('Download: ${doc.fileUrl}')),
+                                );
+                              },
+                            )
+                          : null,
+                    )),
+                const SizedBox(height: 16),
+              ],
+              if (project.valuations.isNotEmpty) ...[
+                const Text(
+                  'Valuations:',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                ...project.valuations.map((valuation) => ListTile(
+                      leading: Container(
+                        width: 12,
+                        height: 12,
+                        decoration: BoxDecoration(
+                          color: _getValuationStatusColor(valuation.status),
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      title: Text('${valuation.categoryDisplay}'),
+                      subtitle: Text('Status: ${valuation.statusDisplay}'),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (valuation.canBeEdited || valuation.status == 'draft')
+                            IconButton(
+                              icon: const Icon(Icons.edit),
+                              onPressed: () {
+                                Navigator.of(context).pop();
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (_) => ValuationFormScreen(
+                                      project: project,
+                                      existingValuation: valuation,
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                          if (valuation.status == 'draft')
+                            IconButton(
+                              icon: const Icon(Icons.delete_outline),
+                              onPressed: () async {
+                                // TODO: Implement delete functionality
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('Delete functionality coming soon')),
+                                );
+                              },
+                            ),
+                        ],
+                      ),
+                    )),
+              ],
+            ],
           ),
         ),
-      ),
-    );
-
-    try {
-      // Generate PDF
-      print('Generating PDF for valuation ${valuation.id}, category: ${valuation.category}, statusDisplay: ${valuation.statusDisplay}');
-      final pdfFile = await PdfService.generateValuationReport(
-        valuation: valuation,
-        project: project,
-      );
-
-      // Close loading dialog
-      if (context.mounted) {
-        Navigator.of(context).pop();
-      }
-
-      // Share/Print the PDF
-      if (context.mounted) {
-        try {
-          await PdfService.sharePdf(
-            pdfFile,
-            subject: 'Valuation Report - ${valuation.categoryDisplay}',
-          );
-        } catch (shareError) {
-          print('Error sharing PDF: $shareError');
-          // Try alternative method
-          if (context.mounted) {
-            await PdfService.saveAndOpenPdf(pdfFile);
-          }
-        }
-      }
-
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('PDF report generated successfully!'),
-            backgroundColor: const Color(0xFF84BCDA),
+        actions: [
+          TextButton.icon(
+            onPressed: () {
+              Navigator.of(context).pop();
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => ValuationFormScreen(project: project),
+                ),
+              );
+            },
+            icon: const Icon(Icons.add),
+            label: const Text('Create Valuation'),
           ),
-        );
-      }
-    } catch (e) {
-      // Close loading dialog if still open
-      if (context.mounted) {
-        Navigator.of(context).pop();
-      }
-
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error generating PDF: ${e.toString()}'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-      print('Error generating PDF: $e');
-    }
-  }
-
-  Widget _buildInfoCard({required String label, required String value}) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.grey[50],
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.grey[200]!),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 12,
-              color: Colors.grey[600],
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            value,
-            style: const TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: Colors.black87,
-            ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Close'),
           ),
         ],
       ),
@@ -2536,7 +1399,7 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
                         child: _buildSummaryCard(
                           'Present',
                           _summary!.presentDays.toString(),
-                          const Color(0xFF84BCDA),
+                          Colors.green,
                         ),
                       ),
                       const SizedBox(width: 8),
@@ -2584,7 +1447,7 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
                         child: _buildSummaryCard(
                           'Overtime',
                           '${_summary!.totalOvertimeHours.toStringAsFixed(1)}h',
-                          const Color(0xFF0570B0),
+                          Colors.teal,
                         ),
                       ),
                     ],
@@ -2747,7 +1610,7 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
   Color _getStatusColor(String status) {
     switch (status) {
       case 'present':
-        return const Color(0xFF84BCDA);
+        return Colors.green;
       case 'half_day':
         return Colors.orange;
       case 'absent':
@@ -2863,8 +1726,8 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [
-            const Color(0xFF84BCDA)!,
-            const Color(0xFF0570B0)!,
+            Colors.green[400]!,
+            Colors.green[600]!,
           ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
@@ -2872,7 +1735,7 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF84BCDA).withOpacity(0.4),
+            color: Colors.green.withOpacity(0.4),
             blurRadius: 15,
             offset: const Offset(0, 8),
           ),
@@ -3118,494 +1981,6 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
         );
       },
     );
-  }
-
-  Widget _buildHistoryTab() {
-    // Get all valuations from all projects
-    List<Valuation> allValuations = [];
-    for (var project in _projects) {
-      allValuations.addAll(project.valuations);
-    }
-    
-    // Sort by date (newest first)
-    allValuations.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-    
-    return RefreshIndicator(
-      onRefresh: _loadProjects,
-      child: allValuations.isEmpty
-          ? Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.history, size: 64, color: Colors.grey[400]),
-                  const SizedBox(height: 16),
-                  Text(
-                    'No valuation history yet',
-                    style: TextStyle(
-                      fontSize: 18,
-                      color: Colors.grey[600],
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'All submitted valuations will appear here',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.grey[500],
-                    ),
-                  ),
-                ],
-              ),
-            )
-          : ListView.builder(
-              padding: const EdgeInsets.all(16),
-              itemCount: allValuations.length,
-              itemBuilder: (context, index) {
-                final valuation = allValuations[index];
-                final project = _projects.firstWhere(
-                  (p) => p.id == valuation.projectId,
-                  orElse: () => _projects.first,
-                );
-                return _buildHistoryValuationCard(valuation, project);
-              },
-            ),
-    );
-  }
-
-  Widget _buildHistoryValuationCard(Valuation valuation, Project project) {
-    Color statusColor;
-    IconData statusIcon;
-    String statusText;
-    
-    switch (valuation.status) {
-      case 'approved':
-        statusColor = Colors.green;
-        statusIcon = Icons.check_circle;
-        statusText = 'Approved';
-        break;
-      case 'reviewed':
-        statusColor = Colors.blue;
-        statusIcon = Icons.visibility;
-        statusText = 'Reviewed (Pending Approval)';
-        break;
-      case 'rejected':
-        statusColor = Colors.red;
-        statusIcon = Icons.cancel;
-        statusText = 'Rejected';
-        break;
-      case 'submitted':
-        statusColor = Colors.orange;
-        statusIcon = Icons.send;
-        statusText = 'Submitted';
-        break;
-      case 'draft':
-        statusColor = Colors.grey;
-        statusIcon = Icons.edit;
-        statusText = 'Draft';
-        break;
-      default:
-        statusColor = Colors.grey;
-        statusIcon = Icons.description;
-        statusText = valuation.statusDisplay;
-    }
-    
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: InkWell(
-        onTap: () => _viewHistoryValuationDetails(valuation, project),
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: statusColor.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Icon(statusIcon, color: statusColor, size: 24),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          project.title,
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          valuation.categoryDisplay,
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: Colors.grey[700],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: statusColor.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: statusColor.withOpacity(0.3)),
-                    ),
-                    child: Text(
-                      statusText,
-                      style: TextStyle(
-                        color: _getShadeColor(statusColor, 700),
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              if (valuation.rejectionReason != null && valuation.rejectionReason!.isNotEmpty) ...[
-                const SizedBox(height: 12),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.red[50],
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.red[200]!),
-                  ),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Icon(Icons.info_outline, color: Colors.red[700], size: 18),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          'Rejection Reason: ${valuation.rejectionReason}',
-                          style: TextStyle(
-                            color: Colors.red[900],
-                            fontSize: 12,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Icon(Icons.calendar_today, size: 14, color: Colors.grey[600]),
-                  const SizedBox(width: 6),
-                  Text(
-                    'Created: ${DateFormat('MMM dd, yyyy').format(valuation.createdAt)}',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.grey[600],
-                    ),
-                  ),
-                  if (valuation.submittedAt != null) ...[
-                    const SizedBox(width: 16),
-                    Icon(Icons.send, size: 14, color: Colors.grey[600]),
-                    const SizedBox(width: 6),
-                    Text(
-                      'Submitted: ${DateFormat('MMM dd, yyyy').format(valuation.submittedAt!)}',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey[600],
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Future<void> _viewHistoryValuationDetails(Valuation valuation, Project project) async {
-    // Fetch fresh project data
-    final projectResult = await ApiService.getProject(project.id);
-    Project? updatedProject = project;
-    
-    if (projectResult['success'] && projectResult['data'] != null) {
-      try {
-        updatedProject = Project.fromJson(projectResult['data']);
-      } catch (e) {
-        print('Error parsing updated project: $e');
-      }
-    }
-    
-    final finalProject = updatedProject ?? project;
-    final updatedValuation = finalProject.valuations.firstWhere(
-      (v) => v.id == valuation.id,
-      orElse: () => valuation,
-    );
-    
-    await showDialog(
-      context: context,
-      builder: (context) => Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        child: Container(
-          width: MediaQuery.of(context).size.width * 0.9,
-          constraints: BoxConstraints(
-            maxHeight: MediaQuery.of(context).size.height * 0.8,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Header
-              Container(
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: Colors.blue[50],
-                  borderRadius: const BorderRadius.only(
-                    topLeft: Radius.circular(20),
-                    topRight: Radius.circular(20),
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.blue[100],
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: const Icon(Icons.description, color: Colors.blue, size: 24),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            finalProject.title,
-                            style: const TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            updatedValuation.categoryDisplay,
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: Colors.grey[700],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    IconButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                      icon: const Icon(Icons.close),
-                    ),
-                  ],
-                ),
-              ),
-              // Content
-              Expanded(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.all(20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Status
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: _getValuationStatusColor(updatedValuation.status).withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(
-                            color: _getValuationStatusColor(updatedValuation.status).withOpacity(0.3),
-                          ),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(
-                              _getStatusIcon(updatedValuation.status),
-                              color: _getValuationStatusColor(updatedValuation.status),
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              'Status: ${updatedValuation.statusDisplay}',
-                              style: TextStyle(
-                                color: _getValuationStatusColor(updatedValuation.status),
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      // Description
-                      if (updatedValuation.description != null && updatedValuation.description!.isNotEmpty) ...[
-                        const Text(
-                          'Description:',
-                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(updatedValuation.description!),
-                        const SizedBox(height: 16),
-                      ],
-                      // Estimated Value
-                      if (updatedValuation.estimatedValue != null) ...[
-                        const Text(
-                          'Estimated Value:',
-                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'Rs. ${NumberFormat('#,##0.00').format(updatedValuation.estimatedValue)}',
-                          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-                        ),
-                        const SizedBox(height: 16),
-                      ],
-                      // Rejection Reason
-                      if (updatedValuation.rejectionReason != null && updatedValuation.rejectionReason!.isNotEmpty) ...[
-                        Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: Colors.red[50],
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: Colors.red[200]!),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text(
-                                'Rejection Reason:',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.red,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(updatedValuation.rejectionReason!),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                      ],
-                      // Dates
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Text(
-                                  'Created:',
-                                  style: TextStyle(fontSize: 12, color: Colors.grey),
-                                ),
-                                Text(
-                                  DateFormat('MMM dd, yyyy').format(updatedValuation.createdAt),
-                                  style: const TextStyle(fontWeight: FontWeight.w500),
-                                ),
-                              ],
-                            ),
-                          ),
-                          if (updatedValuation.submittedAt != null)
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const Text(
-                                    'Submitted:',
-                                    style: TextStyle(fontSize: 12, color: Colors.grey),
-                                  ),
-                                  Text(
-                                    DateFormat('MMM dd, yyyy').format(updatedValuation.submittedAt!),
-                                    style: const TextStyle(fontWeight: FontWeight.w500),
-                                  ),
-                                ],
-                              ),
-                            ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                      // View PDF Button (view-only, no accept/reject)
-                      SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton.icon(
-                          onPressed: () async {
-                            Navigator.of(context).pop();
-                            await _viewValuationPDF(updatedValuation, finalProject);
-                          },
-                          icon: const Icon(Icons.picture_as_pdf),
-                          label: const Text('View PDF Report'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.blue[700],
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  IconData _getStatusIcon(String status) {
-    switch (status) {
-      case 'approved':
-        return Icons.check_circle;
-      case 'reviewed':
-        return Icons.visibility;
-      case 'rejected':
-        return Icons.cancel;
-      case 'submitted':
-        return Icons.send;
-      case 'draft':
-        return Icons.edit;
-      default:
-        return Icons.description;
-    }
-  }
-
-  Future<void> _viewValuationPDF(Valuation valuation, Project project) async {
-    try {
-      final pdfFile = await PdfService.generateValuationReport(
-        valuation: valuation,
-        project: project,
-      );
-      await PdfService.saveAndOpenPdf(pdfFile);
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error viewing PDF: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
-  }
-
-  Color _getShadeColor(Color color, int shade) {
-    if (color == Colors.green) return Colors.green[shade]!;
-    if (color == Colors.blue) return Colors.blue[shade]!;
-    if (color == Colors.red) return Colors.red[shade]!;
-    if (color == Colors.orange) return Colors.orange[shade]!;
-    if (color == Colors.grey) return Colors.grey[shade]!;
-    return color;
   }
 }
 
