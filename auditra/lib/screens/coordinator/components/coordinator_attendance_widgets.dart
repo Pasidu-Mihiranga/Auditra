@@ -161,7 +161,7 @@ class CoordinatorAttendanceWidgets {
                           shape: BoxShape.circle,
                         ),
                         child: const Icon(
-                          Icons.fingerprint,
+                          Icons.touch_app,
                           color: Colors.white,
                           size: 20,
                         ),

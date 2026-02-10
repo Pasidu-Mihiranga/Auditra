@@ -4147,7 +4147,7 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
                           shape: BoxShape.circle,
                         ),
                         child: const Icon(
-                          Icons.fingerprint,
+                          Icons.touch_app,
                           color: Colors.white,
                           size: 20,
                         ),
