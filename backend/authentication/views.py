@@ -79,9 +79,50 @@ class LoginView(APIView):
 class UserProfileView(generics.RetrieveAPIView):
     permission_classes = (IsAuthenticated,)
     serializer_class = UserDetailSerializer
-    
+
     def get_object(self):
         return self.request.user
+
+
+class ChangePasswordView(APIView):
+    """Endpoint for authenticated users to change their password"""
+    permission_classes = (IsAuthenticated,)
+
+    def post(self, request):
+        old_password = request.data.get('old_password', '')
+        new_password = request.data.get('new_password', '')
+
+        if not old_password or not new_password:
+            return Response(
+                {'error': 'Both old_password and new_password are required'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if len(new_password) < 8:
+            return Response(
+                {'error': 'New password must be at least 8 characters'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        user = request.user
+        if not user.check_password(old_password):
+            return Response(
+                {'error': 'Current password is incorrect'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        user.set_password(new_password)
+
+        # Mark password as changed (for client/agent accounts created via project creation)
+        if hasattr(user, 'role') and user.role:
+            user.role.password_changed = True
+
+        user.save()
+
+        return Response(
+            {'message': 'Password changed successfully'},
+            status=status.HTTP_200_OK,
+        )
 
 
 class AssignRoleView(APIView):

@@ -1,40 +1,50 @@
 import 'package:flutter/material.dart';
 
 /// Centralized color palette for the application.
-/// Uses the defined 9-color theme.
+/// Matches the Auditra web app blue-based palette.
 class AppColors {
   // Core Palette
-  static const Color darkNavy = Color(0xFF0A1628);
-  static const Color strongBlue = Color(0xFF0570B0);
-  static const Color blue = Color(0xFF067BC2);
-  static const Color lightBlue = Color(0xFF84BCDA);
-  static const Color cream = Color(0xFFFFF8E7); // Background
-  static const Color yellow = Color(0xFFECC30B);
-  static const Color orange = Color(0xFFF09D2A);
-  static const Color orangeRed = Color(0xFFF37748);
-  static const Color red = Color(0xFFD56062);
+  static const Color primary = Color(0xFF1565C0);
+  static const Color primaryDark = Color(0xFF0D47A1);
+  static const Color primaryLight = Color(0xFF42A5F5);
+  static const Color secondary = Color(0xFF60A5FA);
+  static const Color background = Color(0xFFF0F4F8);
+  static const Color surface = Color(0xFFFFFFFF);
+  static const Color cardInner = Color(0xFFF8FAFC);
 
-  // Semantic Aliases
-  static const Color background = cream;
-  static const Color surface = cream;
-  static const Color text = darkNavy;
-  static const Color primary = strongBlue;
-  static const Color secondary = lightBlue;
-  static const Color accent = orange;
-  static const Color error = red;
-  static const Color warning = yellow;
-  static const Color info = blue;
-  static const Color danger = orangeRed;
-  static const Color success = lightBlue; // Using Light Blue/Sage equivalent for success/completion
+  // Text
+  static const Color text = Color(0xFF0F172A);
+  static const Color textSecondary = Color(0xFF64748B);
+
+  // Status Colors
+  static const Color success = Color(0xFF16A34A);
+  static const Color warning = Color(0xFFD97706);
+  static const Color error = Color(0xFFDC2626);
+  static const Color info = Color(0xFF2563EB);
 
   // UI Specific
-  static const Color divider = Color(0xFFE0E0E0);
+  static const Color divider = Color(0xFFE2E8F0);
   static const Color shadow = Color(0x1F000000); // 12% Black
-  
+
+  // Semantic Aliases
+  static const Color accent = primaryLight;
+  static const Color danger = error;
+
   // Card Gradients
   static const List<Color> cardGradient = [
-    cream,
-    Color(0xFFFFFDF5), // Lighter Cream
-    Color(0xFFF0F9FF), // Very light blue tint
+    surface,
+    cardInner,
+    Color(0xFFF0F4F8),
+  ];
+
+  // Primary gradients
+  static const List<Color> primaryGradient = [
+    primaryLight,
+    primary,
+  ];
+
+  static const List<Color> primaryDarkGradient = [
+    primary,
+    primaryDark,
   ];
 }

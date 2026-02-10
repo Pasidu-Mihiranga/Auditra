@@ -15,6 +15,10 @@ from .serializers import (
     AssignAccessorSerializer,
     AssignSeniorValuerSerializer
 )
+from .utils import check_user_by_email, process_client_for_project, process_agent_for_project
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def get_user_role(user):
@@ -25,6 +29,61 @@ def get_user_role(user):
     except Exception:
         pass
     return None
+
+
+class CheckUserByEmailView(APIView):
+    """Check if a user exists by email - for coordinators during project creation"""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        user_role = get_user_role(request.user)
+        if user_role != 'coordinator':
+            return Response(
+                {'error': 'Only coordinators can check user accounts'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        email = request.data.get('email', '').strip().lower()
+        role_type = request.data.get('role_type', '')
+
+        if not email:
+            return Response({'error': 'Email is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if role_type not in ('client', 'agent'):
+            return Response(
+                {'error': 'role_type must be "client" or "agent"'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        user = check_user_by_email(email)
+
+        if user:
+            existing_role = get_user_role(user)
+            if existing_role == role_type:
+                return Response({
+                    'exists': True,
+                    'user': {
+                        'id': user.id,
+                        'username': user.username,
+                        'full_name': f"{user.first_name} {user.last_name}".strip() or user.username,
+                        'email': user.email,
+                        'role': existing_role,
+                    },
+                    'message': 'Account found',
+                })
+            else:
+                return Response({
+                    'exists': True,
+                    'role_mismatch': True,
+                    'current_role': existing_role,
+                    'expected_role': role_type,
+                    'message': f'User exists but has role "{existing_role}", not "{role_type}"',
+                })
+        else:
+            return Response({
+                'exists': False,
+                'message': 'No account found with this email',
+            })
 
 
 class ProjectListView(generics.ListCreateAPIView):
@@ -46,25 +105,25 @@ class ProjectListView(generics.ListCreateAPIView):
         if user_role == 'coordinator':
             queryset = Project.objects.filter(coordinator=user)
         
-        # Field officers see only assigned projects
+        # Field officers see only assigned started projects
         elif user_role == 'field_officer':
-            queryset = Project.objects.filter(assigned_field_officer=user)
-        
-        # Clients see only assigned projects
+            queryset = Project.objects.filter(assigned_field_officer=user, status__in=['in_progress', 'completed'])
+
+        # Clients see only assigned started projects
         elif user_role == 'client':
-            return Project.objects.filter(assigned_client=user)
-        
-        # Agents see only assigned projects
+            queryset = Project.objects.filter(assigned_client=user, status__in=['in_progress', 'completed'])
+
+        # Agents see only assigned started projects
         elif user_role == 'agent':
-            return Project.objects.filter(assigned_agent=user)
-        
-        # Accessors see only assigned projects
+            queryset = Project.objects.filter(assigned_agent=user, status__in=['in_progress', 'completed'])
+
+        # Accessors see only assigned started projects
         elif user_role == 'accessor':
-            return Project.objects.filter(assigned_accessor=user)
-        
-        # Senior valuers see only assigned projects
+            queryset = Project.objects.filter(assigned_accessor=user, status__in=['in_progress', 'completed'])
+
+        # Senior valuers see only assigned started projects
         elif user_role == 'senior_valuer':
-            return Project.objects.filter(assigned_senior_valuer=user)
+            queryset = Project.objects.filter(assigned_senior_valuer=user, status__in=['in_progress', 'completed'])
         
         # Admins see all projects
         elif user.is_staff or user.is_superuser:
@@ -84,11 +143,22 @@ class ProjectListView(generics.ListCreateAPIView):
         user_role = get_user_role(self.request.user)
         if user_role != 'coordinator':
             raise serializers.ValidationError("Only coordinators can create projects.")
-        
-        # Remove client_info and agent_info from request data if present
-        # These are informational and not stored in the Project model
-        # They can be assigned later using the assign endpoints
-        serializer.save(coordinator=self.request.user)
+
+        project = serializer.save(coordinator=self.request.user)
+
+        # Process client info - check/create account and assign to project
+        client_info = project.client_info
+        if client_info and client_info.get('email'):
+            client_user, was_created, error = process_client_for_project(project, client_info)
+            if error:
+                logger.warning(f"Client processing warning for project {project.id}: {error}")
+
+        # Process agent info - check/create account and assign to project
+        agent_info = project.agent_info
+        if agent_info and agent_info.get('email'):
+            agent_user, was_created, error = process_agent_for_project(project, agent_info)
+            if error:
+                logger.warning(f"Agent processing warning for project {project.id}: {error}")
 
 
 class ProjectDetailView(generics.RetrieveUpdateDestroyAPIView):
@@ -106,25 +176,25 @@ class ProjectDetailView(generics.RetrieveUpdateDestroyAPIView):
         if user_role == 'coordinator':
             return Project.objects.filter(coordinator=user)
         
-        # Field officers can see assigned projects
+        # Field officers can see assigned started projects
         elif user_role == 'field_officer':
-            return Project.objects.filter(assigned_field_officer=user)
-        
-        # Clients can see assigned projects
+            return Project.objects.filter(assigned_field_officer=user, status__in=['in_progress', 'completed'])
+
+        # Clients can see assigned started projects
         elif user_role == 'client':
-            return Project.objects.filter(assigned_client=user)
-        
-        # Agents can see assigned projects
+            return Project.objects.filter(assigned_client=user, status__in=['in_progress', 'completed'])
+
+        # Agents can see assigned started projects
         elif user_role == 'agent':
-            return Project.objects.filter(assigned_agent=user)
-        
-        # Accessors can see assigned projects
+            return Project.objects.filter(assigned_agent=user, status__in=['in_progress', 'completed'])
+
+        # Accessors can see assigned started projects
         elif user_role == 'accessor':
-            return Project.objects.filter(assigned_accessor=user)
-        
-        # Senior valuers can see assigned projects
+            return Project.objects.filter(assigned_accessor=user, status__in=['in_progress', 'completed'])
+
+        # Senior valuers can see assigned started projects
         elif user_role == 'senior_valuer':
-            return Project.objects.filter(assigned_senior_valuer=user)
+            return Project.objects.filter(assigned_senior_valuer=user, status__in=['in_progress', 'completed'])
         
         # Admins can see all
         elif user.is_staff or user.is_superuser:
@@ -160,7 +230,19 @@ class ProjectDetailView(generics.RetrieveUpdateDestroyAPIView):
                 raise serializers.ValidationError(
                     "Cannot start project: Agent must be assigned before starting."
                 )
-        
+
+            # Check if accessor is assigned
+            if project.assigned_accessor is None:
+                raise serializers.ValidationError(
+                    "Cannot start project: Accessor must be assigned before starting."
+                )
+
+            # Check if senior valuer is assigned
+            if project.assigned_senior_valuer is None:
+                raise serializers.ValidationError(
+                    "Cannot start project: Senior valuer must be assigned before starting."
+                )
+
         serializer.save()
 
 
@@ -582,6 +664,71 @@ class ProjectDocumentDeleteView(generics.DestroyAPIView):
         elif user_role == 'field_officer':
             return ProjectDocument.objects.filter(project__assigned_field_officer=user)
         return ProjectDocument.objects.none()
+
+
+from rest_framework.decorators import api_view, permission_classes as perm_classes
+from django.utils import timezone
+
+
+@api_view(['POST'])
+@perm_classes([IsAuthenticated])
+def md_gm_approve_project(request, pk):
+    """MD/GM approves a project"""
+    user_role = get_user_role(request.user)
+    if user_role not in ('md_gm', 'admin') and not request.user.is_staff:
+        return Response(
+            {'error': 'Only MD/GM can approve projects'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+
+    try:
+        project = Project.objects.get(pk=pk)
+    except Project.DoesNotExist:
+        return Response(
+            {'error': 'Project not found'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    project.md_gm_approval_status = 'approved'
+    project.md_gm_approved_at = timezone.now()
+    project.md_gm_rejection_reason = None
+    project.save()
+
+    return Response({
+        'message': 'Project approved successfully',
+        'project': ProjectSerializer(project, context={'request': request}).data
+    }, status=status.HTTP_200_OK)
+
+
+@api_view(['POST'])
+@perm_classes([IsAuthenticated])
+def md_gm_reject_project(request, pk):
+    """MD/GM rejects a project"""
+    user_role = get_user_role(request.user)
+    if user_role not in ('md_gm', 'admin') and not request.user.is_staff:
+        return Response(
+            {'error': 'Only MD/GM can reject projects'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+
+    try:
+        project = Project.objects.get(pk=pk)
+    except Project.DoesNotExist:
+        return Response(
+            {'error': 'Project not found'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    reason = request.data.get('reason', '')
+    project.md_gm_approval_status = 'rejected'
+    project.md_gm_rejected_at = timezone.now()
+    project.md_gm_rejection_reason = reason
+    project.save()
+
+    return Response({
+        'message': 'Project rejected',
+        'project': ProjectSerializer(project, context={'request': request}).data
+    }, status=status.HTTP_200_OK)
 
 
 class UserAssignedProjectsView(APIView):

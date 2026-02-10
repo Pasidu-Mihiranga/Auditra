@@ -5,6 +5,7 @@ app_name = 'projects'
 
 urlpatterns = [
     path('', views.ProjectListView.as_view(), name='project-list'),
+    path('check-email/', views.CheckUserByEmailView.as_view(), name='check-email'),
     path('<int:pk>/', views.ProjectDetailView.as_view(), name='project-detail'),
     path('<int:project_id>/assign-field-officer/', views.AssignFieldOfficerView.as_view(), name='assign-field-officer'),
     path('<int:project_id>/assign-client/', views.AssignClientView.as_view(), name='assign-client'),

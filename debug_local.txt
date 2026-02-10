@@ -1,8 +1,0 @@
-TESTING: POST http://127.0.0.1:8000/api/auth/login/
-STATUS: 401
-RESPONSE: {"error":"Invalid credentials"}
---------------------
-TESTING: POST http://127.0.0.1:8000/api/auth/register/
-STATUS: 201
-RESPONSE: {"user":{"id":12,"username":"newuser","email":"test@test.com","first_name":"","last_name":"","role":"unassigned","role_display":"Unassigned"},"refresh":"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoicmVmcmVzaCIsImV4cCI6MTc3MDkwMTA1NSwiaWF0IjoxNzcwMjk2MjU1LCJqdGkiOiI2MmNjOTg3ZTgxYmU0Mzg2YTQ0ZTEzZGEyM2M5MWMxMyIsInVzZXJfaWQiOjEyfQ.K17UFSVJtiya1eJvbbxrV2y1caNbnHb_oQvA4iFviyU","access":"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoiYWNjZXNzIiwiZXhwIjoxNzcwMzgyNjU1LCJpYXQiOjE3NzA
---------------------

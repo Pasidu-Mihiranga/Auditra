@@ -32,22 +32,59 @@ class MyApp extends StatelessWidget {
           primary: AppColors.primary,
           secondary: AppColors.secondary,
           tertiary: AppColors.accent,
-          surface: AppColors.surface, // Defined as cream/background
-          background: AppColors.background,
+          surface: AppColors.surface,
           error: AppColors.error,
           onPrimary: Colors.white,
           onSecondary: Colors.white,
           onTertiary: Colors.white,
           onSurface: AppColors.text,
-          onBackground: AppColors.text,
           onError: Colors.white,
         ),
+        scaffoldBackgroundColor: AppColors.background,
         useMaterial3: true,
         fontFamily: 'Inter',
+        appBarTheme: const AppBarTheme(
+          backgroundColor: AppColors.primary,
+          foregroundColor: Colors.white,
+          elevation: 0,
+        ),
+        cardTheme: CardTheme(
+          color: AppColors.surface,
+          elevation: 2,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+        ),
         elevatedButtonTheme: ElevatedButtonThemeData(
           style: ElevatedButton.styleFrom(
             backgroundColor: AppColors.primary,
             foregroundColor: Colors.white,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+          ),
+        ),
+        outlinedButtonTheme: OutlinedButtonThemeData(
+          style: OutlinedButton.styleFrom(
+            foregroundColor: AppColors.primary,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+          ),
+        ),
+        inputDecorationTheme: InputDecorationTheme(
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: const BorderSide(color: AppColors.primary, width: 2),
+          ),
+        ),
+        dividerColor: AppColors.divider,
+        chipTheme: ChipThemeData(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8),
           ),
         ),
       ),
@@ -103,9 +140,9 @@ class _SplashScreenState extends State<SplashScreen> {
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: [
-              Colors.blue.shade400,
-              Colors.blue.shade800,
+            colors: const [
+              AppColors.primaryLight,
+              AppColors.primaryDark,
             ],
           ),
         ),

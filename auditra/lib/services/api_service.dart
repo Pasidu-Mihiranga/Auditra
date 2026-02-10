@@ -288,6 +288,48 @@ class ApiService {
     await prefs.remove('username');
   }
 
+  // Change password
+  static Future<Map<String, dynamic>> changePassword({
+    required String oldPassword,
+    required String newPassword,
+  }) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token');
+
+      if (token == null) {
+        return {'success': false, 'message': 'Not authenticated'};
+      }
+
+      final response = await http.post(
+        Uri.parse('$baseUrl/auth/change-password/'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({
+          'old_password': oldPassword,
+          'new_password': newPassword,
+        }),
+      );
+
+      Map<String, dynamic> data;
+      try {
+        data = jsonDecode(response.body);
+      } catch (e) {
+        return {'success': false, 'message': 'Invalid response from server'};
+      }
+
+      if (response.statusCode == 200) {
+        return {'success': true, 'message': data['message'] ?? 'Password changed successfully'};
+      } else {
+        return {'success': false, 'message': data['error'] ?? 'Failed to change password'};
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'Connection error: $e'};
+    }
+  }
+
   // Check if user is logged in
   static Future<bool> isLoggedIn() async {
     final prefs = await SharedPreferences.getInstance();

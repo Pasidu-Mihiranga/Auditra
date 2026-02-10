@@ -6,7 +6,7 @@ import '../services/api_service.dart';
 import '../models/attendance_model.dart';
 import '../models/project_model.dart';
 import 'login_screen.dart';
-import 'generic_dashboard.dart';
+import 'change_password_screen.dart';
 import 'valuation_form_screen.dart';
 import 'payment_slips_screen.dart';
 
@@ -648,14 +648,125 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
           : TabBarView(
               controller: _tabController,
               children: [
-                GenericDashboard(
-                  role: 'field_officer',
-                  roleDisplay: _roleDisplay ?? 'Field Officer',
-                  isEmbedded: true,
-                ),
+                _buildProfileTab(),
                 _buildProjectsTab(),
               ],
             ),
+    );
+  }
+
+  Widget _buildProfileTab() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // User Info Card
+          Card(
+            elevation: 3,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                children: [
+                  CircleAvatar(
+                    radius: 40,
+                    backgroundColor: Colors.blue[100],
+                    child: Icon(Icons.person, size: 40, color: Colors.blue[700]),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    _username ?? 'Field Officer',
+                    style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    _roleDisplay ?? 'Field Officer',
+                    style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // Web App Info Card
+          Card(
+            elevation: 2,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            color: Colors.blue[50],
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                children: [
+                  Icon(Icons.web, size: 36, color: Colors.blue[700]),
+                  const SizedBox(height: 12),
+                  Text(
+                    'Employee Features Available on Web',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.blue[900],
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Attendance, Leave Requests, and Payment Slips are available through the Auditra Web App.',
+                    style: TextStyle(fontSize: 13, color: Colors.blue[800]),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // Quick Actions
+          Card(
+            elevation: 2,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Quick Actions',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 12),
+                  ListTile(
+                    leading: Icon(Icons.lock_outline, color: Colors.orange[700]),
+                    title: const Text('Change Password'),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const ChangePasswordScreen(),
+                        ),
+                      );
+                    },
+                  ),
+                  const Divider(),
+                  ListTile(
+                    leading: Icon(Icons.receipt_long, color: Colors.green[700]),
+                    title: const Text('Payment Slips'),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const PaymentSlipsScreen(),
+                        ),
+                      );
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
