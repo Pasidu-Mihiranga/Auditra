@@ -655,7 +655,7 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text('Valuation saved successfully!'),
-              backgroundColor: Colors.green,
+              backgroundColor: const Color(0xFF84BCDA),
             ),
           );
           Navigator.of(context).pop(true);
@@ -1343,7 +1343,7 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
               Row(
                 children: [
                   Expanded(
-                    child: _buildCalculationTypeButton('appreciation', 'Appreciation', Icons.trending_up, Colors.green),
+                    child: _buildCalculationTypeButton('appreciation', 'Appreciation', Icons.trending_up, const Color(0xFF84BCDA)),
                   ),
                   const SizedBox(width: 8),
                   Expanded(
@@ -1520,7 +1520,7 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
         content: Text(
           'New price calculated: LKR ${newPrice.toStringAsFixed(2)}',
         ),
-        backgroundColor: Colors.green,
+        backgroundColor: const Color(0xFF84BCDA),
         duration: const Duration(seconds: 2),
       ),
     );

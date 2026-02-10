@@ -4,6 +4,7 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:printing/printing.dart';
 import 'dart:math' as math;
+import 'dart:ui';
 import '../services/api_service.dart';
 import '../services/pdf_service.dart';
 import '../models/attendance_model.dart';
@@ -37,6 +38,7 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
   bool _isWorkingDay = true;
   String _selectedPeriod = 'daily';
   AttendanceSummary? _summary;
+  AttendanceSummary? _monthlySummary; // Separate state for monthly data in main card
   bool _isLoadingSummary = false;
   bool _isMarkingAttendance = false;
   
@@ -67,6 +69,14 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
   // Check if this role should see attendance tab (clients don't see attendance)
   bool get _shouldShowAttendanceTab {
     return _shouldShowProjects && widget.role != 'client';
+  }
+
+  String _formatPriorityLabel(String priority) {
+    if (priority.isEmpty) return 'Medium';
+    final lower = priority.toLowerCase();
+    if (lower == 'high') return 'High';
+    if (lower == 'low') return 'Low';
+    return 'Medium';
   }
 
   @override
@@ -117,6 +127,7 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
     if (widget.role != 'client') {
       _loadTodayAttendance();
       _loadSummary();
+      _loadMonthlySummary(); // Load monthly data for main stats card
       _startTimer();
     }
   }
@@ -261,6 +272,19 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
     }
   }
 
+  // Load monthly data for main stats card
+  Future<void> _loadMonthlySummary() async {
+    final result = await ApiService.getAttendanceSummary(period: 'monthly');
+    
+    if (mounted) {
+      setState(() {
+        if (result['success'] && result['data']['data'] != null) {
+          _monthlySummary = AttendanceSummary.fromJson(result['data']['data']);
+        }
+      });
+    }
+  }
+
   Future<void> _markAttendance() async {
     setState(() => _isMarkingAttendance = true);
     
@@ -291,7 +315,7 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
                   Expanded(child: Text('Attendance marked successfully!')),
                 ],
               ),
-              backgroundColor: Colors.green,
+              backgroundColor: const Color(0xFF84BCDA),
               behavior: SnackBarBehavior.floating,
               duration: const Duration(seconds: 2),
             ),
@@ -459,23 +483,7 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
   }
 
   Future<void> _logout() async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Logout'),
-        content: const Text('Are you sure you want to logout?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Logout'),
-          ),
-        ],
-      ),
-    );
+    final confirm = await showModernLogoutDialog(context, themeColor: Colors.blue[600]);
 
     if (confirm == true) {
       await ApiService.logout();
@@ -523,7 +531,8 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
     }
 
     return Scaffold(
-      appBar: AppBar(
+      backgroundColor: widget.isEmbedded ? Colors.transparent : DashboardColors.background,
+      appBar: widget.isEmbedded ? null : AppBar(
         title: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -637,14 +646,14 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
           ],
         ),
         centerTitle: true,
-        actions: [
+        actions: widget.isEmbedded ? null : [
           IconButton(
             icon: const Icon(Icons.logout),
             onPressed: _logout,
             tooltip: 'Logout',
           ),
         ],
-        bottom: _shouldShowAttendanceTab && _mainTabController != null
+        bottom: widget.isEmbedded ? null : (_shouldShowAttendanceTab && _mainTabController != null
             ? TabBar(
                 controller: _mainTabController,
                 tabs: const [
@@ -652,7 +661,7 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
                   Tab(icon: Icon(Icons.folder), text: 'Projects'),
                 ],
               )
-            : null,
+            : null),
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
@@ -676,13 +685,19 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
         await _loadUserData();
         await _loadTodayAttendance();
         await _loadSummary();
+        await _loadMonthlySummary();
       },
+      color: const Color(0xFF4CAF50),
       child: SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.all(16.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            // Main Stats Card (matching coordinator dashboard style)
+            const SizedBox(height: 14),
+            GenericStatsCard(monthlySummary: _monthlySummary),
+            const SizedBox(height: 24),
+            
             // Today's Attendance Card
             _buildTodayAttendanceCard(),
             const SizedBox(height: 16),
@@ -693,11 +708,14 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
             
             // Charts Section
             if (_summary != null) _buildChartsSection(),
+            const SizedBox(height: 100), // Extra space at bottom
           ],
         ),
       ),
     );
   }
+
+
   
   // Project viewing methods (for client, agent, accessor, senior valuer)
   Widget _buildProjectsTab() {
@@ -763,7 +781,10 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
                   itemCount: _projects.length,
                   itemBuilder: (context, index) {
                     final project = _projects[index];
-                    return _buildProjectCard(project);
+                    return GenericProjectCard(
+                      project: project, 
+                      onTap: _viewProjectDetails,
+                    );
                   },
                 ),
     );
@@ -1069,20 +1090,6 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
     );
   }
 
-  Color _getProjectStatusColor(String status) {
-    switch (status) {
-      case 'pending':
-        return Colors.orange[100]!;
-      case 'in_progress':
-        return Colors.blue[100]!;
-      case 'completed':
-        return Colors.green[100]!;
-      case 'cancelled':
-        return Colors.red[100]!;
-      default:
-        return Colors.grey[200]!;
-    }
-  }
 
   Future<void> _viewProjectDetails(Project project) async {
     // For senior valuer, show reviewed valuations
@@ -1100,7 +1107,10 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
     await showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text(project.title),
+        title: Text(
+          project.title,
+          style: const TextStyle(fontWeight: FontWeight.bold, fontFamily: 'Calibri'),
+        ),
         content: SingleChildScrollView(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1109,36 +1119,69 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
               if (project.description != null) ...[
                 const Text(
                   'Description:',
-                  style: TextStyle(fontWeight: FontWeight.bold),
+                  style: TextStyle(fontWeight: FontWeight.bold, fontFamily: 'Calibri'),
                 ),
                 const SizedBox(height: 4),
-                Text(project.description!),
+                Text(
+                  project.description!,
+                  style: const TextStyle(fontFamily: 'Calibri'),
+                ),
                 const SizedBox(height: 16),
               ],
-              Text(
-                'Status: ${project.statusDisplay}',
-                style: const TextStyle(fontWeight: FontWeight.bold),
+              Text.rich(
+                TextSpan(
+                  children: [
+                    const TextSpan(
+                      text: 'Status: ',
+                      style: TextStyle(fontWeight: FontWeight.bold, fontFamily: 'Calibri'),
+                    ),
+                    TextSpan(
+                      text: project.statusDisplay,
+                      style: const TextStyle(fontFamily: 'Calibri'),
+                    ),
+                  ],
+                ),
               ),
               const SizedBox(height: 8),
-              Text(
-                'Priority: ${_formatPriorityLabel(project.priority ?? 'medium')}',
-                style: const TextStyle(fontWeight: FontWeight.bold),
+              Text.rich(
+                TextSpan(
+                  children: [
+                    const TextSpan(
+                      text: 'Priority: ',
+                      style: TextStyle(fontWeight: FontWeight.bold, fontFamily: 'Calibri'),
+                    ),
+                    TextSpan(
+                      text: _formatPriorityLabel(project.priority ?? 'medium'),
+                      style: const TextStyle(fontFamily: 'Calibri'),
+                    ),
+                  ],
+                ),
               ),
               const SizedBox(height: 8),
-              Text(
-                'Coordinator: ${project.coordinatorName ?? project.coordinatorUsername}',
-                style: const TextStyle(fontWeight: FontWeight.bold),
+              Text.rich(
+                TextSpan(
+                  children: [
+                    const TextSpan(
+                      text: 'Coordinator: ',
+                      style: TextStyle(fontWeight: FontWeight.bold, fontFamily: 'Calibri'),
+                    ),
+                    TextSpan(
+                      text: project.coordinatorName ?? project.coordinatorUsername,
+                      style: const TextStyle(fontFamily: 'Calibri'),
+                    ),
+                  ],
+                ),
               ),
               const SizedBox(height: 16),
               if (project.documents.isNotEmpty) ...[
                 const Text(
                   'Documents:',
-                  style: TextStyle(fontWeight: FontWeight.bold),
+                  style: TextStyle(fontWeight: FontWeight.bold, fontFamily: 'Calibri'),
                 ),
                 const SizedBox(height: 8),
                 ...project.documents.map((doc) => ListTile(
-                      title: Text(doc.name),
-                      subtitle: Text(doc.fileSizeFormatted),
+                      title: Text(doc.name, style: const TextStyle(fontFamily: 'Calibri')),
+                      subtitle: Text(doc.fileSizeFormatted, style: const TextStyle(fontFamily: 'Calibri')),
                       trailing: doc.fileUrl != null
                           ? IconButton(
                               icon: const Icon(Icons.download),
@@ -1157,7 +1200,7 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Close'),
+            child: const Text('Close', style: TextStyle(fontFamily: 'Calibri')),
           ),
         ],
       ),
@@ -2007,21 +2050,33 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
   }
 
   Widget _buildTodayAttendanceCard() {
-    return Card(
-      elevation: 4,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.08),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
       child: Padding(
-        padding: const EdgeInsets.all(20.0),
+        padding: const EdgeInsets.all(24.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text(
               'Today\'s Attendance',
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.bold,
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w900,
+                color: Colors.grey[900],
               ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 20),
             
             if (!_isWorkingDay)
               Container(
@@ -2321,80 +2376,110 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
   }
 
   Widget _buildSummarySection() {
-    return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.08),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
       child: Padding(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.all(24.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(
-              'Attendance Summary',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.bold,
-              ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Attendance Summary',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900,
+                    color: Colors.grey[900],
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  _getPeriodLabel(),
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w500,
+                    color: Colors.grey[600],
+                    fontFamily: 'Inter',
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 12),
-            // Period Selection Tabs
+            const SizedBox(height: 16),
+            // Period Selection - Circular Bubble Navigation with Arrows (Contained)
             Container(
-              decoration: BoxDecoration(
-                color: Colors.grey[200]?.withOpacity(0.5),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: TabBar(
-                controller: _periodTabController,
-                indicator: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [Colors.blue[400]!, Colors.blue[600]!],
+              height: 110,
+              padding: const EdgeInsets.symmetric(horizontal: 0),
+              child: ClipRect(
+                child: Stack(
+                clipBehavior: Clip.hardEdge,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: _buildPeriodNavigation(),
                   ),
-                  borderRadius: BorderRadius.circular(12),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.blue.withOpacity(0.3),
-                      blurRadius: 8,
-                      offset: const Offset(0, 2),
+                  // Left arrow
+                  Positioned(
+                    left: 8,
+                    top: 65,
+                    child: _buildPeriodNavigationArrow(
+                      icon: Icons.arrow_back_ios_new_rounded,
+                      onTap: () {
+                        final currentIndex = _periodTabController.index;
+                        final newIndex = currentIndex > 0 ? currentIndex - 1 : 3;
+                        _periodTabController.animateTo(newIndex);
+                        setState(() {});
+                      },
                     ),
-                  ],
-                ),
-                labelColor: Colors.white,
-                unselectedLabelColor: Colors.grey[700],
-                labelStyle: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 13,
-                ),
-                unselectedLabelStyle: const TextStyle(
-                  fontWeight: FontWeight.w500,
-                  fontSize: 13,
-                ),
-                indicatorSize: TabBarIndicatorSize.tab,
-                dividerColor: Colors.transparent,
-                tabs: const [
-                  Tab(
-                    icon: Icon(Icons.today, size: 18),
-                    text: 'Daily',
                   ),
-                  Tab(
-                    icon: Icon(Icons.date_range, size: 18),
-                    text: 'Weekly',
+                  // Right arrow
+                  Positioned(
+                    right: 8,
+                    top: 65,
+                    child: _buildPeriodNavigationArrow(
+                      icon: Icons.arrow_forward_ios_rounded,
+                      onTap: () {
+                        final currentIndex = _periodTabController.index;
+                        final newIndex = currentIndex < 3 ? currentIndex + 1 : 0;
+                        _periodTabController.animateTo(newIndex);
+                        setState(() {});
+                      },
+                    ),
                   ),
-                  Tab(
-                    icon: Icon(Icons.calendar_month, size: 18),
-                    text: 'Monthly',
-                  ),
-                  Tab(
-                    icon: Icon(Icons.calendar_today, size: 18),
-                    text: 'Yearly',
+                  // Dot Indicator
+                  Positioned(
+                    top: 88,
+                    left: 0,
+                    right: 0,
+                    child: _buildPeriodDotIndicator(
+                      selectedIndex: _periodTabController.index,
+                      itemCount: 4,
+                    ),
                   ),
                 ],
               ),
+              ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 12),
             
-            if (_isLoadingSummary)
-              const Center(child: CircularProgressIndicator())
-            else if (_summary != null)
-              Column(
+            SizedBox(
+              height: 260, // Fixed height to prevent card resizing (increased to fix overflow)
+              child: _isLoadingSummary
+                ? const Center(child: CircularProgressIndicator())
+                : _summary != null
+                  ? Column(
                 children: [
                   Row(
                     children: [
@@ -2402,7 +2487,7 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
                         child: _buildSummaryCard(
                           'Present',
                           _summary!.presentDays.toString(),
-                          Colors.green,
+                          const Color(0xFF84BCDA),
                         ),
                       ),
                       const SizedBox(width: 8),
@@ -2415,7 +2500,7 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
                       ),
                     ],
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 6),
                   Row(
                     children: [
                       Expanded(
@@ -2435,7 +2520,7 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
                       ),
                     ],
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 6),
                   Row(
                     children: [
                       Expanded(
@@ -2450,18 +2535,330 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
                         child: _buildSummaryCard(
                           'Overtime',
                           '${_summary!.totalOvertimeHours.toStringAsFixed(1)}h',
-                          Colors.teal,
+                          const Color(0xFF0570B0),
                         ),
                       ),
                     ],
                   ),
                 ],
-              )
-            else
-              const Center(child: Text('No data available')),
+                    )
+                  : const Center(child: Text('No data available')),
+            ),
           ],
         ),
       ),
+    );
+  }
+
+  // Get current period label
+  String _getPeriodLabel() {
+    switch (_periodTabController.index) {
+      case 0:
+        return 'Daily';
+      case 1:
+        return 'Weekly';
+      case 2:
+        return 'Monthly';
+      case 3:
+        return 'Yearly';
+      default:
+        return 'Daily';
+    }
+  }
+
+  // Period Navigation with Circular Bubbles (Carousel Style)
+  Widget _buildPeriodNavigation() {
+    final periods = [
+      {'icon': Icons.today, 'label': 'Daily', 'index': 0},
+      {'icon': Icons.date_range, 'label': 'Weekly', 'index': 1},
+      {'icon': Icons.calendar_month, 'label': 'Monthly', 'index': 2},
+      {'icon': Icons.calendar_today, 'label': 'Yearly', 'index': 3},
+    ];
+
+    final selectedIndex = _periodTabController.index;
+    final baseSize = 44.0; // Increased from 38.0
+    final activeSize = baseSize * 1.35; // Active tab 35% larger
+    final spacing = baseSize * 1.3; // Increased spacing between tabs
+
+    return GestureDetector(
+      onHorizontalDragEnd: (details) {
+        // Detect swipe direction based on velocity
+        if (details.primaryVelocity != null) {
+          if (details.primaryVelocity! < -500) {
+            // Swipe left - go to next period
+            final currentIndex = _periodTabController.index;
+            final newIndex = currentIndex < 3 ? currentIndex + 1 : 0;
+            _periodTabController.animateTo(newIndex);
+            setState(() {});
+          } else if (details.primaryVelocity! > 500) {
+            // Swipe right - go to previous period
+            final currentIndex = _periodTabController.index;
+            final newIndex = currentIndex > 0 ? currentIndex - 1 : 3;
+            _periodTabController.animateTo(newIndex);
+            setState(() {});
+          }
+        }
+      },
+      child: TweenAnimationBuilder<double>(
+      duration: const Duration(milliseconds: 600),
+      curve: Curves.easeInOutCubic,
+      tween: Tween<double>(begin: selectedIndex.toDouble(), end: selectedIndex.toDouble()),
+      builder: (context, animatedIndex, child) {
+        return LayoutBuilder(
+          builder: (context, constraints) {
+            final centerX = constraints.maxWidth / 2;
+            
+            return SizedBox(
+              height: 110,
+              width: constraints.maxWidth,
+              child: Stack(
+                clipBehavior: Clip.hardEdge,
+                children: List.generate(4, (index) {
+                  final distanceFromCenter = (index - animatedIndex);
+                  final isActive = index == selectedIndex;
+                  
+                  // Layered positioning
+                  final offset = distanceFromCenter * spacing;
+                  
+                  // Scale based on distance
+                  final targetScale = isActive ? 1.0 : math.max(0.65, 1.0 - (distanceFromCenter.abs() * 0.15));
+                  
+                  // Opacity
+                  final targetOpacity = isActive ? 1.0 : math.max(0.4, 1.0 - (distanceFromCenter.abs() * 0.2));
+                  
+                  // Size based on active state
+                  final size = isActive ? activeSize : baseSize;
+                  
+                  // Vertical position - active tab higher
+                  final topPosition = isActive ? 12.0 : 18.0;
+                  
+                  return TweenAnimationBuilder<double>(
+                    duration: const Duration(milliseconds: 600),
+                    curve: Curves.easeInOutCubic,
+                    tween: Tween<double>(begin: 0, end: 1),
+                    builder: (context, animation, child) {
+                      return AnimatedPositioned(
+                        duration: const Duration(milliseconds: 600),
+                        curve: Curves.easeInOutCubic,
+                        left: centerX + offset - size / 2,
+                        top: topPosition,
+                        child: TweenAnimationBuilder<double>(
+                          duration: const Duration(milliseconds: 600),
+                          curve: Curves.easeInOutCubic,
+                          tween: Tween<double>(begin: targetOpacity, end: targetOpacity),
+                          builder: (context, opacity, child) {
+                            return TweenAnimationBuilder<double>(
+                              duration: const Duration(milliseconds: 600),
+                              curve: Curves.easeInOutCubic,
+                              tween: Tween<double>(begin: targetScale, end: targetScale),
+                              builder: (context, scale, child) {
+                                return Opacity(
+                                  opacity: opacity,
+                                  child: Transform.scale(
+                                    scale: scale,
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        AnimatedContainer(
+                                          duration: const Duration(milliseconds: 600),
+                                          curve: Curves.easeInOutCubic,
+                                          decoration: BoxDecoration(
+                                            shape: BoxShape.circle,
+                                            boxShadow: isActive ? [
+                                              BoxShadow(
+                                                color: Colors.black.withOpacity(0.25),
+                                                blurRadius: 16,
+                                                spreadRadius: 2,
+                                                offset: const Offset(0, 8),
+                                              ),
+                                              BoxShadow(
+                                                color: const Color(0xFF10B981).withOpacity(0.3),
+                                                blurRadius: 20,
+                                                spreadRadius: 0,
+                                                offset: const Offset(0, 4),
+                                              ),
+                                            ] : [],
+                                          ),
+                                          child: _buildPeriodTab(
+                                            icon: periods[index]['icon'] as IconData,
+                                            label: periods[index]['label'] as String,
+                                            isActive: isActive,
+                                            onTap: () {
+                                              _periodTabController.animateTo(index);
+                                              setState(() {});
+                                            },
+                                            size: size,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                );
+                              },
+                            );
+                          },
+                        ),
+                      );
+                    },
+                  );
+                }),
+              ),
+            );
+          },
+        );
+      },
+      ),
+    );
+  }
+
+  Widget _buildPeriodTab({
+    required IconData icon,
+    required String label,
+    required bool isActive,
+    required VoidCallback onTap,
+    required double size,
+  }) {
+    final baseIconSize = 18.0; // Increased from 16.0
+    final iconSize = isActive ? baseIconSize * 1.25 : baseIconSize;
+    
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeInOut,
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          shape: BoxShape.circle,
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.1),
+              blurRadius: 4,
+              offset: const Offset(0, 4),
+            ),
+            BoxShadow(
+              color: Colors.black.withOpacity(0.06),
+              blurRadius: 6,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            // Animated black circle background
+            AnimatedScale(
+              scale: isActive ? 1.0 : 0.0,
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeInOut,
+              child: AnimatedOpacity(
+                opacity: isActive ? 1.0 : 0.0,
+                duration: const Duration(milliseconds: 250),
+                child: Container(
+                  width: size - 6,
+                  height: size - 6,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFF111827),
+                    shape: BoxShape.circle,
+                  ),
+                ),
+              ),
+            ),
+            // Animated icon
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 300),
+              transitionBuilder: (child, animation) {
+                return ScaleTransition(
+                  scale: animation,
+                  child: child,
+                );
+              },
+              child: Icon(
+                icon,
+                key: ValueKey<bool>(isActive),
+                size: iconSize,
+                color: isActive ? Colors.white : const Color(0xFF9CA3AF),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Navigation Arrow for Period Selection
+  Widget _buildPeriodNavigationArrow({
+    required IconData icon,
+    required VoidCallback onTap,
+  }) {
+    const size = 28.0; // Reduced from 36.0
+    const iconSize = 12.0; // Reduced from 16.0
+
+    return GestureDetector(
+      onTap: onTap,
+      child: ClipOval(
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+          child: Container(
+            width: size,
+            height: size,
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.2),
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: Colors.white.withOpacity(0.3),
+                width: 1,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.08),
+                  blurRadius: 8,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Icon(
+              icon,
+              size: iconSize,
+              color: const Color(0xFF10B981),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // Dot Indicator for Period Selection
+  Widget _buildPeriodDotIndicator({
+    required int selectedIndex,
+    required int itemCount,
+  }) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: List.generate(itemCount, (index) {
+        final isActive = index == selectedIndex;
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeInOut,
+          margin: const EdgeInsets.symmetric(horizontal: 3),
+          width: isActive ? 12 : 4,
+          height: 5,
+          decoration: BoxDecoration(
+            color: isActive 
+                ? const Color.fromARGB(255, 0, 0, 0) 
+                : const Color.fromARGB(255, 0, 0, 0).withOpacity(0.3),
+            borderRadius: BorderRadius.circular(3),
+            boxShadow: isActive ? [
+              BoxShadow(
+                color: const Color.fromARGB(255, 0, 0, 0).withOpacity(0.4),
+                blurRadius: 6,
+                offset: const Offset(0, 2),
+              ),
+            ] : [],
+          ),
+        );
+      }),
     );
   }
 
@@ -2503,27 +2900,14 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
     }
 
     return Container(
-      margin: const EdgeInsets.only(top: 16),
+      margin: const EdgeInsets.symmetric(horizontal: 20),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            Theme.of(context).cardColor,
-            Theme.of(context).cardColor.withOpacity(0.95),
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(20),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            blurRadius: 20,
-            offset: const Offset(0, 8),
-            spreadRadius: 2,
-          ),
-          BoxShadow(
-            color: Colors.blue.withOpacity(0.05),
-            blurRadius: 10,
+            color: Colors.black.withOpacity(0.08),
+            blurRadius: 12,
             offset: const Offset(0, 4),
           ),
         ],
@@ -2533,38 +2917,12 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [Colors.blue[400]!, Colors.blue[600]!],
-                    ),
-                    borderRadius: BorderRadius.circular(12),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.blue.withOpacity(0.3),
-                        blurRadius: 8,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                  child: const Icon(
-                    Icons.bar_chart,
-                    color: Colors.white,
-                    size: 24,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Text(
-                  'Attendance Chart',
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 20,
-                  ),
-                ),
-              ],
+            Text(
+              'Attendance Chart',
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.w900,
+                fontSize: 20,
+              ),
             ),
             const SizedBox(height: 20),
             SizedBox(
@@ -2861,7 +3219,7 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
   Color _getStatusColor(String status) {
     switch (status) {
       case 'present':
-        return Colors.green;
+        return const Color(0xFF84BCDA);
       case 'half_day':
         return Colors.orange;
       case 'absent':
@@ -2977,8 +3335,8 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [
-            Colors.green[400]!,
-            Colors.green[600]!,
+            const Color(0xFF84BCDA)!,
+            const Color(0xFF0570B0)!,
           ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
@@ -2986,7 +3344,7 @@ class _GenericDashboardState extends State<GenericDashboard> with TickerProvider
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.green.withOpacity(0.4),
+            color: const Color(0xFF84BCDA).withOpacity(0.4),
             blurRadius: 15,
             offset: const Offset(0, 8),
           ),
@@ -4108,4 +4466,5 @@ class _RotatingIconState extends State<_RotatingIcon>
     );
   }
 }
+
 

@@ -1,0 +1,34 @@
+TESTING: POST https://152.42.240.220/api/auth/login/
+STATUS: 400
+MSG: {"email":["This field is required."]}
+--------------------
+TESTING: POST https://152.42.240.220/api/auth/login
+STATUS: 405
+MSG: {"detail":"Method \"GET\" not allowed."}
+--------------------
+TESTING: POST https://152.42.240.220/api/auth/check-user-by-email/
+STATUS: 404
+MSG: 
+<!doctype html>
+<html lang="en">
+<head>
+  <title>Not Found</title>
+</head>
+<body>
+  <h1>Not Found</
+--------------------
+TESTING: GET https://152.42.240.220/api/auth/my-role/
+STATUS: 404
+MSG: 
+<!doctype html>
+<html lang="en">
+<head>
+  <title>Not Found</title>
+</head>
+<body>
+  <h1>Not Found</
+--------------------
+TESTING: GET https://152.42.240.220/admin/
+STATUS: 200
+MSG: <!DOCTYPE html><!--z648qDzOyllJlS8gLuPUc--><html lang="en" style="background-color:#F8FAFC"><head><m
+--------------------

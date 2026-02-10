@@ -51,6 +51,7 @@ dependencies:
   hive_flutter: ^1.1.0
   connectivity_plus: ^6.0.5
   uuid: ^4.5.1
+  flutter_svg: ^2.0.10
 
 dev_dependencies:
   flutter_test:
@@ -106,3 +107,17 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+  
+  fonts:
+    - family: Etna Sans Serif
+      fonts:
+        - asset: fonts/Etna.ttf
+        - asset: fonts/Etna.ttf
+          weight: 700
+        - asset: fonts/Etna.ttf
+          weight: 300
+        - asset: fonts/Etna.ttf
+          weight: 900
+    - family: Inter
+      fonts:
+        - asset: fonts/Inter-VariableFont_opsz,wght.ttf

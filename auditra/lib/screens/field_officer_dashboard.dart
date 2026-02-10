@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:open_file/open_file.dart';
@@ -17,10 +17,21 @@ import '../models/attendance_model.dart';
 import '../models/project_model.dart';
 import '../models/valuation_model.dart';
 import '../widgets/sync_status_indicator.dart';
+import '../widgets/shared_dashboard_widgets.dart';
 import '../services/offline_storage_service.dart';
+import 'field_officer/components/offline_queue_section.dart';
+import 'field_officer/components/field_officer_project_card.dart';
 import 'login_screen.dart';
 import 'generic_dashboard.dart';
 import 'valuation_form_screen.dart';
+import 'field_officer/styles/field_officer_styles.dart';
+import 'field_officer/components/field_officer_header.dart';
+import 'field_officer/tabs/field_officer_projects_tab.dart';
+import 'field_officer/utils/field_officer_document_manager.dart';
+import 'field_officer/dialogs/project_details_modal.dart';
+import 'field_officer/utils/field_officer_ui_helpers.dart';
+import 'field_officer/dialogs/project_details_modal.dart';
+import 'field_officer/dialogs/valuation_reports_modal.dart';
 
 class FieldOfficerDashboard extends StatefulWidget {
   const FieldOfficerDashboard({super.key});
@@ -55,16 +66,18 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
   // Sync event listener for refreshing offline queue
   Function(Map<String, dynamic>)? _syncListener;
   
-  // Track downloaded documents to force UI refresh
-  Set<int> _downloadedDocuments = {};
-  
-  // Search and sort state
-  final TextEditingController _searchController = TextEditingController();
-  String _sortOption = 'date_asc'; // 'date_asc', 'date_desc', 'title_asc', 'title_desc', 'priority'
 
+  
+  // Document Manager
+  late FieldOfficerDocumentManager _documentManager;
+  
   @override
   void initState() {
     super.initState();
+    _documentManager = FieldOfficerDocumentManager(
+      context: context,
+      setState: setState,
+    );
     _tabController = TabController(length: 2, vsync: this);
     _tabController.addListener(() {
       if (!_tabController.indexIsChanging) {
@@ -81,8 +94,14 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
     // Initialize sync event listener
     _initSyncListener();
     
-    // Initialize search controller listener
-    _searchController.addListener(() => setState(() {}));
+  }
+
+  String _formatPriorityLabel(String priority) {
+    if (priority.isEmpty) return 'Medium';
+    final lower = priority.toLowerCase();
+    if (lower == 'high') return 'High';
+    if (lower == 'low') return 'Low';
+    return 'Medium';
   }
 
   Future<void> _initOfflineMode() async {
@@ -95,21 +114,21 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
       // Clean up old synced valuations on startup
       final cleanedCount = await OfflineStorageService.cleanupSyncedValuations();
       if (cleanedCount > 0) {
-        print('🧹 Cleaned up $cleanedCount old synced valuations on startup');
+        print('ðŸ§¹ Cleaned up $cleanedCount old synced valuations on startup');
       }
       
       // Delete all unsynced valuations that are failing (they have invalid data and can't sync)
       // This removes valuations that fail validation (like estimated_value > 15 digits)
       final deletedCount = await OfflineStorageService.deleteAllUnsyncedValuations();
       if (deletedCount > 0) {
-        print('🗑️ Deleted $deletedCount unsynced valuations with invalid data on startup');
+        print('ðŸ—‘ï¸ Deleted $deletedCount unsynced valuations with invalid data on startup');
         // Refresh the UI after cleanup
         if (mounted) {
           setState(() {});
         }
       }
       
-      print('✅ Offline mode initialized for field officer');
+      print('âœ… Offline mode initialized for field officer');
     } catch (e) {
       print('Warning: Failed to initialize offline mode: $e');
     }
@@ -119,7 +138,7 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
     // NetworkService is already initialized in _initOfflineMode()
     _networkSubscription = NetworkService.networkStatusStream.listen((isOnline) {
       if (mounted) {
-        print('📶 Field Officer Dashboard: Network status changed to ${isOnline ? "Online" : "Offline"}');
+        print('ðŸ“¶ Field Officer Dashboard: Network status changed to ${isOnline ? "Online" : "Offline"}');
         // Refresh projects when network status changes
         _loadProjects();
       }
@@ -132,7 +151,7 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
       if (mounted) {
         final eventType = event['event'] as String?;
         if (eventType == 'syncComplete' || eventType == 'valuationSynced' || eventType == 'syncSuccess') {
-          print('🔄 Sync event received: $eventType - Refreshing offline queue and projects');
+          print('ðŸ”„ Sync event received: $eventType - Refreshing offline queue and projects');
           // Trigger rebuild to refresh offline queue (reads from local storage)
           // Also reload projects to get updated valuations from server
           setState(() {});
@@ -150,7 +169,6 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
       SyncEngine.removeListener(_syncListener!);
     }
     _tabController.dispose();
-    _searchController.dispose();
     super.dispose();
   }
 
@@ -310,7 +328,7 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
                   Expanded(child: Text('Attendance marked successfully!')),
                 ],
               ),
-              backgroundColor: Colors.green,
+              backgroundColor: const Color(0xFF84BCDA),
               behavior: SnackBarBehavior.floating,
               duration: const Duration(seconds: 2),
             ),
@@ -607,182 +625,13 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
     return '$hours:$minutes:$seconds';
   }
 
-  /// Get local file path for a downloaded document
-  Future<String?> _getLocalFilePath(int documentId) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final filePath = prefs.getString('doc_$documentId');
-      if (filePath != null) {
-        final file = File(filePath);
-        if (await file.exists()) {
-          return filePath;
-        } else {
-          // File doesn't exist, remove from preferences
-          await prefs.remove('doc_$documentId');
-        }
-      }
-      return null;
-    } catch (e) {
-      print('Error getting local file path: $e');
-      return null;
-    }
-  }
 
-  /// Check if document is already downloaded
-  Future<bool> _isDocumentDownloaded(int documentId) async {
-    // Check in-memory cache first for immediate UI updates
-    if (_downloadedDocuments.contains(documentId)) {
-      return true;
-    }
-    // Then check actual file system
-    final filePath = await _getLocalFilePath(documentId);
-    if (filePath != null) {
-      _downloadedDocuments.add(documentId);
-      return true;
-    }
-    return false;
-  }
 
-  /// Download document to local storage
-  Future<String?> _downloadDocument(ProjectDocument doc) async {
-    if (doc.fileUrl == null) return null;
 
-    try {
-      // Show loading indicator
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Row(
-              children: [
-                SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                ),
-                SizedBox(width: 16),
-                Text('Downloading document...'),
-              ],
-            ),
-            duration: Duration(seconds: 2),
-          ),
-        );
-      }
 
-      // Get documents directory
-      final appDir = await getApplicationDocumentsDirectory();
-      final documentsDir = Directory('${appDir.path}/project_documents');
-      
-      if (!await documentsDir.exists()) {
-        await documentsDir.create(recursive: true);
-      }
 
-      // Get file extension from URL or filename
-      String fileExtension = '';
-      if (doc.name.contains('.')) {
-        fileExtension = doc.name.split('.').last;
-      } else if (doc.fileUrl!.contains('.')) {
-        final urlParts = doc.fileUrl!.split('.');
-        fileExtension = urlParts.last.split('?').first; // Remove query parameters
-      }
 
-      // Create filename
-      String fileName = 'doc_${doc.id}_${doc.name.replaceAll(RegExp(r'[^\w\s-.]'), '_')}';
-      if (fileExtension.isNotEmpty && !fileName.endsWith('.$fileExtension')) {
-        final fileNameWithoutExt = fileName.split('.').first;
-        fileName = '$fileNameWithoutExt.$fileExtension';
-      }
-      final filePath = '${documentsDir.path}/$fileName';
 
-      // Download file
-      final response = await http.get(Uri.parse(doc.fileUrl!));
-      
-      if (response.statusCode == 200) {
-        final file = File(filePath);
-        await file.writeAsBytes(response.bodyBytes);
-
-        // Save file path to SharedPreferences
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('doc_${doc.id}', filePath);
-
-        // Add to in-memory cache for immediate UI update
-        if (mounted) {
-          setState(() {
-            _downloadedDocuments.add(doc.id);
-          });
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Document downloaded successfully!'),
-              backgroundColor: Colors.green,
-            ),
-          );
-        }
-
-        return filePath;
-      } else {
-        throw Exception('Failed to download: ${response.statusCode}');
-      }
-    } catch (e) {
-      print('Error downloading document: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to download document: ${e.toString()}'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-      return null;
-    }
-  }
-
-  /// View downloaded document
-  Future<void> _viewDownloadedDocument(String filePath) async {
-    try {
-      final file = File(filePath);
-      if (await file.exists()) {
-        // Use open_file which handles FileProvider automatically on Android
-        final result = await OpenFile.open(filePath);
-        
-        if (result.type != ResultType.done && result.type != ResultType.noAppToOpen) {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('Failed to open document: ${result.message ?? "Unknown error"}'),
-                backgroundColor: Colors.red,
-              ),
-            );
-          }
-        } else if (result.type == ResultType.noAppToOpen) {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('No app available to open this file type'),
-                backgroundColor: Colors.orange,
-              ),
-            );
-          }
-        }
-      } else {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Document file not found. Please download again.'),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error opening document: ${e.toString()}'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -1330,202 +1179,15 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
                   style: TextStyle(color: Colors.grey[600]),
                 ),
               ],
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Icon(Icons.person, size: 16, color: Colors.grey[600]),
-                  const SizedBox(width: 4),
-                  Text(
-                    'Coordinator: ${project.coordinatorName ?? project.coordinatorUsername}',
-                    style: TextStyle(color: Colors.grey[700]),
-                  ),
-                  const Spacer(),
-                  Icon(Icons.attach_file, size: 16, color: Colors.grey[600]),
-                  const SizedBox(width: 4),
-                  Text(
-                    '${project.documentsCount} docs',
-                    style: TextStyle(color: Colors.grey[600]),
-                  ),
-                ],
-              ),
-              if (project.startDate != null || project.endDate != null) ...[
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    if (project.startDate != null) ...[
-                      Icon(Icons.calendar_today, size: 14, color: Colors.grey[600]),
-                      const SizedBox(width: 4),
-                      Text(
-                        DateFormat('MMM dd, yyyy').format(project.startDate!),
-                        style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                      ),
-                    ],
-                    if (project.endDate != null) ...[
-                      const SizedBox(width: 16),
-                      Icon(Icons.event, size: 14, color: Colors.grey[600]),
-                      const SizedBox(width: 4),
-                      Text(
-                        DateFormat('MMM dd, yyyy').format(project.endDate!),
-                        style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                      ),
-                    ],
-                  ],
-                ),
-              ],
-                const SizedBox(height: 16),
-                // Action buttons
-                      Row(
-                        children: [
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: () => _viewProjectDetails(project),
-                        icon: const Icon(Icons.info_outline, size: 18),
-                        label: const Text('Project Details'),
-                        style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          side: BorderSide(color: Colors.green[700]!),
-                          foregroundColor: Colors.green[700],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                            Expanded(
-                      child: ElevatedButton.icon(
-                        onPressed: () => _viewValuationReports(project),
-                        icon: const Icon(Icons.assessment, size: 18),
-                        label: const Text('Valuation Reports'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.blue[700],
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                                  ),
-                                ),
-                              ),
-                          ],
-                        ),
-                const SizedBox(height: 12),
-                // Submit to Accessor button
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    onPressed: () => _submitReportsToAccessor(project),
-                    icon: const Icon(Icons.send, size: 18),
-                    label: const Text('Submit to Accessor'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.teal[700],
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                    ),
-                  ),
-                ),
-                    ],
-        ),
-      ),
-      ),
-      // Priority ribbon at top-left corner
-      Positioned(
-        top: 4,
-        left: 8,
-        child: _buildPriorityRibbon(priority),
-      ),
-    ],
-    );
-  }
-  
-  Color _getPriorityColor(String priority) {
-    switch (priority.toLowerCase()) {
-      case 'high':
-        return Colors.red[600]!;
-      case 'low':
-        return Colors.green[600]!;
-      case 'medium':
-      default:
-        return Colors.orange[600]!;
-    }
-  }
-  
-  String _formatPriorityLabel(String priority) {
-    if (priority.isEmpty) return 'Medium';
-    final lower = priority.toLowerCase();
-    if (lower == 'high') return 'High';
-    if (lower == 'low') return 'Low';
-    return 'Medium';
-  }
-  
-  Widget _buildPriorityRibbon(String priority) {
-    final color = _getPriorityColor(priority);
-    final label = _formatPriorityLabel(priority);
-    
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-      decoration: BoxDecoration(
-        color: color,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: color.withOpacity(0.3),
-            blurRadius: 4,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            priority.toLowerCase() == 'high'
-                ? Icons.priority_high
-                : priority.toLowerCase() == 'low'
-                    ? Icons.arrow_downward
-                    : Icons.remove_circle_outline,
-            size: 14,
-            color: Colors.white,
-          ),
-          const SizedBox(width: 4),
-          Text(
-            label,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
             ),
-          ),
-        ],
-      ),
     );
   }
 
-  Color _getProjectStatusColor(String status) {
-    switch (status) {
-      case 'pending':
-        return Colors.orange[100]!;
-      case 'in_progress':
-        return Colors.blue[100]!;
-      case 'completed':
-        return Colors.green[100]!;
-      case 'cancelled':
-        return Colors.red[100]!;
-      default:
-        return Colors.grey[200]!;
-    }
-  }
 
-  Color _getValuationStatusColor(String status) {
-    switch (status) {
-      case 'draft':
-        return Colors.grey[600]!;
-      case 'submitted':
-        return Colors.blue[600]!;
-      case 'reviewed':
-        return Colors.purple[600]!;
-      case 'approved':
-        return Colors.green[600]!;
-      case 'rejected':
-        return Colors.red[600]!;
-      default:
-        return Colors.grey[400]!;
-    }
-  }
+
+
+
+
 
   Future<void> _viewProjectDetails(Project project) async {
     // Fetch fresh project data to ensure valuations are loaded
@@ -1553,232 +1215,11 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
     final screenHeight = MediaQuery.of(context).size.height;
     final isSmallScreen = screenWidth < 360;
     
+    if (!mounted) return;
+
     await showDialog(
       context: context,
-      builder: (context) => Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(isSmallScreen ? 16 : 20)),
-        child: Container(
-          width: screenWidth * (isSmallScreen ? 0.95 : 0.9),
-          constraints: BoxConstraints(
-            maxHeight: screenHeight * (isSmallScreen ? 0.9 : 0.85),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Header with green gradient
-              Container(
-                padding: EdgeInsets.all(isSmallScreen ? 12 : 16),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [Colors.green[600]!, Colors.green[500]!],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  borderRadius: const BorderRadius.only(
-                    topLeft: Radius.circular(20),
-                    topRight: Radius.circular(20),
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.2),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: const Icon(Icons.folder_open, color: Colors.white, size: 20),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-                Text(
-                            finalProject.title,
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: isSmallScreen ? 18 : 20,
-                              fontWeight: FontWeight.bold,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          const SizedBox(height: 6),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.2),
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            child: Text(
-                              finalProject.statusDisplay,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 11,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.close, color: Colors.white, size: 20),
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(),
-                      onPressed: () => Navigator.of(context).pop(),
-                    ),
-                  ],
-                ),
-              ),
-              // Content
-              Flexible(
-                child: SingleChildScrollView(
-                  physics: const BouncingScrollPhysics(),
-                  padding: EdgeInsets.all(isSmallScreen ? 16 : 20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Project Info Section
-                      if (finalProject.description != null) ...[
-                        Card(
-                          elevation: 2,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                          child: Padding(
-                            padding: EdgeInsets.all(isSmallScreen ? 12 : 16),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    Icon(Icons.description, color: Colors.blue[700], size: 20),
-                                    const SizedBox(width: 8),
-                                    const Text(
-                                      'Description',
-                                      style: TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.bold,
-                                        color: Colors.black87,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 12),
-              Text(
-                                  finalProject.description!,
-                                  style: TextStyle(color: Colors.grey[800], fontSize: 14),
-                                ),
-                              ],
-                            ),
-                          ),
-              ),
-              const SizedBox(height: 16),
-                      ],
-                      _buildModernInfoCard(
-                        icon: Icons.flag,
-                        label: 'Priority',
-                        value: _formatPriorityLabel(finalProject.priority ?? 'medium'),
-                        color: _getPriorityColor(finalProject.priority ?? 'medium'),
-                      ),
-                      const SizedBox(height: 12),
-                      _buildModernInfoCard(
-                        icon: Icons.person,
-                        label: 'Coordinator',
-                        value: finalProject.coordinatorName ?? finalProject.coordinatorUsername,
-                        color: Colors.blue,
-                      ),
-                      // Documents Section (if any)
-                      if (finalProject.documents.isNotEmpty) ...[
-                        const SizedBox(height: 24),
-                        Card(
-                          elevation: 2,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                          child: Padding(
-                            padding: EdgeInsets.all(isSmallScreen ? 12 : 16),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    Icon(Icons.insert_drive_file, color: Colors.blue[700], size: 20),
-                                    const SizedBox(width: 8),
-                                    Text(
-                                      'Documents (${finalProject.documents.length})',
-                                      style: const TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.bold,
-                                        color: Colors.black87,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 12),
-                                ...finalProject.documents.map((doc) => Padding(
-                                      padding: const EdgeInsets.only(bottom: 8),
-                                      child: ListTile(
-                                        contentPadding: EdgeInsets.zero,
-                                        leading: Container(
-                                          padding: const EdgeInsets.all(8),
-                                          decoration: BoxDecoration(
-                                            color: Colors.grey[100],
-                                            borderRadius: BorderRadius.circular(8),
-                                          ),
-                                          child: const Icon(Icons.insert_drive_file, color: Colors.grey, size: 20),
-                                        ),
-                                        title: Text(
-                                          doc.name,
-                                          style: const TextStyle(fontWeight: FontWeight.w500),
-                                        ),
-                                        subtitle: Text(
-                                          doc.fileSizeFormatted,
-                                          style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                                        ),
-                      trailing: doc.fileUrl != null
-                                            ? FutureBuilder<bool>(
-                                                key: ValueKey('doc_${doc.id}_${_downloadedDocuments.contains(doc.id)}'),
-                                                future: _isDocumentDownloaded(doc.id),
-                                                builder: (context, snapshot) {
-                                                  final isDownloaded = snapshot.data ?? false;
-                                                  return IconButton(
-                                                    icon: Icon(
-                                                      isDownloaded ? Icons.visibility : Icons.download,
-                                                      size: 20,
-                                                    ),
-                                                    color: Colors.blue[700],
-                                                    tooltip: isDownloaded ? 'View Document' : 'Download Document',
-                                                    onPressed: () async {
-                                                      if (isDownloaded) {
-                                                        // View downloaded file
-                                                        final filePath = await _getLocalFilePath(doc.id);
-                                                        if (filePath != null) {
-                                                          await _viewDownloadedDocument(filePath);
-                                                        }
-                                                      } else {
-                                                        // Download file first
-                                                        await _downloadDocument(doc);
-                                                      }
-                                                    },
-                                );
-                              },
-                            )
-                          : null,
-                                      ),
-                                    )),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
+      builder: (context) => ProjectDetailsModal(project: finalProject),
     );
   }
 
@@ -2536,123 +1977,6 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
     return difference.inDays < 2;
   }
 
-  /// Check if a valuation can be deleted (created within 2 days)
-  bool _canDeleteValuation(Valuation valuation) {
-    final now = DateTime.now();
-    final createdAt = valuation.createdAt;
-    final difference = now.difference(createdAt);
-    
-    // Allow deletion if created within 2 days (48 hours)
-    return difference.inDays < 2;
-  }
-
-  /// Delete a valuation
-  Future<void> _deleteValuation(Valuation valuation, Project project) async {
-    // Confirm deletion
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Delete Report'),
-        content: Text(
-          'Are you sure you want to delete this ${valuation.categoryDisplay} report? '
-          'This action cannot be undone.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirm != true) {
-      return;
-    }
-
-    // Show loading indicator
-    if (context.mounted) {
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => const Center(
-          child: Card(
-            child: Padding(
-              padding: EdgeInsets.all(20.0),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  CircularProgressIndicator(),
-                  SizedBox(height: 16),
-                  Text('Deleting report...'),
-                ],
-              ),
-            ),
-          ),
-        ),
-      );
-    }
-
-    try {
-      // Delete from server
-      final result = await ApiService.deleteValuation(valuation.id);
-
-      // Close loading dialog
-      if (context.mounted) {
-        Navigator.of(context).pop();
-      }
-
-      if (result['success']) {
-        // Show success message
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Report deleted successfully'),
-              backgroundColor: Colors.green,
-            ),
-          );
-        }
-
-        // Close the project detail dialog
-        if (context.mounted) {
-          Navigator.of(context).pop();
-        }
-
-        // Refresh projects list
-        _loadProjects();
-      } else {
-        // Show error message
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(result['message'] ?? 'Failed to delete report'),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
-      }
-    } catch (e) {
-      // Close loading dialog
-      if (context.mounted) {
-        Navigator.of(context).pop();
-      }
-
-      // Show error message
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error deleting report: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
-  }
 
 
 
@@ -2781,7 +2105,7 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Successfully submitted $successCount report(s) to the accessor!'),
-            backgroundColor: Colors.green,
+            backgroundColor: const Color(0xFF84BCDA),
             duration: const Duration(seconds: 3),
           ),
         );
@@ -2863,7 +2187,7 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('PDF report generated successfully!'),
-            backgroundColor: Colors.green,
+            backgroundColor: const Color(0xFF84BCDA),
           ),
         );
       }
@@ -3212,7 +2536,7 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
                         child: _buildSummaryCard(
                           'Present',
                           _summary!.presentDays.toString(),
-                          Colors.green,
+                          const Color(0xFF84BCDA),
                         ),
                       ),
                       const SizedBox(width: 8),
@@ -3260,7 +2584,7 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
                         child: _buildSummaryCard(
                           'Overtime',
                           '${_summary!.totalOvertimeHours.toStringAsFixed(1)}h',
-                          Colors.teal,
+                          const Color(0xFF0570B0),
                         ),
                       ),
                     ],
@@ -3423,7 +2747,7 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
   Color _getStatusColor(String status) {
     switch (status) {
       case 'present':
-        return Colors.green;
+        return const Color(0xFF84BCDA);
       case 'half_day':
         return Colors.orange;
       case 'absent':
@@ -3539,8 +2863,8 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [
-            Colors.green[400]!,
-            Colors.green[600]!,
+            const Color(0xFF84BCDA)!,
+            const Color(0xFF0570B0)!,
           ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
@@ -3548,7 +2872,7 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.green.withOpacity(0.4),
+            color: const Color(0xFF84BCDA).withOpacity(0.4),
             blurRadius: 15,
             offset: const Offset(0, 8),
           ),

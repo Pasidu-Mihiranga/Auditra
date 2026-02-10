@@ -131,7 +131,7 @@ class _SyncStatusIndicatorState extends State<SyncStatusIndicator> {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(event['message'] ?? 'Sync completed successfully'),
-              backgroundColor: Colors.green,
+              backgroundColor: const Color(0xFF84BCDA),
               duration: const Duration(seconds: 3),
             ),
           );
@@ -164,10 +164,10 @@ class _SyncStatusIndicatorState extends State<SyncStatusIndicator> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         decoration: BoxDecoration(
-          color: _isOnline ? Colors.green.withOpacity(0.1) : Colors.orange.withOpacity(0.1),
+          color: _isOnline ? const Color(0xFF84BCDA).withOpacity(0.1) : Colors.orange.withOpacity(0.1),
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
-            color: _isOnline ? Colors.green : Colors.orange,
+            color: _isOnline ? const Color(0xFF84BCDA) : Colors.orange,
             width: 1,
           ),
         ),
@@ -182,14 +182,14 @@ class _SyncStatusIndicatorState extends State<SyncStatusIndicator> {
                     child: CircularProgressIndicator(
                       strokeWidth: 2,
                       valueColor: AlwaysStoppedAnimation<Color>(
-                        _isOnline ? Colors.green : Colors.orange,
+                        _isOnline ? const Color(0xFF84BCDA) : Colors.orange,
                       ),
                     ),
                   )
                 : Icon(
                     _isOnline ? Icons.cloud_done : Icons.cloud_off,
                     size: 16,
-                    color: _isOnline ? Colors.green : Colors.orange,
+                    color: _isOnline ? const Color(0xFF84BCDA) : Colors.orange,
                   ),
             const SizedBox(width: 6),
             Text(
@@ -197,7 +197,7 @@ class _SyncStatusIndicatorState extends State<SyncStatusIndicator> {
               style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
-                color: _isOnline ? Colors.green[700] : Colors.orange[700],
+                color: _isOnline ? const Color(0xFF0570B0) : Colors.orange[700],
               ),
             ),
             if (_pendingCount > 0) ...[

@@ -63,7 +63,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                   Expanded(child: Text('Password changed successfully!')),
                 ],
               ),
-              backgroundColor: Colors.green,
+              backgroundColor: const Color(0xFF84BCDA),
               behavior: SnackBarBehavior.floating,
             ),
           );

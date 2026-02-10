@@ -342,7 +342,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             icon: Icons.check_circle,
                             title: 'Completed',
                             value: '0',
-                            color: Colors.green,
+                            color: const Color(0xFF84BCDA),
                           ),
                         ),
                         const SizedBox(width: 16),

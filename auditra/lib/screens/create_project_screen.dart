@@ -1,3 +1,5 @@
+import 'dart:convert';
+import 'dart:ui'; // Required for ImageFilter
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../services/api_service.dart';
@@ -398,7 +400,7 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
                   Expanded(child: Text(result['message'] ?? 'Client account created successfully')),
                 ],
               ),
-              backgroundColor: Colors.green,
+              backgroundColor: const Color(0xFF84BCDA),
             ),
           );
         }
@@ -477,7 +479,7 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
                   Expanded(child: Text(result['message'] ?? 'Agent account created successfully')),
                 ],
               ),
-              backgroundColor: Colors.green,
+              backgroundColor: const Color(0xFF84BCDA),
             ),
           );
         }
@@ -673,7 +675,7 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
                   Expanded(child: Text('Project created successfully!')),
                 ],
               ),
-              backgroundColor: Colors.green,
+              backgroundColor: const Color(0xFF84BCDA),
               behavior: SnackBarBehavior.floating,
             ),
           );
@@ -699,9 +701,9 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
       return Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: Colors.blue.shade50,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: Colors.blue.shade200),
+          color: const Color(0xFFDAF6EF),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: const Color(0xFF4CAF50).withOpacity(0.3)),
         ),
         child: Row(
           children: [
@@ -710,13 +712,13 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
               height: 16,
               child: CircularProgressIndicator(
                 strokeWidth: 2,
-                valueColor: AlwaysStoppedAnimation<Color>(Colors.blue.shade700),
+                valueColor: AlwaysStoppedAnimation<Color>(const Color(0xFF4CAF50)),
               ),
             ),
             const SizedBox(width: 8),
-            Text(
+            const Text(
               'Checking client...',
-              style: TextStyle(color: Colors.blue.shade700, fontSize: 13),
+              style: TextStyle(color: Color(0xFF2E7D32), fontSize: 13, fontWeight: FontWeight.w500),
             ),
           ],
         ),
@@ -732,18 +734,18 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
       return Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: Colors.green.shade50,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: Colors.green.shade200),
+          color: const Color(0xFFE8F5E9), // Light Green
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: const Color(0xFFA5D6A7)),
         ),
         child: Row(
           children: [
-            Icon(Icons.check_circle, color: Colors.green.shade700, size: 20),
+            const Icon(Icons.check_circle, color: Color(0xFF2E7D32), size: 20),
             const SizedBox(width: 8),
             Expanded(
               child: Text(
                 _clientCheckMessage ?? 'Client already exists',
-                style: TextStyle(color: Colors.green.shade700, fontSize: 13, fontWeight: FontWeight.w500),
+                style: const TextStyle(color: Color(0xFF2E7D32), fontSize: 13, fontWeight: FontWeight.w600),
               ),
             ),
           ],
@@ -756,30 +758,30 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: Colors.orange.shade50,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: Colors.orange.shade200),
+              color: const Color(0xFFFFEBEE), // Light Red/Pink for warning
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFFFFCDD2)),
             ),
             child: Row(
               children: [
-                Icon(Icons.info_outline, color: Colors.orange.shade700, size: 20),
+                const Icon(Icons.info_outline, color: Color(0xFFC62828), size: 20),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     _clientCheckMessage ?? 'Client does not exist',
-                    style: TextStyle(color: Colors.orange.shade700, fontSize: 13, fontWeight: FontWeight.w500),
+                    style: const TextStyle(color: Color(0xFFC62828), fontSize: 13, fontWeight: FontWeight.w500),
                   ),
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 12),
           SizedBox(
-            height: 40,
+            height: 48, // Taller button
             child: ElevatedButton.icon(
               onPressed: _creatingClient ? null : _createClientAccount,
               icon: _creatingClient
-                  ? SizedBox(
+                  ? const SizedBox(
                       width: 16,
                       height: 16,
                       child: CircularProgressIndicator(
@@ -787,14 +789,19 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
                         valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                       ),
                     )
-                  : const Icon(Icons.person_add, size: 18),
-              label: Text(_creatingClient ? 'Creating...' : 'Create Client'),
+                  : const Icon(Icons.person_add_rounded, size: 20),
+              label: Text(
+                _creatingClient ? 'Creating...' : 'Create Client',
+                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+              ),
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.blue.shade700,
+                backgroundColor: const Color(0xFF4CAF50), // Green Theme
                 foregroundColor: Colors.white,
+                elevation: 2,
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(12),
                 ),
+                padding: const EdgeInsets.symmetric(vertical: 12),
               ),
             ),
           ),
@@ -808,9 +815,9 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
       return Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: Colors.blue.shade50,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: Colors.blue.shade200),
+          color: const Color(0xFFDAF6EF),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: const Color(0xFF4CAF50).withOpacity(0.3)),
         ),
         child: Row(
           children: [
@@ -819,13 +826,13 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
               height: 16,
               child: CircularProgressIndicator(
                 strokeWidth: 2,
-                valueColor: AlwaysStoppedAnimation<Color>(Colors.blue.shade700),
+                valueColor: AlwaysStoppedAnimation<Color>(const Color(0xFF4CAF50)),
               ),
             ),
             const SizedBox(width: 8),
-            Text(
+            const Text(
               'Checking agent...',
-              style: TextStyle(color: Colors.blue.shade700, fontSize: 13),
+              style: TextStyle(color: Color(0xFF2E7D32), fontSize: 13, fontWeight: FontWeight.w500),
             ),
           ],
         ),
@@ -841,18 +848,18 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
       return Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: Colors.green.shade50,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: Colors.green.shade200),
+          color: const Color(0xFFE8F5E9),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: const Color(0xFFA5D6A7)),
         ),
         child: Row(
           children: [
-            Icon(Icons.check_circle, color: Colors.green.shade700, size: 20),
+            const Icon(Icons.check_circle, color: Color(0xFF2E7D32), size: 20),
             const SizedBox(width: 8),
             Expanded(
               child: Text(
                 _agentCheckMessage ?? 'Agent already exists',
-                style: TextStyle(color: Colors.green.shade700, fontSize: 13, fontWeight: FontWeight.w500),
+                style: const TextStyle(color: Color(0xFF2E7D32), fontSize: 13, fontWeight: FontWeight.w600),
               ),
             ),
           ],
@@ -865,30 +872,30 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: Colors.orange.shade50,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: Colors.orange.shade200),
+              color: const Color(0xFFFFEBEE),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFFFFCDD2)),
             ),
             child: Row(
               children: [
-                Icon(Icons.info_outline, color: Colors.orange.shade700, size: 20),
+                const Icon(Icons.info_outline, color: Color(0xFFC62828), size: 20),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     _agentCheckMessage ?? 'Agent does not exist',
-                    style: TextStyle(color: Colors.orange.shade700, fontSize: 13, fontWeight: FontWeight.w500),
+                    style: const TextStyle(color: Color(0xFFC62828), fontSize: 13, fontWeight: FontWeight.w500),
                   ),
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 12),
           SizedBox(
-            height: 40,
+            height: 48,
             child: ElevatedButton.icon(
               onPressed: _creatingAgent ? null : _createAgentAccount,
               icon: _creatingAgent
-                  ? SizedBox(
+                  ? const SizedBox(
                       width: 16,
                       height: 16,
                       child: CircularProgressIndicator(
@@ -896,14 +903,19 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
                         valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                       ),
                     )
-                  : const Icon(Icons.person_add, size: 18),
-              label: Text(_creatingAgent ? 'Creating...' : 'Create Agent'),
+                  : const Icon(Icons.person_add_rounded, size: 20),
+              label: Text(
+                _creatingAgent ? 'Creating...' : 'Create Agent',
+                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+              ),
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.blue.shade700,
+                backgroundColor: const Color(0xFF4CAF50),
                 foregroundColor: Colors.white,
+                elevation: 2,
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(12),
                 ),
+                padding: const EdgeInsets.symmetric(vertical: 12),
               ),
             ),
           ),
@@ -916,9 +928,9 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
     return InputDecoration(
       hintText: hintText,
       hintStyle: TextStyle(color: Colors.grey[400], fontSize: 15),
-      prefixIcon: Icon(icon, color: Colors.blue[700], size: 20),
+      prefixIcon: Icon(icon, color: Colors.grey[600], size: 20),
       filled: true,
-      fillColor: Colors.grey[50],
+      fillColor: Colors.white,
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
         borderSide: BorderSide(color: Colors.grey[300]!),
@@ -929,7 +941,7 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide(color: Colors.blue[700]!, width: 2),
+        borderSide: const BorderSide(color: Color(0xFF4CAF50), width: 2),
       ),
       errorBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
@@ -943,28 +955,62 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
     );
   }
 
-  Widget _buildSectionCard({required String title, required IconData icon, required Widget child}) {
-    return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
+  Widget _buildSectionCard({required String title, required IconData icon, required Widget child, Widget? trailing}) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.6), // Semi-transparent for glass effect
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: Colors.white.withOpacity(0.5),
+          width: 1.5,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF4CAF50).withOpacity(0.05), // Subtle green shadow
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(20),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15), // Frosted glass blur
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(icon, color: Theme.of(context).primaryColor, size: 20),
-                const SizedBox(width: 8),
-                Text(
-                  title,
-                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF4CAF50).withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Icon(icon, color: const Color(0xFF4CAF50), size: 20),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        title,
+                        style: const TextStyle(
+                          fontSize: 16, 
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF1F2937),
+                          fontFamily: 'Etna Sans Serif',
+                        ),
+                      ),
+                    ),
+                    if (trailing != null) trailing,
+                  ],
                 ),
+                const SizedBox(height: 20),
+                child,
               ],
             ),
-            const SizedBox(height: 16),
-            child,
-          ],
+          ),
         ),
       ),
     );
@@ -984,26 +1030,43 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
           decoration: BoxDecoration(
-            color: isSelected ? color.withOpacity(0.15) : Colors.grey[100],
+            color: isSelected ? color.withOpacity(0.05) : Colors.white,
             border: Border.all(
-              color: isSelected ? color : Colors.grey[300]!,
-              width: isSelected ? 2 : 1,
+              color: isSelected ? color : Colors.grey[200]!,
+              width: isSelected ? 2 : 1.5,
             ),
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: isSelected
+                ? [
+                    BoxShadow(
+                      color: color.withOpacity(0.15),
+                      blurRadius: 8,
+                      offset: const Offset(0, 4),
+                    )
+                  ]
+                : [],
           ),
           child: Column(
             children: [
-              Icon(
-                icon,
-                color: isSelected ? color : Colors.grey[600],
-                size: 24,
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: isSelected ? color.withOpacity(0.1) : Colors.transparent,
+                ),
+                child: Icon(
+                  icon,
+                  color: isSelected ? color : Colors.grey[400],
+                  size: 24,
+                ),
               ),
               const SizedBox(height: 4),
               Text(
                 label,
                 style: TextStyle(
-                  color: isSelected ? color : Colors.grey[700],
-                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                  color: isSelected ? color : Colors.grey[500],
+                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
                   fontSize: 12,
                 ),
               ),
@@ -1019,7 +1082,7 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
     required IconData icon,
     required DateTime? date,
     required VoidCallback onTap,
-    required bool isRequired,
+    bool isRequired = false,
   }) {
     return InkWell(
       onTap: _isRecreating ? null : onTap,
@@ -1029,20 +1092,18 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
         decoration: BoxDecoration(
           color: _isRecreating ? Colors.grey[100] : Colors.grey[50],
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: isRequired && date == null ? Colors.red[300]! : Colors.grey[300]!,
-          ),
+          border: Border.all(color: Colors.grey[300]!),
         ),
         child: Row(
           children: [
-            Icon(icon, color: Theme.of(context).primaryColor),
+            Icon(icon, color: const Color(0xFF4CAF50)),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    label,
+                    isRequired ? '$label *' : label,
                     style: TextStyle(
                       fontSize: 12,
                       color: Colors.grey[600],
@@ -1073,30 +1134,22 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFFDAF6EF),
       body: Form(
         key: formKey,
         child: Column(
           children: [
             // Modern Header
-            Container(
-              padding: EdgeInsets.only(
-                top: MediaQuery.of(context).padding.top + 8,
-                bottom: 20,
-                left: 20,
-                right: 20,
-              ),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [Theme.of(context).primaryColor, Theme.of(context).primaryColor.withOpacity(0.7)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-              ),
-              child: Row(
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.arrow_back, color: Colors.white),
-                    onPressed: () => Navigator.of(context).pop(),
+            // Glassmorphic Header
+            ClipRect(
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
+                child: Container(
+                  padding: EdgeInsets.only(
+                    top: MediaQuery.of(context).padding.top + 8,
+                    bottom: 20,
+                    left: 20,
+                    right: 20,
                   ),
                   const SizedBox(width: 8),
                   Container(
@@ -1118,7 +1171,29 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
                       ),
                     ),
                   ),
-                ],
+                  child: Row(
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.arrow_back, color: Color(0xFF1F2937)),
+                        onPressed: () => Navigator.of(context).pop(),
+                      ),
+                      const SizedBox(width: 8),
+                      const Icon(Icons.create_new_folder_outlined, color: Color(0xFF1F2937), size: 28),
+                      const SizedBox(width: 16),
+                      const Expanded(
+                        child: Text(
+                          'Create New Project',
+                          style: TextStyle(
+                            fontFamily: 'Etna Sans Serif',
+                            color: Color(0xFF1F2937),
+                            fontSize: 24,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ),
             // Scrollable Content
@@ -1142,16 +1217,9 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
                             TextFormField(
                               controller: titleController,
                               style: const TextStyle(fontSize: 16),
-                              decoration: InputDecoration(
-                                labelText: 'Project Title *',
-                                hintText: 'Enter project title',
-                                prefixIcon: const Icon(Icons.title),
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                filled: true,
-                                fillColor: Colors.grey[50],
-                                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                              decoration: _buildInputDecoration(
+                                hintText: 'Project Title *',
+                                icon: Icons.title,
                               ),
                               validator: (value) {
                                 if (value == null || value.trim().isEmpty) {
@@ -1164,18 +1232,11 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
                             TextFormField(
                               controller: descriptionController,
                               style: const TextStyle(fontSize: 16),
-                              decoration: InputDecoration(
-                                labelText: 'Description *',
-                                hintText: 'Enter project description',
-                                prefixIcon: const Icon(Icons.description),
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                filled: true,
-                                fillColor: Colors.grey[50],
-                                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                              decoration: _buildInputDecoration(
+                                hintText: 'Description *',
+                                icon: Icons.description_outlined,
                               ),
-                              maxLines: 1,
+                              maxLines: 1, // Keep single line to look like other inputs as per design
                               validator: (value) {
                                 if (value == null || value.trim().isEmpty) {
                                   return 'Description is required';
@@ -1197,22 +1258,22 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
                             _buildPriorityChipModern(
                               label: 'High',
                               value: 'high',
-                              color: Colors.red,
-                              icon: Icons.priority_high,
+                              color: Colors.red[500]!,
+                              icon: Icons.priority_high_rounded,
                             ),
                             const SizedBox(width: 12),
                             _buildPriorityChipModern(
                               label: 'Medium',
                               value: 'medium',
-                              color: Colors.orange,
-                              icon: Icons.remove_circle_outline,
+                              color: Colors.orange[500]!,
+                              icon: Icons.remove_circle_outline_rounded,
                             ),
                             const SizedBox(width: 12),
                             _buildPriorityChipModern(
                               label: 'Low',
                               value: 'low',
-                              color: Colors.green,
-                              icon: Icons.arrow_downward,
+                              color: const Color(0xFF84BCDA)!,
+                              icon: Icons.arrow_downward_rounded,
                             ),
                           ],
                         ),
@@ -1239,8 +1300,8 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
                                   builder: (context, child) {
                                     return Theme(
                                       data: Theme.of(context).copyWith(
-                                        colorScheme: ColorScheme.light(
-                                          primary: Theme.of(context).primaryColor,
+                                        colorScheme: const ColorScheme.light(
+                                          primary: Color(0xFF4CAF50),
                                           onPrimary: Colors.white,
                                           surface: Colors.white,
                                           onSurface: Colors.black87,
@@ -1270,8 +1331,8 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
                                   builder: (context, child) {
                                     return Theme(
                                       data: Theme.of(context).copyWith(
-                                        colorScheme: ColorScheme.light(
-                                          primary: Theme.of(context).primaryColor,
+                                        colorScheme: const ColorScheme.light(
+                                          primary: Color(0xFF4CAF50),
                                           onPrimary: Colors.white,
                                           surface: Colors.white,
                                           onSurface: Colors.black87,
@@ -1537,8 +1598,27 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
                                   readOnly: _isRecreating,
                                 ),
                               ],
+                              const SizedBox(height: 16),
+                              TextFormField(
+                                controller: agentAddressController,
+                                style: const TextStyle(fontSize: 16),
+                                decoration: _buildInputDecoration(
+                                  hintText: 'Enter agent address',
+                                  icon: Icons.location_on_outlined,
+                                ),
+                                maxLines: 2,
+                              ),
+                              const SizedBox(height: 16),
+                              TextFormField(
+                                controller: agentLicenseController,
+                                style: const TextStyle(fontSize: 16),
+                                decoration: _buildInputDecoration(
+                                  hintText: 'Agent license number (optional)',
+                                  icon: Icons.verified_outlined,
+                                ),
+                              ),
                             ],
-                          ),
+                          ],
                         ),
                       ),
                       const SizedBox(height: 24),
@@ -1553,7 +1633,8 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),
                             ),
-                            elevation: 2,
+                            backgroundColor: const Color(0xFF4CAF50),
+                            foregroundColor: Colors.white,
                           ),
                           child: _isCreating
                               ? const SizedBox(

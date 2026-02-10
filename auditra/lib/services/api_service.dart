@@ -49,7 +49,8 @@ class ApiService {
   // Production API URL - Update this to your VPS IP or domain
   // For local development, use: 'http://10.0.2.2:8000/api' (Android emulator)
   // For production VPS, use: 'http://152.42.240.220/api'
-  static const String baseUrl = 'http://152.42.240.220/api';
+  // For local development with physical device (USB Debugging)
+  static const String baseUrl = 'http://172.20.10.5:8000/api';
 
   /// Check if offline mode should be used (only for field officers)
   static Future<bool> _shouldUseOfflineMode() async {
@@ -156,6 +157,9 @@ class ApiService {
     required String password,
   }) async {
     try {
+      print('DEBUG: Attempting login to $baseUrl/auth/login/');
+      print('DEBUG: Request body: ${jsonEncode({'username': username, 'password': '***'})}');
+
       final response = await http.post(
         Uri.parse('$baseUrl/auth/login/'),
         headers: {'Content-Type': 'application/json'},
@@ -169,6 +173,9 @@ class ApiService {
           throw Exception('Connection timeout. Please check if the backend server is running.');
         },
       );
+
+      print('DEBUG: Response status: ${response.statusCode}');
+      print('DEBUG: Response body prefix: ${response.body.substring(0, response.body.length > 100 ? 100 : response.body.length)}');
 
       // Check if response is HTML (error page) before parsing JSON
       final parsedData = _safeParseJsonResponse(response);

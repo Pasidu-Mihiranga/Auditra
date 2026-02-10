@@ -5,6 +5,7 @@ import '../services/api_service.dart';
 import '../services/pdf_service.dart';
 import '../models/project_model.dart';
 import '../models/valuation_model.dart';
+import '../widgets/shared_dashboard_widgets.dart';
 import 'login_screen.dart';
 import 'generic_dashboard.dart';
 
@@ -235,6 +236,7 @@ class _AccessorDashboardState extends State<AccessorDashboard> with TickerProvid
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: DashboardColors.background,
       appBar: AppBar(
         title: Column(
           mainAxisSize: MainAxisSize.min,
@@ -663,7 +665,7 @@ class _AccessorDashboardState extends State<AccessorDashboard> with TickerProvid
       case 'high':
         return Colors.red[600]!;
       case 'low':
-        return Colors.green[600]!;
+        return const Color(0xFF0570B0)!;
       case 'medium':
       default:
         return Colors.orange[600]!;
@@ -728,7 +730,7 @@ class _AccessorDashboardState extends State<AccessorDashboard> with TickerProvid
       case 'in_progress':
         return Colors.blue[100]!;
       case 'completed':
-        return Colors.green[100]!;
+        return const Color(0xFFFFF8E7)!;
       case 'cancelled':
         return Colors.red[100]!;
       default:
@@ -1061,7 +1063,7 @@ class _AccessorDashboardState extends State<AccessorDashboard> with TickerProvid
       case 'reviewed':
         return Colors.purple[600]!;
       case 'approved':
-        return Colors.green[600]!;
+        return const Color(0xFF0570B0)!;
       case 'rejected':
         return Colors.red[600]!;
       default:
@@ -1260,7 +1262,7 @@ class _AccessorDashboardState extends State<AccessorDashboard> with TickerProvid
                                         icon: Icons.person_outline,
                                         label: 'Field Officer',
                                         value: finalProject.assignedFieldOfficerName ?? finalProject.assignedFieldOfficerUsername ?? 'N/A',
-                                        color: Colors.green,
+                                        color: const Color(0xFF84BCDA),
                                       ),
                                     ],
                                   ],
@@ -1968,7 +1970,7 @@ class _AccessorDashboardState extends State<AccessorDashboard> with TickerProvid
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('PDF report generated successfully!'),
-            backgroundColor: Colors.green,
+            backgroundColor: const Color(0xFF84BCDA),
           ),
         );
       }

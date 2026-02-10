@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 import '../models/user_model.dart';
+import '../widgets/shared_dashboard_widgets.dart';
 import 'login_screen.dart';
 
 class AdminDashboard extends StatefulWidget {
@@ -123,7 +124,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Role assigned successfully'),
-            backgroundColor: Colors.green,
+            backgroundColor: const Color(0xFF84BCDA),
             duration: Duration(seconds: 2),
           ),
         );
@@ -142,23 +143,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
   }
 
   Future<void> _logout() async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Logout'),
-        content: const Text('Are you sure you want to logout?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Logout'),
-          ),
-        ],
-      ),
-    );
+    final confirm = await showModernLogoutDialog(context, themeColor: Colors.blue[600]);
 
     if (confirm == true) {
       await ApiService.logout();
@@ -172,6 +157,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: DashboardColors.background,
       appBar: AppBar(
         title: Column(
           mainAxisSize: MainAxisSize.min,
@@ -406,7 +392,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
                                   ? Colors.grey
                                   : user.isAdmin
                                       ? Colors.blue
-                                      : Colors.green,
+                                      : const Color(0xFF84BCDA),
                               child: Text(
                                 user.username[0].toUpperCase(),
                                 style: const TextStyle(color: Colors.white),
@@ -429,7 +415,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
                                       ? Colors.grey[200]
                                       : user.isAdmin
                                           ? Colors.blue[100]
-                                          : Colors.green[100],
+                                          : const Color(0xFFFFF8E7),
                                   padding: EdgeInsets.zero,
                                   materialTapTargetSize:
                                       MaterialTapTargetSize.shrinkWrap,
@@ -460,33 +446,11 @@ class _AdminDashboardState extends State<AdminDashboard> {
 
   Widget _buildStatCard(
       String title, String value, IconData icon, Color color) {
-    return Card(
-      elevation: 2,
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          children: [
-            Icon(icon, size: 32, color: color),
-            const SizedBox(height: 8),
-            Text(
-              value,
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-                color: color,
-              ),
-            ),
-            Text(
-              title,
-              style: const TextStyle(
-                fontSize: 12,
-                color: Colors.grey,
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-      ),
+    return ModernStatCard(
+      title: title,
+      value: value,
+      icon: icon,
+      color: color,
     );
   }
 }

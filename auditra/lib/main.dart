@@ -1,10 +1,22 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'screens/login_screen.dart';
 import 'screens/home_screen.dart';
 import 'services/api_service.dart';
 
+import 'theme/app_colors.dart';
+
 void main() {
+  HttpOverrides.global = MyHttpOverrides();
   runApp(const MyApp());
+}
+
+class MyHttpOverrides extends HttpOverrides {
+  @override
+  HttpClient createHttpClient(SecurityContext? context) {
+    return super.createHttpClient(context)
+      ..badCertificateCallback = (X509Certificate cert, String host, int port) => true;
+  }
 }
 
 class MyApp extends StatelessWidget {
@@ -16,11 +28,25 @@ class MyApp extends StatelessWidget {
       title: 'Auditra',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
+        colorScheme: const ColorScheme.light(
+          primary: AppColors.primary,
+          secondary: AppColors.secondary,
+          tertiary: AppColors.accent,
+          surface: AppColors.surface, // Defined as cream/background
+          background: AppColors.background,
+          error: AppColors.error,
+          onPrimary: Colors.white,
+          onSecondary: Colors.white,
+          onTertiary: Colors.white,
+          onSurface: AppColors.text,
+          onBackground: AppColors.text,
+          onError: Colors.white,
+        ),
         useMaterial3: true,
+        fontFamily: 'Inter',
         elevatedButtonTheme: ElevatedButtonThemeData(
           style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.blue,
+            backgroundColor: AppColors.primary,
             foregroundColor: Colors.white,
           ),
         ),
