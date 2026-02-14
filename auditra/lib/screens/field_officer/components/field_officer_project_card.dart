@@ -20,183 +20,302 @@ class FieldOfficerProjectCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final priority = project.priority ?? 'medium';
-    return Stack(
-      clipBehavior: Clip.none,
-      children: [
-        Card(
-          elevation: 2,
-          margin: const EdgeInsets.only(bottom: 12),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          child: Padding(
-            padding: const EdgeInsets.all(16.0),
+    
+    return Container(
+      margin: const EdgeInsets.only(bottom: 20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF0D47A1).withOpacity(0.08),
+            blurRadius: 15,
+            offset: const Offset(0, 5),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header Gradient Strip
+          Container(
+            height: 6,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: _getStatusGradient(project.status),
+                begin: Alignment.centerLeft,
+                end: Alignment.centerRight,
+              ),
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(20),
+                topRight: Radius.circular(20),
+              ),
+            ),
+          ),
+          
+          Padding(
+            padding: const EdgeInsets.all(20.0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const SizedBox(height: 20), // Space for priority label
+                // Top Row: Status and Priority
                 Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Expanded(
-                      child: Text(
-                        project.title,
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                    Chip(
-                      label: Text(project.statusDisplay),
-                      backgroundColor: _getProjectStatusColor(project.status),
-                    ),
+                    _buildStatusBadge(project.status, project.statusDisplay),
+                    _buildPriorityBadge(priority),
                   ],
                 ),
+                
+                const SizedBox(height: 16),
+                
+                // Title
+                Text(
+                  project.title,
+                  style: const TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF1A1A1A),
+                    letterSpacing: -0.5,
+                    height: 1.2,
+                  ),
+                ),
+                
+                // Description
                 if (project.description != null) ...[
                   const SizedBox(height: 8),
                   Text(
                     project.description!,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(color: Colors.grey[600]),
+                    style: TextStyle(
+                      color: Colors.grey[600],
+                      fontSize: 14,
+                      height: 1.5,
+                    ),
                   ),
                 ],
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Icon(Icons.person, size: 16, color: Colors.grey[600]),
-                    const SizedBox(width: 4),
-                    Text(
-                      'Coordinator: ${project.coordinatorName ?? project.coordinatorUsername}',
-                      style: TextStyle(color: Colors.grey[700]),
-                    ),
-                    const Spacer(),
-                    Icon(Icons.attach_file, size: 16, color: Colors.grey[600]),
-                    const SizedBox(width: 4),
-                    Text(
-                      '${project.documentsCount} docs',
-                      style: TextStyle(color: Colors.grey[600]),
-                    ),
-                  ],
-                ),
-                if (project.startDate != null || project.endDate != null) ...[
-                  const SizedBox(height: 8),
-                  Row(
+                
+                const SizedBox(height: 20),
+                
+                // Info Row
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF5F7FA),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
                     children: [
-                      if (project.startDate != null) ...[
-                        Icon(Icons.calendar_today, size: 14, color: Colors.grey[600]),
-                        const SizedBox(width: 4),
-                        Text(
-                          DateFormat('MMM dd, yyyy').format(project.startDate!),
-                          style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                      Expanded(
+                        child: Row(
+                          children: [
+                            const CircleAvatar(
+                              radius: 12,
+                              backgroundColor: Colors.white,
+                              child: Icon(Icons.person, size: 14, color: AppColors.primary),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Coordinator',
+                                    style: TextStyle(fontSize: 10, color: Colors.grey[600]),
+                                  ),
+                                  Text(
+                                    project.coordinatorName ?? project.coordinatorUsername,
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xFF333333),
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
                         ),
-                      ],
-                      if (project.endDate != null) ...[
-                        const SizedBox(width: 16),
-                        Icon(Icons.event, size: 14, color: Colors.grey[600]),
-                        const SizedBox(width: 4),
-                        Text(
-                          DateFormat('MMM dd, yyyy').format(project.endDate!),
-                          style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                        ),
-                      ],
+                      ),
+                      Container(width: 1, height: 24, color: Colors.grey[300]),
+                      const SizedBox(width: 12),
+                      Row(
+                        children: [
+                          Icon(Icons.calendar_today_rounded, size: 14, color: Colors.grey[500]),
+                          const SizedBox(width: 4),
+                          Text(
+                            project.startDate != null 
+                              ? DateFormat('MMM dd').format(project.startDate!)
+                              : 'N/A',
+                            style: TextStyle(fontSize: 12, color: Colors.grey[700], fontWeight: FontWeight.w500),
+                          ),
+                        ],
+                      ),
                     ],
                   ),
-                ],
-                const SizedBox(height: 16),
-                // Action buttons
+                ),
+                
+                const SizedBox(height: 20),
+                
+                // Actions
                 Row(
                   children: [
                     Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: () => onViewDetails(project),
-                        icon: const Icon(Icons.info_outline, size: 18),
-                        label: const Text('Project Details'),
-                        style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          side: BorderSide(color: const Color(0xFF0570B0)!),
-                          foregroundColor: const Color(0xFF0570B0),
-                        ),
+                      flex: 1,
+                      child: _buildActionButton(
+                        icon: Icons.info_outline_rounded,
+                        label: 'Details',
+                        color: Colors.grey[800]!,
+                        backgroundColor: Colors.white,
+                        borderColor: Colors.grey[300]!,
+                        onTap: () => onViewDetails(project),
                       ),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
-                      child: ElevatedButton.icon(
-                        onPressed: () => onViewReports(project),
-                        icon: const Icon(Icons.assessment, size: 18),
-                        label: const Text('Valuation Reports'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.blue[700],
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                        ),
+                      flex: 1,
+                      child: _buildActionButton(
+                        icon: Icons.assessment_outlined,
+                        label: 'Valuations',
+                        color: const Color(0xFF0D47A1),
+                        backgroundColor: const Color(0xFFE3F2FD),
+                        borderColor: Colors.transparent,
+                        onTap: () => onViewReports(project),
                       ),
                     ),
                   ],
                 ),
                 const SizedBox(height: 12),
-                // Submit to Accessor button
                 SizedBox(
                   width: double.infinity,
-                  child: ElevatedButton.icon(
+                  child: ElevatedButton(
                     onPressed: () => onSubmit(project),
-                    icon: const Icon(Icons.send, size: 18),
-                    label: const Text('Submit to Accessor'),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF0570B0),
+                      backgroundColor: const Color(0xFF0D47A1),
                       foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: const Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          'Submit to Accessor',
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                        SizedBox(width: 8),
+                        Icon(Icons.arrow_forward_rounded, size: 18),
+                      ],
                     ),
                   ),
                 ),
               ],
             ),
           ),
-        ),
-        // Priority ribbon at top-left corner
-        Positioned(
-          top: 4,
-          left: 8,
-          child: _buildPriorityRibbon(priority),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
-  Widget _buildPriorityRibbon(String priority) {
-    final color = _getPriorityColor(priority);
-    final label = _formatPriorityLabel(priority);
+  Widget _buildActionButton({
+    required IconData icon,
+    required String label,
+    required Color color,
+    required Color backgroundColor,
+    required Color borderColor,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          decoration: BoxDecoration(
+            color: backgroundColor,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: borderColor),
+          ),
+          child: Column(
+            children: [
+              Icon(icon, size: 22, color: color),
+              const SizedBox(height: 4),
+              Text(
+                label,
+                style: TextStyle(
+                  color: color,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStatusBadge(String status, String display) {
+    Color color;
+    Color bg;
+    
+    switch (status) {
+      case 'pending':
+        color = const Color(0xFFF57C00);
+        bg = const Color(0xFFFFF3E0);
+        break;
+      case 'in_progress':
+        color = const Color(0xFF1976D2);
+        bg = const Color(0xFFE3F2FD);
+        break;
+      case 'completed':
+        color = const Color(0xFF388E3C);
+        bg = const Color(0xFFE8F5E9);
+        break;
+      case 'cancelled':
+        color = const Color(0xFFD32F2F);
+        bg = const Color(0xFFFFEBEE);
+        break;
+      default:
+        color = Colors.grey[700]!;
+        bg = Colors.grey[100]!;
+    }
     
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        color: color,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: color.withOpacity(0.3),
-            blurRadius: 4,
-            offset: const Offset(0, 2),
-          ),
-        ],
+        color: bg,
+        borderRadius: BorderRadius.circular(20),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(
-            priority.toLowerCase() == 'high'
-                ? Icons.priority_high
-                : priority.toLowerCase() == 'low'
-                    ? Icons.arrow_downward
-                    : Icons.remove_circle_outline,
-            size: 14,
-            color: Colors.white,
+          Container(
+            width: 6,
+            height: 6,
+            decoration: BoxDecoration(
+              color: color,
+              shape: BoxShape.circle,
+            ),
           ),
-          const SizedBox(width: 4),
+          const SizedBox(width: 6),
           Text(
-            label,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
+            display,
+            style: TextStyle(
+              color: color,
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
             ),
           ),
         ],
@@ -204,38 +323,50 @@ class FieldOfficerProjectCard extends StatelessWidget {
     );
   }
 
-  Color _getPriorityColor(String priority) {
+  Widget _buildPriorityBadge(String priority) {
+    Color color;
+    
     switch (priority.toLowerCase()) {
       case 'high':
-        return Colors.red[600]!;
+        color = const Color(0xFFD32F2F);
+        break;
       case 'low':
-        return const Color(0xFF0570B0)!;
+        color = const Color(0xFF388E3C);
+        break;
       case 'medium':
       default:
-        return Colors.orange[600]!;
+        color = const Color(0xFFF57C00);
     }
+    
+    return Row(
+      children: [
+        Icon(Icons.flag_rounded, size: 14, color: color),
+        const SizedBox(width: 4),
+        Text(
+          priority.toUpperCase(),
+          style: TextStyle(
+            color: color,
+            fontSize: 11,
+            fontWeight: FontWeight.bold,
+            letterSpacing: 0.5,
+          ),
+        ),
+      ],
+    );
   }
 
-  String _formatPriorityLabel(String priority) {
-    if (priority.isEmpty) return 'Medium';
-    final lower = priority.toLowerCase();
-    if (lower == 'high') return 'High';
-    if (lower == 'low') return 'Low';
-    return 'Medium';
-  }
-
-  Color _getProjectStatusColor(String status) {
+  List<Color> _getStatusGradient(String status) {
     switch (status) {
       case 'pending':
-        return Colors.orange[100]!;
+        return [const Color(0xFFFFA726), const Color(0xFFFB8C00)];
       case 'in_progress':
-        return Colors.blue[100]!;
+        return [const Color(0xFF42A5F5), const Color(0xFF1E88E5)];
       case 'completed':
-        return const Color(0xFFFFF8E7)!;
+        return [const Color(0xFF66BB6A), const Color(0xFF43A047)];
       case 'cancelled':
-        return Colors.red[100]!;
+        return [const Color(0xFFEF5350), const Color(0xFFE53935)];
       default:
-        return Colors.grey[200]!;
+        return [Colors.grey[400]!, Colors.grey[600]!];
     }
   }
 }

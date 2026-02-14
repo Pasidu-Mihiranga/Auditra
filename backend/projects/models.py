@@ -147,3 +147,30 @@ class ProjectDocument(models.Model):
     def __str__(self):
         return f"{self.name} - {self.project.title}"
 
+class ProjectStatusHistory(models.Model):
+    """Tracks status changes and significant events for projects"""
+    
+    project = models.ForeignKey(
+        Project,
+        on_delete=models.CASCADE,
+        related_name='history'
+    )
+    status = models.CharField(max_length=20, choices=Project.STATUS_CHOICES)
+    stage = models.CharField(max_length=100, blank=True, null=True)
+    notes = models.TextField(blank=True)
+    created_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name='project_events'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        db_table = 'project_status_history'
+        verbose_name = 'Project Status History'
+        verbose_name_plural = 'Project Status Histories'
+        ordering = ['created_at']
+    
+    def __str__(self):
+        return f"{self.project.title} - {self.status} at {self.created_at}"

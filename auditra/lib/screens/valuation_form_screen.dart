@@ -741,6 +741,73 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
     }
   }
 
+  Future<void> _submitValuation() async {
+    if (_valuationId == null) return;
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Submit Report'),
+        content: const Text(
+          'Are you sure you want to submit this report to the accessor? '
+          'Once submitted, it can only be edited for 2 hours.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: TextButton.styleFrom(foregroundColor: Colors.blue[700]),
+            child: const Text('Submit'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    setState(() => _isSubmitting = true);
+
+    try {
+      final result = await ApiService.submitValuation(_valuationId!);
+      if (result['success']) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Report submitted successfully!'),
+              backgroundColor: Color(0xFF84BCDA),
+            ),
+          );
+          Navigator.of(context).pop(true);
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(result['message'] ?? 'Failed to submit report'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isSubmitting = false);
+      }
+    }
+  }
+
   Future<void> _deletePhoto(ValuationPhoto photo) async {
     final confirm = await showDialog<bool>(
       context: context,
@@ -824,81 +891,80 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
     final isSmallScreen = screenWidth < 360;
     
     return Scaffold(
+      backgroundColor: const Color(0xFFF5F7FA),
       body: Form(
         key: _formKey,
-        child: Column(
-          children: [
-            // Modern Header
-            Container(
-              padding: EdgeInsets.only(
-                top: MediaQuery.of(context).padding.top + 8,
-                bottom: 16,
-                left: 16,
-                right: 16,
-              ),
-              decoration: BoxDecoration(
-                color: Colors.blue[500]!,
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.1),
-                    blurRadius: 4,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: Row(
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.arrow_back, color: Colors.white),
-                    onPressed: () => Navigator.of(context).pop(),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.blue[400]!,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Icon(
-                      widget.existingValuation != null ? Icons.edit : Icons.add_circle_outline,
-                      color: Colors.white,
-                      size: 24,
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          widget.existingValuation != null ? 'Edit Valuation' : 'New Valuation',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                          ),
+        child: NestedScrollView(
+          headerSliverBuilder: (context, innerBoxIsScrolled) {
+            return [
+              SliverAppBar(
+                expandedHeight: 140.0,
+                floating: false,
+                pinned: true,
+                backgroundColor: const Color(0xFF0D47A1),
+                elevation: 0,
+                flexibleSpace: FlexibleSpaceBar(
+                  titlePadding: const EdgeInsets.only(left: 56, bottom: 16),
+                  title: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      Text(
+                        widget.existingValuation != null ? 'Edit Valuation' : 'New Valuation',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          shadows: [Shadow(color: Colors.black26, blurRadius: 4, offset: Offset(0, 2))],
                         ),
-                        const SizedBox(height: 4),
-                        Text(
-                          widget.project.title,
-                          style: TextStyle(
-                            color: Colors.white.withOpacity(0.9),
-                            fontSize: 14,
+                      ),
+                      Text(
+                        widget.project.title,
+                        style: TextStyle(
+                          color: Colors.white.withOpacity(0.8),
+                          fontSize: 11,
+                          fontWeight: FontWeight.normal,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                  background: Container(
+                    decoration: const BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [Color(0xFF0D47A1), Color(0xFF1976D2)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                    ),
+                    child: Stack(
+                      children: [
+                        Positioned(
+                          right: -20,
+                          top: -20,
+                          child: Icon(
+                            widget.existingValuation != null ? Icons.edit_note_rounded : Icons.add_circle_outline_rounded,
+                            color: Colors.white.withOpacity(0.1),
+                            size: 150,
                           ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
                         ),
                       ],
                     ),
                   ),
-                ],
+                ),
+                leading: IconButton(
+                  icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white),
+                  onPressed: () => Navigator.of(context).pop(),
+                ),
               ),
-            ),
-            // Form Content
-            Expanded(
-              child: ListView(
-                padding: EdgeInsets.all(isSmallScreen ? 12 : 16),
-                children: [
-                  // Project Info Card
+            ];
+          },
+          body: ListView(
+            padding: EdgeInsets.all(isSmallScreen ? 12 : 16),
+            children: [
+              // Project Info Card
                   Card(
                     elevation: 2,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -1005,8 +1071,8 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
                           Expanded(
                             child: Text(
                               widget.existingValuation!.canBeEdited
-                                  ? 'This valuation was submitted. You can edit it within 2 days of creation. Editing will reset it to draft status.'
-                                  : 'This valuation was submitted more than 2 days ago and cannot be edited.',
+                                  ? 'This valuation was submitted. You can edit it within 2 hours of creation. Editing will reset it to draft status.'
+                                  : 'This valuation was submitted more than 2 hours ago and cannot be edited.',
                               style: TextStyle(
                                 color: widget.existingValuation!.canBeEdited 
                                     ? Colors.orange[900] 
@@ -1169,14 +1235,42 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
                             ),
                     ),
                   ),
+                  if (_valuationId != null && (widget.existingValuation?.status == 'draft' || widget.existingValuation?.status == 'rejected')) ...[
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: _isSubmitting ? null : () => _submitValuation(),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.green[700],
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        child: _isSubmitting
+                            ? const SizedBox(
+                                height: 20,
+                                width: 20,
+                                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                              )
+                            : const Text(
+                                'Submit to Accessor',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                      ),
+                    ),
+                  ],
                   SizedBox(height: MediaQuery.of(context).padding.bottom + 8),
                 ],
               ),
             ),
-          ],
-        ),
-      ),
-    );
+          ),
+        );
   }
 
   Widget _buildCategoryChip(String value, String label, IconData icon) {

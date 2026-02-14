@@ -1,6 +1,29 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
-from .models import Project, ProjectDocument
+from .models import Project, ProjectDocument, ProjectStatusHistory
+
+
+class ProjectStatusHistorySerializer(serializers.ModelSerializer):
+    """Serializer for project status history events"""
+    created_by_username = serializers.CharField(source='created_by.username', read_only=True)
+    created_by_name = serializers.SerializerMethodField()
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    
+    class Meta:
+        model = ProjectStatusHistory
+        fields = (
+            'id', 'project', 'status', 'status_display', 'stage', 
+            'notes', 'created_by', 'created_by_username', 'created_by_name', 
+            'created_at'
+        )
+        read_only_fields = ('created_by', 'created_at')
+
+    def get_created_by_name(self, obj):
+        if obj.created_by:
+            if obj.created_by.first_name or obj.created_by.last_name:
+                return f"{obj.created_by.first_name} {obj.created_by.last_name}".strip()
+            return obj.created_by.username
+        return None
 
 
 class ProjectDocumentSerializer(serializers.ModelSerializer):
@@ -107,6 +130,7 @@ class ProjectSerializer(serializers.ModelSerializer):
     documents_count = serializers.IntegerField(source='documents.count', read_only=True)
     valuations = serializers.SerializerMethodField()
     valuations_count = serializers.SerializerMethodField()
+    history = ProjectStatusHistorySerializer(many=True, read_only=True)
     
     class Meta:
         model = Project
@@ -121,7 +145,7 @@ class ProjectSerializer(serializers.ModelSerializer):
             'assigned_senior_valuer', 'assigned_senior_valuer_username', 'assigned_senior_valuer_name',
             'assigned_senior_valuer_email', 'has_agent', 'client_info', 'agent_info',
             'status', 'status_display', 'priority', 'start_date', 'end_date',
-            'documents', 'documents_count', 'valuations', 'valuations_count',
+            'documents', 'documents_count', 'valuations', 'valuations_count', 'history',
             'created_at', 'updated_at'
         )
         read_only_fields = ('coordinator', 'created_at', 'updated_at')

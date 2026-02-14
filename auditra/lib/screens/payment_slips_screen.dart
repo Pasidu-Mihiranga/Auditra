@@ -252,18 +252,66 @@ class _PaymentSlipsScreenState extends State<PaymentSlipsScreen> {
     
     if (widget.showAppBar) {
       return Scaffold(
-        appBar: AppBar(
-          title: Text(isAdminOrHR ? 'All Payment Slips' : 'Payment Slips'),
-          centerTitle: true,
-          actions: [
-            IconButton(
-              icon: const Icon(Icons.refresh),
-              onPressed: _loadPaymentSlips,
-              tooltip: 'Refresh',
-            ),
-          ],
+        backgroundColor: const Color(0xFFF5F7FA),
+        body: NestedScrollView(
+          headerSliverBuilder: (context, innerBoxIsScrolled) {
+            return [
+              SliverAppBar(
+                expandedHeight: 150.0,
+                floating: false,
+                pinned: true,
+                elevation: 0,
+                backgroundColor: const Color(0xFF0D47A1),
+                leading: IconButton(
+                  icon: const Icon(Icons.arrow_back_ios_new, color: Colors.white),
+                  onPressed: () => Navigator.of(context).pop(),
+                ),
+                flexibleSpace: FlexibleSpaceBar(
+                  centerTitle: true,
+                  titlePadding: const EdgeInsets.only(bottom: 16),
+                  title: Text(
+                    isAdminOrHR ? 'All Payment Slips' : 'Payment Slips',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 18,
+                    ),
+                  ),
+                  background: Container(
+                    decoration: const BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [Color(0xFF0D47A1), Color(0xFF1976D2)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                    ),
+                    child: Stack(
+                      children: [
+                        Positioned(
+                          right: -20,
+                          top: -20,
+                          child: Icon(
+                            Icons.receipt_long_rounded,
+                            color: Colors.white.withOpacity(0.12),
+                            size: 150,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                actions: [
+                  IconButton(
+                    icon: const Icon(Icons.refresh, color: Colors.white),
+                    onPressed: _loadPaymentSlips,
+                    tooltip: 'Refresh',
+                  ),
+                ],
+              ),
+            ];
+          },
+          body: body,
         ),
-        body: body,
       );
     }
     

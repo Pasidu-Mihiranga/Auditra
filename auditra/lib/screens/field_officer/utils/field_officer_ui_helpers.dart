@@ -20,23 +20,26 @@ class FieldOfficerUiHelpers {
     }
   }
 
-  /// Check if a valuation can be edited (created within 2 days)
+  /// Check if a valuation can be edited (created within 2 hours)
   static bool canEditValuation(Valuation valuation) {
-    final now = DateTime.now();
-    final createdAt = valuation.createdAt;
-    final difference = now.difference(createdAt);
+    if (valuation.status == 'draft' || valuation.status == 'rejected') {
+      return true;
+    }
     
-    // Allow editing if created within 2 days (48 hours)
-    return difference.inDays < 2;
+    if (valuation.status == 'submitted') {
+      final now = DateTime.now();
+      final difference = now.difference(valuation.submittedAt ?? valuation.createdAt);
+      
+      // Allow editing if submitted within 2 hours
+      return difference.inHours < 2;
+    }
+    
+    return false;
   }
 
-  /// Check if a valuation can be deleted (created within 2 days)
+  /// Check if a valuation can be deleted (draft or rejected)
   static bool canDeleteValuation(Valuation valuation) {
-    final now = DateTime.now();
-    final createdAt = valuation.createdAt;
-    final difference = now.difference(createdAt);
-    
-    // Allow deletion if created within 2 days (48 hours)
-    return difference.inDays < 2;
+    // Only allow deleting drafts or rejected reports
+    return valuation.status == 'draft' || valuation.status == 'rejected';
   }
 }

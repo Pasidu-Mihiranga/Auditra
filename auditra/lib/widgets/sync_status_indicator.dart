@@ -164,10 +164,14 @@ class _SyncStatusIndicatorState extends State<SyncStatusIndicator> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         decoration: BoxDecoration(
-          color: _isOnline ? const Color(0xFF84BCDA).withOpacity(0.1) : Colors.orange.withOpacity(0.1),
+          color: _isOnline 
+              ? Colors.white.withOpacity(0.15) 
+              : Colors.orange.withOpacity(0.2),
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
-            color: _isOnline ? const Color(0xFF84BCDA) : Colors.orange,
+            color: _isOnline 
+                ? Colors.white.withOpacity(0.4) 
+                : Colors.orangeAccent,
             width: 1,
           ),
         ),
@@ -182,14 +186,14 @@ class _SyncStatusIndicatorState extends State<SyncStatusIndicator> {
                     child: CircularProgressIndicator(
                       strokeWidth: 2,
                       valueColor: AlwaysStoppedAnimation<Color>(
-                        _isOnline ? const Color(0xFF84BCDA) : Colors.orange,
+                        _isOnline ? Colors.white : Colors.white,
                       ),
                     ),
                   )
                 : Icon(
                     _isOnline ? Icons.cloud_done : Icons.cloud_off,
                     size: 16,
-                    color: _isOnline ? const Color(0xFF84BCDA) : Colors.orange,
+                    color: _isOnline ? Colors.white : Colors.orangeAccent,
                   ),
             const SizedBox(width: 6),
             Text(
@@ -197,7 +201,7 @@ class _SyncStatusIndicatorState extends State<SyncStatusIndicator> {
               style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
-                color: _isOnline ? const Color(0xFF0570B0) : Colors.orange[700],
+                color: _isOnline ? Colors.white : Colors.orangeAccent,
               ),
             ),
             if (_pendingCount > 0) ...[

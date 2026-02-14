@@ -29,11 +29,13 @@ class MarkAttendanceView(APIView):
                 'error': 'Today is not a working day (Sunday or Holiday)'
             }, status=status.HTTP_400_BAD_REQUEST)
         
-        # Check if it's after 12 PM (noon) - attendance cannot be marked after 12 PM
+        # Check if it's within check-in window (6 AM - 8 AM)
         local_now = timezone.localtime(now)
-        if local_now.hour >= 12:
+        current_hour = local_now.hour
+        
+        if current_hour < 6 or current_hour >= 8:
             return Response({
-                'error': 'Attendance cannot be marked after 12 PM. You are marked as absent.'
+                'error': f'Attendance can only be marked between 6 AM and 8 AM. Current time: {local_now.strftime("%I:%M %p")}'
             }, status=status.HTTP_400_BAD_REQUEST)
         
         # Check if attendance already marked
@@ -234,19 +236,41 @@ class TodayAttendanceView(APIView):
         
         try:
             attendance = Attendance.objects.get(user=user, date=today)
+            
+            # Implementation of "Lazy" Auto Check-out
+            # If it's past 5 PM and user hasn't checked out, auto check-out them at 5 PM
+            local_now = timezone.localtime(now)
+            if not attendance.check_out and local_now.hour >= 17:
+                five_pm = timezone.make_aware(
+                    datetime.combine(today, time(17, 0))
+                )
+                attendance.check_out = five_pm
+                attendance.save()
+            
             serializer = AttendanceSerializer(attendance)
+            data = serializer.data
+            
+            # Add status flags for frontend buttons
+            local_time = local_now.time()
+            data['flags'] = {
+                'can_check_in': local_time >= time(6, 0) and local_time < time(8, 0) and not attendance.check_in,
+                'can_leave_early': attendance.check_in and not attendance.check_out and local_time < time(17, 0),
+                'can_checkout': attendance.check_in and not attendance.check_out and local_time >= time(17, 0),
+                'can_start_overtime': attendance.check_in and attendance.check_out and attendance.status != 'absent' and not attendance.overtime_start and (local_time >= time(17, 0) or local_time < time(8, 0)),
+            }
+            
             return Response({
                 'success': True,
-                'data': serializer.data
+                'data': data
             }, status=status.HTTP_200_OK)
         except Attendance.DoesNotExist:
             # Check if it's a working day
             is_working_day = Attendance.is_working_day(today)
             
-            # If it's after 12 PM and no attendance marked, auto-mark as absent
+            # If it's after 8 AM and no attendance marked, auto-mark as absent
             if is_working_day:
                 local_now = timezone.localtime(now)
-                if local_now.hour >= 12:
+                if local_now.hour >= 8:
                     # Auto-mark as absent
                     attendance = Attendance.objects.create(
                         user=user,
@@ -259,9 +283,17 @@ class TodayAttendanceView(APIView):
                         'data': serializer.data
                     }, status=status.HTTP_200_OK)
             
+            local_time = timezone.localtime(now).time()
             return Response({
                 'success': False,
-                'data': None,
+                'data': {
+                    'flags': {
+                        'can_check_in': is_working_day and local_time >= time(6, 0) and local_time < time(8, 0),
+                        'can_leave_early': False,
+                        'can_checkout': False,
+                        'can_start_overtime': False,
+                    }
+                },
                 'is_working_day': is_working_day,
                 'message': 'Attendance not marked for today' if is_working_day else 'Today is not a working day'
             }, status=status.HTTP_200_OK)
@@ -397,6 +429,8 @@ class AttendanceSummaryView(APIView):
                     daily_data.append({
                         'date': current_date.isoformat(),
                         'status': att.status,
+                        'check_in': att.check_in.isoformat() if att.check_in else None,
+                        'check_out': att.check_out.isoformat() if att.check_out else None,
                         'working_hours': float(att.working_hours),
                         'overtime_hours': float(att.overtime_hours),
                     })
@@ -404,6 +438,8 @@ class AttendanceSummaryView(APIView):
                     daily_data.append({
                         'date': current_date.isoformat(),
                         'status': 'absent',
+                        'check_in': None,
+                        'check_out': None,
                         'working_hours': 0.0,
                         'overtime_hours': 0.0,
                     })
@@ -449,23 +485,23 @@ class WeeklyAttendanceSummaryView(APIView):
                     'error': 'Only admin and HR staff users can access this endpoint'
                 }, status=status.HTTP_403_FORBIDDEN)
         except UserRole.DoesNotExist:
-            return Response({
-                'error': 'User role not found'
-            }, status=status.HTTP_403_FORBIDDEN)
+            if not request.user.is_staff:
+                return Response({
+                    'error': 'User role not found and user is not a staff member'
+                }, status=status.HTTP_403_FORBIDDEN)
         
-        # Get week_start from query params
+        # Get week_start from query params or default to current Monday
         week_start_str = request.query_params.get('week_start')
         if not week_start_str:
-            return Response({
-                'error': 'week_start parameter is required (format: YYYY-MM-DD)'
-            }, status=status.HTTP_400_BAD_REQUEST)
-        
-        try:
-            week_start = datetime.strptime(week_start_str, '%Y-%m-%d').date()
-        except ValueError:
-            return Response({
-                'error': 'Invalid date format. Use YYYY-MM-DD'
-            }, status=status.HTTP_400_BAD_REQUEST)
+            today = timezone.now().date()
+            week_start = today - timedelta(days=today.weekday())
+        else:
+            try:
+                week_start = datetime.strptime(week_start_str, '%Y-%m-%d').date()
+            except ValueError:
+                return Response({
+                    'error': 'Invalid date format. Use YYYY-MM-DD'
+                }, status=status.HTTP_400_BAD_REQUEST)
         
         # Calculate week end (6 days after week start)
         week_end = week_start + timedelta(days=6)

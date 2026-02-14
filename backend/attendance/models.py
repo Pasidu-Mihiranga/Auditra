@@ -68,10 +68,35 @@ class Attendance(models.Model):
             # Ensure check_out is after check_in
             if self.check_out < self.check_in:
                 return 0.0
-            duration = self.check_out - self.check_in
+            
+            # Normalize check-in to 8 AM if it's earlier
+            effective_start_time = time(8, 0)
+            local_check_in = timezone.localtime(self.check_in)
+            
+            if local_check_in.time() < effective_start_time:
+                # Create a new datetime with the same date but set to 8 AM local time
+                start_dt = datetime.combine(local_check_in.date(), effective_start_time)
+                # Make it aware again using the current timezone
+                effective_check_in = timezone.make_aware(start_dt, timezone.get_current_timezone())
+            else:
+                effective_check_in = self.check_in
+                
+            # Normalize check-out to 5 PM if it's later (regular working hours)
+            effective_end_time = time(17, 0)
+            local_check_out = timezone.localtime(self.check_out)
+            
+            if local_check_out.time() > effective_end_time:
+                end_dt = datetime.combine(local_check_out.date(), effective_end_time)
+                effective_check_out = timezone.make_aware(end_dt, timezone.get_current_timezone())
+            else:
+                effective_check_out = self.check_out
+            
+            if effective_check_out < effective_check_in:
+                return 0.0
+                
+            duration = effective_check_out - effective_check_in
             hours = duration.total_seconds() / 3600
-            # Ensure hours are not negative and cap at 9 hours (8 AM to 5 PM)
-            return max(0.0, min(hours, 9.0))
+            return max(0.0, float(hours))
         return 0.0
     
     def calculate_overtime_hours(self):
@@ -111,18 +136,17 @@ class Attendance(models.Model):
                     self.check_out = None
                 else:
                     self.working_hours = self.calculate_working_hours()
-                    # Ensure working hours are never negative
-                    self.working_hours = max(0.0, float(self.working_hours))
-                    # Determine status based on working hours
-                    if self.working_hours >= 4.5:
-                        self.status = 'present'
-                    elif self.working_hours > 0:
+                    
+                    # Determine status based on check-out time (LOCAL TIME)
+                    local_check_out = timezone.localtime(self.check_out)
+                    checkout_time = local_check_out.time()
+                    
+                    if checkout_time < time(12, 0):
+                        self.status = 'absent'
+                    elif checkout_time < time(17, 0):
                         self.status = 'half_day'
                     else:
-                        # If working hours is 0, mark as absent and clear times
-                        self.status = 'absent'
-                        self.check_in = None
-                        self.check_out = None
+                        self.status = 'present'
             elif self.check_in and not self.check_out:
                 # Only checked in, not checked out yet
                 self.working_hours = 0.0

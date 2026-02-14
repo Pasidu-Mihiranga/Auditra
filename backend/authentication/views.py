@@ -295,8 +295,17 @@ class GeneratePaymentSlipsView(APIView):
             }, status=status.HTTP_403_FORBIDDEN)
         
         # Get month and year from request, or use current month/year
-        month = request.data.get('month', timezone.now().month)
-        year = request.data.get('year', timezone.now().year)
+        month_raw = request.data.get('month')
+        year_raw = request.data.get('year')
+        
+        try:
+            # Cast to int to handle strings from frontend and avoid TypeErrors in comparison/validation
+            month = int(month_raw) if month_raw else timezone.now().month
+            year = int(year_raw) if year_raw else timezone.now().year
+        except (ValueError, TypeError):
+            return Response({
+                'error': 'Month and year must be valid numbers.'
+            }, status=status.HTTP_400_BAD_REQUEST)
         
         # Validate month and year
         if not (1 <= month <= 12):
@@ -330,6 +339,7 @@ class GeneratePaymentSlipsView(APIView):
                 message = 'No payment slips generated. All eligible users may already have payment slips for this month/year, or no users match the criteria.'
             
             return Response({
+                'success': True,
                 'message': message,
                 'month': month,
                 'year': year,
@@ -339,6 +349,7 @@ class GeneratePaymentSlipsView(APIView):
             }, status=status.HTTP_201_CREATED)
         except Exception as e:
             return Response({
+                'success': False,
                 'error': f'Error generating payment slips: {str(e)}'
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
@@ -355,17 +366,28 @@ class UploadPaymentSlipsView(APIView):
             }, status=status.HTTP_403_FORBIDDEN)
         
         # Get month and year from request, or use current month/year
-        month = request.data.get('month', timezone.now().month)
-        year = request.data.get('year', timezone.now().year)
+        month_raw = request.data.get('month')
+        year_raw = request.data.get('year')
+        
+        try:
+            month = int(month_raw) if month_raw else timezone.now().month
+            year = int(year_raw) if year_raw else timezone.now().year
+        except (ValueError, TypeError):
+            return Response({
+                'success': False,
+                'error': 'Month and year must be valid numbers.'
+            }, status=status.HTTP_400_BAD_REQUEST)
         
         # Validate month and year
         if not (1 <= month <= 12):
             return Response({
+                'success': False,
                 'error': 'Invalid month. Must be between 1 and 12.'
             }, status=status.HTTP_400_BAD_REQUEST)
         
         if year < 2000 or year > 2100:
             return Response({
+                'success': False,
                 'error': 'Invalid year.'
             }, status=status.HTTP_400_BAD_REQUEST)
         
@@ -375,6 +397,7 @@ class UploadPaymentSlipsView(APIView):
             
             if not payment_slips.exists():
                 return Response({
+                    'success': False,
                     'error': f'No payment slips found for {month}/{year}. Please create payment slips first.'
                 }, status=status.HTTP_404_NOT_FOUND)
             
@@ -385,6 +408,7 @@ class UploadPaymentSlipsView(APIView):
             )
             
             return Response({
+                'success': True,
                 'message': f'Payment slips uploaded successfully for {updated_count} employees',
                 'month': month,
                 'year': year,
@@ -392,6 +416,7 @@ class UploadPaymentSlipsView(APIView):
             }, status=status.HTTP_200_OK)
         except Exception as e:
             return Response({
+                'success': False,
                 'error': f'Error uploading payment slips: {str(e)}'
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
@@ -432,11 +457,17 @@ class MyPaymentSlipsView(generics.ListAPIView):
             return PaymentSlip.objects.none()
     
     def list(self, request, *args, **kwargs):
-        """Override list to handle errors gracefully"""
+        """Override list to wrap response in standard format"""
         try:
-            return super().list(request, *args, **kwargs)
+            queryset = self.get_queryset()
+            serializer = self.get_serializer(queryset, many=True)
+            return Response({
+                'success': True,
+                'data': serializer.data
+            }, status=status.HTTP_200_OK)
         except Exception as e:
             return Response({
+                'success': False,
                 'error': f'Error retrieving payment slips: {str(e)}'
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
@@ -472,6 +503,15 @@ class AllPaymentSlipsView(generics.ListAPIView):
             queryset = queryset.filter(user_id=user_id)
         
         return queryset
+
+    def list(self, request, *args, **kwargs):
+        """Override list to wrap response in standard format"""
+        queryset = self.get_queryset()
+        serializer = self.get_serializer(queryset, many=True)
+        return Response({
+            'success': True,
+            'data': serializer.data
+        }, status=status.HTTP_200_OK)
 
 
 class PaymentSlipDetailView(generics.RetrieveUpdateDestroyAPIView):
@@ -875,18 +915,9 @@ class AllLeaveRequestsView(generics.ListAPIView):
         # Check if user is admin or HR staff
         try:
             user_role = UserRole.objects.get(user=self.request.user)
-            if user_role.role not in ['admin', 'hr_staff']:
-                return LeaveRequest.objects.none()
-            
-            # If admin, only show leave requests from HR staff
-            if user_role.role == 'admin':
-                # Get all users with HR staff role
-                hr_staff_users = User.objects.filter(role__role='hr_staff')
-                # Return only leave requests from HR staff
-                return LeaveRequest.objects.filter(user__in=hr_staff_users).order_by('-submitted_at')
-            
-            # If HR staff, show all leave requests (they manage all employee leave requests)
-            return LeaveRequest.objects.all().order_by('-submitted_at')
+            # Admin and HR staff can see all leave requests
+            if user_role.role in ['admin', 'hr_staff']:
+                return LeaveRequest.objects.all().order_by('-submitted_at')
         except UserRole.DoesNotExist:
             return LeaveRequest.objects.none()
     
@@ -926,27 +957,35 @@ class MyLeaveStatisticsView(APIView):
             # Total leaves allocated per year
             TOTAL_LEAVES = 45
             
-            # Get all approved (accepted) leave requests for current user in current year
+            # Get approved and pending leave requests for current user in current year
             current_year = timezone.now().year
+            
             approved_leaves = LeaveRequest.objects.filter(
                 user=request.user,
-                status='approved',  # Only count approved/accepted leave requests
+                status='approved',
                 start_date__year=current_year
             )
             
-            # Calculate total leave days taken (sum of days from all approved leave requests)
-            # Each leave request's days property calculates: (end_date - start_date).days + 1
-            leave_taken = sum(leave.days for leave in approved_leaves)
+            pending_leaves = LeaveRequest.objects.filter(
+                user=request.user,
+                status='pending',
+                start_date__year=current_year
+            )
             
-            # Calculate remaining leaves: Total leaves (45) - Leave taken (accepted requests)
-            remaining_leaves = max(0, TOTAL_LEAVES - leave_taken)
+            # Calculate days
+            approved_days = sum(leave.days for leave in approved_leaves)
+            pending_days = sum(leave.days for leave in pending_leaves)
+            
+            # Calculate remaining leaves: Total leaves (45) - Approved days
+            remaining_leaves = max(0, TOTAL_LEAVES - approved_days)
             
             return Response({
                 'success': True,
                 'data': {
-                    'total_leaves': TOTAL_LEAVES,
-                    'leave_taken': leave_taken,  # Current number of leaves (accepted)
-                    'remaining_leaves': remaining_leaves,  # Total - Accepted
+                    'total_leave_days': TOTAL_LEAVES,
+                    'approved_days': approved_days,
+                    'pending_days': pending_days,
+                    'remaining_leaves': remaining_leaves,
                     'year': current_year,
                 }
             }, status=status.HTTP_200_OK)

@@ -4,7 +4,7 @@ from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
 from django.contrib.auth.models import User
 from django.db.models import Q
-from .models import Project, ProjectDocument
+from .models import Project, ProjectDocument, ProjectStatusHistory
 from .serializers import (
     ProjectSerializer,
     ProjectCreateSerializer,
@@ -105,25 +105,25 @@ class ProjectListView(generics.ListCreateAPIView):
         if user_role == 'coordinator':
             queryset = Project.objects.filter(coordinator=user)
         
-        # Field officers see only assigned started projects
+        # Field officers see only assigned projects (pending, in_progress, completed)
         elif user_role == 'field_officer':
-            queryset = Project.objects.filter(assigned_field_officer=user, status__in=['in_progress', 'completed'])
+            queryset = Project.objects.filter(assigned_field_officer=user, status__in=['pending', 'in_progress', 'completed'])
 
-        # Clients see only assigned started projects
+        # Clients see only assigned projects (pending, in_progress, completed)
         elif user_role == 'client':
-            queryset = Project.objects.filter(assigned_client=user, status__in=['in_progress', 'completed'])
+            queryset = Project.objects.filter(assigned_client=user, status__in=['pending', 'in_progress', 'completed'])
 
-        # Agents see only assigned started projects
+        # Agents see only assigned projects (pending, in_progress, completed)
         elif user_role == 'agent':
-            queryset = Project.objects.filter(assigned_agent=user, status__in=['in_progress', 'completed'])
+            queryset = Project.objects.filter(assigned_agent=user, status__in=['pending', 'in_progress', 'completed'])
 
-        # Accessors see only assigned started projects
+        # Accessors see only assigned projects (pending, in_progress, completed)
         elif user_role == 'accessor':
-            queryset = Project.objects.filter(assigned_accessor=user, status__in=['in_progress', 'completed'])
+            queryset = Project.objects.filter(assigned_accessor=user, status__in=['pending', 'in_progress', 'completed'])
 
-        # Senior valuers see only assigned started projects
+        # Senior valuers see only assigned projects (pending, in_progress, completed)
         elif user_role == 'senior_valuer':
-            queryset = Project.objects.filter(assigned_senior_valuer=user, status__in=['in_progress', 'completed'])
+            queryset = Project.objects.filter(assigned_senior_valuer=user, status__in=['pending', 'in_progress', 'completed'])
         
         # Admins see all projects
         elif user.is_staff or user.is_superuser:
@@ -135,7 +135,7 @@ class ProjectListView(generics.ListCreateAPIView):
         return queryset.select_related(
             'coordinator', 'assigned_field_officer'
         ).prefetch_related(
-            'documents', 'valuations__field_officer', 'valuations__photos'
+            'documents', 'valuations__field_officer', 'valuations__photos', 'history'
         )
     
     def perform_create(self, serializer):
@@ -146,12 +146,27 @@ class ProjectListView(generics.ListCreateAPIView):
 
         project = serializer.save(coordinator=self.request.user)
 
+        # Record project creation in history
+        ProjectStatusHistory.objects.create(
+            project=project,
+            status=project.status,
+            notes="Project created",
+            created_by=self.request.user
+        )
+
         # Process client info - check/create account and assign to project
         client_info = project.client_info
         if client_info and client_info.get('email'):
             client_user, was_created, error = process_client_for_project(project, client_info)
             if error:
                 logger.warning(f"Client processing warning for project {project.id}: {error}")
+            elif client_user:
+                ProjectStatusHistory.objects.create(
+                    project=project,
+                    status=project.status,
+                    notes=f"Client assigned: {client_user.first_name} {client_user.last_name}".strip() or client_user.username,
+                    created_by=self.request.user
+                )
 
         # Process agent info - check/create account and assign to project
         agent_info = project.agent_info
@@ -159,6 +174,13 @@ class ProjectListView(generics.ListCreateAPIView):
             agent_user, was_created, error = process_agent_for_project(project, agent_info)
             if error:
                 logger.warning(f"Agent processing warning for project {project.id}: {error}")
+            elif agent_user:
+                ProjectStatusHistory.objects.create(
+                    project=project,
+                    status=project.status,
+                    notes=f"Agent assigned: {agent_user.first_name} {agent_user.last_name}".strip() or agent_user.username,
+                    created_by=self.request.user
+                )
 
 
 class ProjectDetailView(generics.RetrieveUpdateDestroyAPIView):
@@ -168,39 +190,31 @@ class ProjectDetailView(generics.RetrieveUpdateDestroyAPIView):
     
     def get_queryset(self):
         user = self.request.user
-        
-        # Get user role safely
         user_role = get_user_role(user)
         
-        # Coordinators can see their projects
         if user_role == 'coordinator':
-            return Project.objects.filter(coordinator=user)
-        
-        # Field officers can see assigned started projects
+            queryset = Project.objects.filter(coordinator=user)
         elif user_role == 'field_officer':
-            return Project.objects.filter(assigned_field_officer=user, status__in=['in_progress', 'completed'])
-
-        # Clients can see assigned started projects
+            queryset = Project.objects.filter(assigned_field_officer=user, status__in=['pending', 'in_progress', 'completed'])
         elif user_role == 'client':
-            return Project.objects.filter(assigned_client=user, status__in=['in_progress', 'completed'])
-
-        # Agents can see assigned started projects
+            queryset = Project.objects.filter(assigned_client=user, status__in=['pending', 'in_progress', 'completed'])
         elif user_role == 'agent':
-            return Project.objects.filter(assigned_agent=user, status__in=['in_progress', 'completed'])
-
-        # Accessors can see assigned started projects
+            queryset = Project.objects.filter(assigned_agent=user, status__in=['pending', 'in_progress', 'completed'])
         elif user_role == 'accessor':
-            return Project.objects.filter(assigned_accessor=user, status__in=['in_progress', 'completed'])
-
-        # Senior valuers can see assigned started projects
+            queryset = Project.objects.filter(assigned_accessor=user, status__in=['pending', 'in_progress', 'completed'])
         elif user_role == 'senior_valuer':
-            return Project.objects.filter(assigned_senior_valuer=user, status__in=['in_progress', 'completed'])
-        
-        # Admins can see all
+            queryset = Project.objects.filter(assigned_senior_valuer=user, status__in=['pending', 'in_progress', 'completed'])
         elif user.is_staff or user.is_superuser:
-            return Project.objects.all()
-        
-        return Project.objects.none()
+            queryset = Project.objects.all()
+        else:
+            queryset = Project.objects.none()
+
+        return queryset.select_related(
+            'coordinator', 'assigned_field_officer', 'assigned_client', 
+            'assigned_agent', 'assigned_accessor', 'assigned_senior_valuer'
+        ).prefetch_related(
+            'documents', 'valuations__field_officer', 'valuations__photos', 'history'
+        )
     
     def perform_update(self, serializer):
         # Only coordinators can update projects
@@ -243,6 +257,14 @@ class ProjectDetailView(generics.RetrieveUpdateDestroyAPIView):
                     "Cannot start project: Senior valuer must be assigned before starting."
                 )
 
+        if new_status != project.status:
+            ProjectStatusHistory.objects.create(
+                project=project,
+                status=new_status,
+                notes=f"Status changed from {project.get_status_display()} to {dict(Project.STATUS_CHOICES).get(new_status)}",
+                created_by=self.request.user
+            )
+
         serializer.save()
 
 
@@ -273,6 +295,13 @@ class AssignFieldOfficerView(APIView):
         
         project.assigned_field_officer = field_officer
         project.save()
+        
+        ProjectStatusHistory.objects.create(
+            project=project,
+            status=project.status,
+            notes=f"Field Officer assigned: {field_officer.first_name} {field_officer.last_name}".strip() or field_officer.username,
+            created_by=request.user
+        )
         
         return Response({
             'message': 'Field officer assigned successfully',
@@ -423,6 +452,13 @@ class AssignClientView(APIView):
         project.assigned_client = client
         project.save()
         
+        ProjectStatusHistory.objects.create(
+            project=project,
+            status=project.status,
+            notes=f"Client assigned: {client.first_name} {client.last_name}".strip() or client.username,
+            created_by=request.user
+        )
+        
         return Response({
             'message': 'Client assigned successfully',
             'project': ProjectSerializer(project, context={'request': request}).data
@@ -456,6 +492,13 @@ class AssignAgentView(APIView):
         
         project.assigned_agent = agent
         project.save()
+        
+        ProjectStatusHistory.objects.create(
+            project=project,
+            status=project.status,
+            notes=f"Agent assigned: {agent.first_name} {agent.last_name}".strip() or agent.username,
+            created_by=request.user
+        )
         
         return Response({
             'message': 'Agent assigned successfully',
@@ -491,6 +534,13 @@ class AssignAccessorView(APIView):
         project.assigned_accessor = accessor
         project.save()
         
+        ProjectStatusHistory.objects.create(
+            project=project,
+            status=project.status,
+            notes=f"Accessor assigned: {accessor.first_name} {accessor.last_name}".strip() or accessor.username,
+            created_by=request.user
+        )
+        
         return Response({
             'message': 'Accessor assigned successfully',
             'project': ProjectSerializer(project, context={'request': request}).data
@@ -524,6 +574,13 @@ class AssignSeniorValuerView(APIView):
         
         project.assigned_senior_valuer = senior_valuer
         project.save()
+        
+        ProjectStatusHistory.objects.create(
+            project=project,
+            status=project.status,
+            notes=f"Senior Valuer assigned: {senior_valuer.first_name} {senior_valuer.last_name}".strip() or senior_valuer.username,
+            created_by=request.user
+        )
         
         return Response({
             'message': 'Senior valuer assigned successfully',

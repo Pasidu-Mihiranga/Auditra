@@ -1602,6 +1602,36 @@ class ApiService {
     }
   }
 
+  // Submit project to accessor / next stage
+  static Future<Map<String, dynamic>> submitProject(int projectId) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token');
+
+      if (token == null) {
+        return {'success': false, 'message': 'Not authenticated'};
+      }
+
+      final response = await http.post(
+        Uri.parse('$baseUrl/projects/$projectId/submit/'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      final data = jsonDecode(response.body);
+
+      if (response.statusCode == 200) {
+        return {'success': true, 'data': data};
+      } else {
+        return {'success': false, 'message': data['error'] ?? data['detail'] ?? 'Failed to submit project'};
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'Connection error: $e'};
+    }
+  }
+
   // Valuation API methods
   static Future<Map<String, dynamic>> getValuations({int? projectId}) async {
     try {
@@ -1745,6 +1775,71 @@ class ApiService {
         // Log full response for debugging
         print('Valuation creation error response: $responseBody');
         return {'success': false, 'message': errorMessage};
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'Connection error: $e'};
+    }
+  }
+
+  static Future<Map<String, dynamic>> deleteValuation(int valuationId) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token');
+
+      if (token == null) {
+        return {'success': false, 'message': 'Not authenticated'};
+      }
+
+      final response = await http.delete(
+        Uri.parse('$baseUrl/valuations/$valuationId/'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      if (response.statusCode == 204 || response.statusCode == 200) {
+        return {'success': true};
+      } else {
+        final data = jsonDecode(response.body);
+        return {'success': false, 'message': data['detail'] ?? 'Failed to delete valuation'};
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'Connection error: $e'};
+    }
+  }
+
+  static Future<Map<String, dynamic>> syncValuationToServer(Map<String, dynamic> apiData) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token');
+
+      if (token == null) {
+        return {'success': false, 'message': 'Not authenticated'};
+      }
+
+      // If it has an id, it might be an update, otherwise create
+      final response = await http.post(
+        Uri.parse('$baseUrl/valuations/'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode(apiData),
+      );
+
+      final responseBody = response.body;
+      Map<String, dynamic> data;
+      try {
+        data = jsonDecode(responseBody);
+      } catch (e) {
+        return {'success': false, 'message': 'Invalid response from server: $responseBody'};
+      }
+
+      if (response.statusCode == 201 || response.statusCode == 200) {
+        return {'success': true, 'data': data};
+      } else {
+        return {'success': false, 'message': data['detail'] ?? data.toString()};
       }
     } catch (e) {
       return {'success': false, 'message': 'Connection error: $e'};

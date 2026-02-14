@@ -91,8 +91,9 @@ class Valuation(models.Model):
     
     def submit(self):
         """Mark valuation as submitted"""
-        if self.status == 'draft':
+        if self.status in ['draft', 'rejected']:
             self.status = 'submitted'
+            self.rejection_reason = ''  # Clear rejection reason on resubmission
             self.submitted_at = timezone.now()
             self.save()
     

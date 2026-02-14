@@ -9,6 +9,12 @@ import 'login_screen.dart';
 import 'change_password_screen.dart';
 import 'valuation_form_screen.dart';
 import 'payment_slips_screen.dart';
+// import 'field_officer/components/field_officer_header.dart'; // Removed
+import 'field_officer/components/field_officer_project_card.dart';
+import 'field_officer/screens/project_details_screen.dart'; // Added
+import 'field_officer/screens/valuation_reports_screen.dart'; // Added
+import '../theme/app_colors.dart';
+import '../widgets/sync_status_indicator.dart';
 
 class FieldOfficerDashboard extends StatefulWidget {
   const FieldOfficerDashboard({super.key});
@@ -180,6 +186,78 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
     }
   }
 
+  void _viewValuationReports(Project project) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ValuationReportsScreen(
+          project: project,
+          onProjectUpdated: _loadProjects,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _submitToAccessor(Project project) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Submit Project'),
+        content: Text('Are you sure you want to submit "${project.title}" to the accessor for review?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Submit'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      setState(() {
+        _isLoadingProjects = true;
+      });
+
+      try {
+        final result = await ApiService.submitProject(project.id);
+        
+        if (mounted) {
+          if (result['success']) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Project submitted to accessor successfully'),
+                backgroundColor: Colors.green,
+              ),
+            );
+            // Reload projects to get updated status
+            _loadProjects();
+          } else {
+            setState(() => _isLoadingProjects = false);
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Failed to submit project: ${result['message']}'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+        }
+      } catch (e) {
+        if (mounted) {
+          setState(() => _isLoadingProjects = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Error submitting project: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    }
+  }
+
   Future<void> _markAttendance() async {
     setState(() => _isMarkingAttendance = true);
     
@@ -205,9 +283,9 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
             SnackBar(
               content: const Row(
                 children: [
-                  Icon(Icons.check_circle, color: Colors.white),
-                  SizedBox(width: 8),
-                  Expanded(child: Text('Attendance marked successfully!')),
+                   Icon(Icons.check_circle, color: Colors.white),
+                   SizedBox(width: 8),
+                   Expanded(child: Text('Attendance marked successfully!')),
                 ],
               ),
               backgroundColor: Colors.green,
@@ -514,218 +592,116 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text(
-              'Field Officer Dashboard',
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                letterSpacing: 0.5,
-              ),
-            ),
-            if (_username != null || _roleDisplay != null)
-              Padding(
-                padding: const EdgeInsets.only(top: 4.0),
-                child: Row(
+      backgroundColor: const Color(0xFFF5F7FA),
+      body: NestedScrollView(
+        headerSliverBuilder: (context, innerBoxIsScrolled) {
+          return [
+            SliverAppBar(
+              expandedHeight: 180.0,
+              floating: false,
+              pinned: true,
+              backgroundColor: const Color(0xFF0D47A1),
+              flexibleSpace: FlexibleSpaceBar(
+                titlePadding: const EdgeInsets.only(left: 16, bottom: 60),
+                title: Column(
                   mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.end,
                   children: [
-                    if (_username != null)
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.person_outline,
-                            size: 14,
-                            color: Theme.of(context).brightness == Brightness.dark
-                                ? Colors.white.withOpacity(0.9)
-                                : Colors.black87.withOpacity(0.8),
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            _username!,
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                              color: Theme.of(context).brightness == Brightness.dark
-                                  ? Colors.white.withOpacity(0.95)
-                                  : Colors.black87,
-                              letterSpacing: 0.3,
-                            ),
-                          ),
-                        ],
+                    Text(
+                      'Welcome back,',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.blue[100],
+                        fontWeight: FontWeight.normal,
                       ),
-                    if (_username != null && _roleDisplay != null)
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                        child: Container(
-                          width: 1,
-                          height: 14,
-                          color: Theme.of(context).brightness == Brightness.dark
-                              ? Colors.white.withOpacity(0.3)
-                              : Colors.black26,
-                        ),
+                    ),
+                    Text(
+                      _username ?? 'Field Officer',
+                      style: const TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
                       ),
-                    if (_roleDisplay != null)
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            colors: Theme.of(context).brightness == Brightness.dark
-                                ? [
-                                    Colors.white.withOpacity(0.25),
-                                    Colors.white.withOpacity(0.15),
-                                  ]
-                                : [
-                                    Colors.blue.withOpacity(0.15),
-                                    Colors.blue.withOpacity(0.1),
-                                  ],
-                          ),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: Theme.of(context).brightness == Brightness.dark
-                                ? Colors.white.withOpacity(0.3)
-                                : Colors.blue.withOpacity(0.3),
-                            width: 1,
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.1),
-                              blurRadius: 4,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              Icons.badge_outlined,
-                              size: 12,
-                              color: Theme.of(context).brightness == Brightness.dark
-                                  ? Colors.white.withOpacity(0.9)
-                                  : Colors.blue[700],
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              _roleDisplay!,
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w600,
-                                letterSpacing: 0.5,
-                                color: Theme.of(context).brightness == Brightness.dark
-                                    ? Colors.white
-                                    : Colors.blue[900],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
+                    ),
                   ],
                 ),
+                background: Container(
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [Color(0xFF0D47A1), Color(0xFF1976D2)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                  ),
+                  child: Stack(
+                    children: [
+                      Positioned(
+                        right: -40,
+                        top: -40,
+                        child: Icon(
+                          Icons.business_center_rounded,
+                          color: Colors.white.withOpacity(0.08),
+                          size: 200,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
-          ],
-        ),
-        centerTitle: true,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: _logout,
-            tooltip: 'Logout',
-          ),
-        ],
-        bottom: TabBar(
+              actions: [
+                const SyncStatusIndicator(),
+                IconButton(
+                  icon: const Icon(Icons.logout, color: Colors.white),
+                  onPressed: _logout,
+                  tooltip: 'Logout',
+                ),
+              ],
+              bottom: TabBar(
+                controller: _tabController,
+                indicatorColor: Colors.white,
+                indicatorWeight: 3,
+                labelColor: Colors.white,
+                unselectedLabelColor: Colors.blue[100],
+                labelStyle: const TextStyle(fontWeight: FontWeight.bold),
+                tabs: const [
+                  Tab(text: 'Profile & Attendance'),
+                  Tab(text: 'Projects'),
+                ],
+              ),
+            ),
+          ];
+        },
+        body: TabBarView(
           controller: _tabController,
-          tabs: const [
-            Tab(icon: Icon(Icons.person), text: 'Profile'),
-            Tab(icon: Icon(Icons.folder), text: 'Projects'),
+          children: [
+            _buildProfileTab(),
+            _buildProjectsTab(),
           ],
         ),
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : TabBarView(
-              controller: _tabController,
-              children: [
-                _buildProfileTab(),
-                _buildProjectsTab(),
-              ],
-            ),
     );
   }
 
   Widget _buildProfileTab() {
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // User Info Card
-          Card(
-            elevation: 3,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                children: [
-                  CircleAvatar(
-                    radius: 40,
-                    backgroundColor: Colors.blue[100],
-                    child: Icon(Icons.person, size: 40, color: Colors.blue[700]),
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    _username ?? 'Field Officer',
-                    style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    _roleDisplay ?? 'Field Officer',
-                    style: TextStyle(fontSize: 14, color: Colors.grey[600]),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-
-          // Web App Info Card
-          Card(
-            elevation: 2,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            color: Colors.blue[50],
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                children: [
-                  Icon(Icons.web, size: 36, color: Colors.blue[700]),
-                  const SizedBox(height: 12),
-                  Text(
-                    'Employee Features Available on Web',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.blue[900],
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Attendance, Leave Requests, and Payment Slips are available through the Auditra Web App.',
-                    style: TextStyle(fontSize: 13, color: Colors.blue[800]),
-                    textAlign: TextAlign.center,
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-
+          // Today's Attendance
+          _buildTodayAttendanceCard(),
+          const SizedBox(height: 20),
+          
+          // Summary
+          _buildSummarySection(),
+          const SizedBox(height: 20),
+          
           // Quick Actions
           Card(
-            elevation: 2,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            elevation: 0,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            color: Colors.white,
             child: Padding(
               padding: const EdgeInsets.all(16),
               child: Column(
@@ -733,13 +709,13 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
                 children: [
                   const Text(
                     'Quick Actions',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.text),
                   ),
                   const SizedBox(height: 12),
-                  ListTile(
-                    leading: Icon(Icons.lock_outline, color: Colors.orange[700]),
-                    title: const Text('Change Password'),
-                    trailing: const Icon(Icons.chevron_right),
+                  _buildQuickActionTile(
+                    icon: Icons.lock_reset_rounded,
+                    color: Colors.orange,
+                    title: 'Change Password',
                     onTap: () {
                       Navigator.of(context).push(
                         MaterialPageRoute(
@@ -749,10 +725,10 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
                     },
                   ),
                   const Divider(),
-                  ListTile(
-                    leading: Icon(Icons.receipt_long, color: Colors.green[700]),
-                    title: const Text('Payment Slips'),
-                    trailing: const Icon(Icons.chevron_right),
+                  _buildQuickActionTile(
+                    icon: Icons.receipt_long_rounded,
+                    color: Colors.green,
+                    title: 'Payment Slips',
                     onTap: () {
                       Navigator.of(context).push(
                         MaterialPageRoute(
@@ -765,8 +741,34 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
               ),
             ),
           ),
+          const SizedBox(height: 30),
         ],
       ),
+    );
+  }
+  
+  Widget _buildQuickActionTile({
+    required IconData icon,
+    required Color color,
+    required String title,
+    required VoidCallback onTap,
+  }) {
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      leading: Container(
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Icon(icon, color: color, size: 22),
+      ),
+      title: Text(
+        title, 
+        style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+      ),
+      trailing: Icon(Icons.chevron_right_rounded, color: Colors.grey[400]),
+      onTap: onTap,
     );
   }
 
@@ -776,217 +778,54 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
       child: _isLoadingProjects
           ? const Center(child: CircularProgressIndicator())
           : _projects.isEmpty
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.folder_open, size: 64, color: Colors.grey[400]),
-                      const SizedBox(height: 16),
-                      Text(
-                        'No projects assigned',
-                        style: TextStyle(fontSize: 18, color: Colors.grey[600]),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Projects assigned to you will appear here',
-                        style: TextStyle(color: Colors.grey[500]),
-                      ),
-                    ],
-                  ),
-                )
+              ? _buildEmptyProjectsState()
               : ListView.builder(
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 80),
                   itemCount: _projects.length,
                   itemBuilder: (context, index) {
                     final project = _projects[index];
-                    return _buildProjectCard(project);
+                    return FieldOfficerProjectCard(
+                      project: project,
+                      onViewDetails: _viewProjectDetails,
+                      onViewReports: _viewValuationReports,
+                      onSubmit: _submitToAccessor,
+                    );
                   },
                 ),
     );
   }
-
-  Widget _buildProjectCard(Project project) {
-    final priority = project.priority ?? 'medium';
-    return Stack(
-      clipBehavior: Clip.none,
-      children: [
-        Card(
-          elevation: 2,
-          margin: const EdgeInsets.only(bottom: 12),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          child: InkWell(
-            onTap: () => _viewProjectDetails(project),
-            borderRadius: BorderRadius.circular(12),
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const SizedBox(height: 20), // Space for priority label
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          project.title,
-                          style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                      Chip(
-                        label: Text(project.statusDisplay),
-                        backgroundColor: _getProjectStatusColor(project.status),
-                      ),
-                    ],
-                  ),
-              if (project.description != null) ...[
-                const SizedBox(height: 8),
-                Text(
-                  project.description!,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(color: Colors.grey[600]),
-                ),
-              ],
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Icon(Icons.person, size: 16, color: Colors.grey[600]),
-                  const SizedBox(width: 4),
-                  Text(
-                    'Coordinator: ${project.coordinatorName ?? project.coordinatorUsername}',
-                    style: TextStyle(color: Colors.grey[700]),
-                  ),
-                  const Spacer(),
-                  Icon(Icons.attach_file, size: 16, color: Colors.grey[600]),
-                  const SizedBox(width: 4),
-                  Text(
-                    '${project.documentsCount} docs',
-                    style: TextStyle(color: Colors.grey[600]),
-                  ),
-                ],
-              ),
-              if (project.startDate != null || project.endDate != null) ...[
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    if (project.startDate != null) ...[
-                      Icon(Icons.calendar_today, size: 14, color: Colors.grey[600]),
-                      const SizedBox(width: 4),
-                      Text(
-                        DateFormat('MMM dd, yyyy').format(project.startDate!),
-                        style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                      ),
-                    ],
-                    if (project.endDate != null) ...[
-                      const SizedBox(width: 16),
-                      Icon(Icons.event, size: 14, color: Colors.grey[600]),
-                      const SizedBox(width: 4),
-                      Text(
-                        DateFormat('MMM dd, yyyy').format(project.endDate!),
-                        style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                      ),
-                    ],
-                  ],
-                ),
-              ],
-              if (project.valuationsCount > 0) ...[
-                const SizedBox(height: 12),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.blue[50],
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.blue[200]!),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Icon(Icons.assessment, size: 16, color: Colors.blue[700]),
-                          const SizedBox(width: 6),
-                          Text(
-                            'Valuations (${project.valuationsCount})',
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.blue[900],
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      ...project.valuations.take(3).map((valuation) => Padding(
-                        padding: const EdgeInsets.only(bottom: 6),
-                        child: Row(
-                          children: [
-                            Container(
-                              width: 8,
-                              height: 8,
-                              decoration: BoxDecoration(
-                                color: _getValuationStatusColor(valuation.status),
-                                shape: BoxShape.circle,
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                '${valuation.categoryDisplay} - ${valuation.statusDisplay}',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.grey[800],
-                                ),
-                              ),
-                            ),
-                            if (valuation.canBeEdited && valuation.status == 'submitted')
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                decoration: BoxDecoration(
-                                  color: Colors.orange[100],
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                                child: Text(
-                                  'Editable',
-                                  style: TextStyle(
-                                    fontSize: 10,
-                                    color: Colors.orange[900],
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                              ),
-                          ],
-                        ),
-                      )),
-                      if (project.valuationsCount > 3)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 4),
-                          child: Text(
-                            '+ ${project.valuationsCount - 3} more',
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: Colors.blue[700],
-                              fontStyle: FontStyle.italic,
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-              ],
-            ],
+  
+  Widget _buildEmptyProjectsState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.folder_open_rounded, size: 80, color: Colors.grey[300]),
+          const SizedBox(height: 20),
+          Text(
+            'No projects assigned',
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: Colors.grey[600],
+            ),
           ),
-        ),
+          const SizedBox(height: 8),
+          Text(
+            'Any projects assigned to you\nwill appear here automatically.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: Colors.grey[500], height: 1.5),
+          ),
+        ],
       ),
+    );
+  }
+
+  Future<void> _viewProjectDetails(Project project) async {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ProjectDetailsScreen(project: project),
       ),
-      // Priority ribbon at top-left corner
-      Positioned(
-        top: 4,
-        left: 8,
-        child: _buildPriorityRibbon(priority),
-      ),
-    ],
     );
   }
   
@@ -1085,138 +924,8 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
     }
   }
 
-  Future<void> _viewProjectDetails(Project project) async {
-    await showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(project.title),
-        content: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (project.description != null) ...[
-                Text(
-                  'Description:',
-                  style: TextStyle(fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 4),
-                Text(project.description!),
-                const SizedBox(height: 16),
-              ],
-              Text(
-                'Status: ${project.statusDisplay}',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Priority: ${_formatPriorityLabel(project.priority ?? 'medium')}',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Coordinator: ${project.coordinatorName ?? project.coordinatorUsername}',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 16),
-              if (project.documents.isNotEmpty) ...[
-                const Text(
-                  'Documents:',
-                  style: TextStyle(fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 8),
-                ...project.documents.map((doc) => ListTile(
-                      title: Text(doc.name),
-                      subtitle: Text(doc.fileSizeFormatted),
-                      trailing: doc.fileUrl != null
-                          ? IconButton(
-                              icon: const Icon(Icons.download),
-                              onPressed: () {
-                                // TODO: Implement file download
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(content: Text('Download: ${doc.fileUrl}')),
-                                );
-                              },
-                            )
-                          : null,
-                    )),
-                const SizedBox(height: 16),
-              ],
-              if (project.valuations.isNotEmpty) ...[
-                const Text(
-                  'Valuations:',
-                  style: TextStyle(fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 8),
-                ...project.valuations.map((valuation) => ListTile(
-                      leading: Container(
-                        width: 12,
-                        height: 12,
-                        decoration: BoxDecoration(
-                          color: _getValuationStatusColor(valuation.status),
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                      title: Text('${valuation.categoryDisplay}'),
-                      subtitle: Text('Status: ${valuation.statusDisplay}'),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          if (valuation.canBeEdited || valuation.status == 'draft')
-                            IconButton(
-                              icon: const Icon(Icons.edit),
-                              onPressed: () {
-                                Navigator.of(context).pop();
-                                Navigator.of(context).push(
-                                  MaterialPageRoute(
-                                    builder: (_) => ValuationFormScreen(
-                                      project: project,
-                                      existingValuation: valuation,
-                                    ),
-                                  ),
-                                );
-                              },
-                            ),
-                          if (valuation.status == 'draft')
-                            IconButton(
-                              icon: const Icon(Icons.delete_outline),
-                              onPressed: () async {
-                                // TODO: Implement delete functionality
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(content: Text('Delete functionality coming soon')),
-                                );
-                              },
-                            ),
-                        ],
-                      ),
-                    )),
-              ],
-            ],
-          ),
-        ),
-        actions: [
-          TextButton.icon(
-            onPressed: () {
-              Navigator.of(context).pop();
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => ValuationFormScreen(project: project),
-                ),
-              );
-            },
-            icon: const Icon(Icons.add),
-            label: const Text('Create Valuation'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Close'),
-          ),
-        ],
-      ),
-    );
-  }
 
-  // ignore: unused_element
+
   Widget _buildTodayAttendanceCard() {
     return Card(
       elevation: 4,
@@ -1461,7 +1170,6 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
     );
   }
 
-  // ignore: unused_element
   Widget _buildSummarySection() {
     return Card(
       elevation: 2,
@@ -1605,118 +1313,7 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
     );
   }
 
-  // ignore: unused_element
-  Widget _buildChartsSection() {
-    if (_summary == null || _summary!.dailyData.isEmpty) {
-      return const SizedBox.shrink();
-    }
 
-    return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              'Attendance Chart',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 16),
-            SizedBox(
-              height: 200,
-              child: _buildBarChart(),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildBarChart() {
-    if (_summary == null || _summary!.dailyData.isEmpty) {
-      return const Center(child: Text('No data to display'));
-    }
-
-    final data = _summary!.dailyData;
-    final maxHours = data.map((d) => d.workingHours).reduce((a, b) => a > b ? a : b);
-    
-    return BarChart(
-      BarChartData(
-        alignment: BarChartAlignment.spaceAround,
-        maxY: maxHours > 0 ? maxHours + 1 : 10,
-        barTouchData: BarTouchData(
-          enabled: true,
-          touchTooltipData: BarTouchTooltipData(
-            tooltipRoundedRadius: 8,
-          ),
-        ),
-        titlesData: FlTitlesData(
-          show: true,
-          bottomTitles: AxisTitles(
-            sideTitles: SideTitles(
-              showTitles: true,
-              getTitlesWidget: (value, meta) {
-                if (value.toInt() < data.length) {
-                  final date = data[value.toInt()].date;
-                  return Padding(
-                    padding: const EdgeInsets.only(top: 8.0),
-                    child: Text(
-                      DateFormat('dd/MM').format(date),
-                      style: const TextStyle(fontSize: 10),
-                    ),
-                  );
-                }
-                return const Text('');
-              },
-            ),
-          ),
-          leftTitles: AxisTitles(
-            sideTitles: SideTitles(
-              showTitles: true,
-              getTitlesWidget: (value, meta) {
-                return Text(
-                  '${value.toInt()}h',
-                  style: const TextStyle(fontSize: 10),
-                );
-              },
-            ),
-          ),
-          topTitles: const AxisTitles(
-            sideTitles: SideTitles(showTitles: false),
-          ),
-          rightTitles: const AxisTitles(
-            sideTitles: SideTitles(showTitles: false),
-          ),
-        ),
-        gridData: FlGridData(
-          show: true,
-          drawVerticalLine: false,
-        ),
-        borderData: FlBorderData(show: false),
-        barGroups: data.asMap().entries.map((entry) {
-          final index = entry.key;
-          final dayData = entry.value;
-          final color = _getStatusColor(dayData.status);
-          
-          return BarChartGroupData(
-            x: index,
-            barRods: [
-              BarChartRodData(
-                toY: dayData.workingHours,
-                color: color,
-                width: 16,
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(4)),
-              ),
-            ],
-          );
-        }).toList(),
-      ),
-    );
-  }
 
   Color _getStatusColor(String status) {
     switch (status) {

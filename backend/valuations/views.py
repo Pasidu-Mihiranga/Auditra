@@ -10,7 +10,7 @@ from .serializers import (
     ValuationSerializer, ValuationCreateSerializer,
     ValuationPhotoSerializer, ValuationPhotoCreateSerializer
 )
-from projects.models import Project
+from projects.models import Project, ProjectStatusHistory
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +23,12 @@ class ValuationListCreateView(generics.ListCreateAPIView):
         user = self.request.user
         project_id = self.request.query_params.get('project', None)
         
-        queryset = Valuation.objects.filter(field_officer=user)
+        # Field Officers see their own valuations
+        # Accessors see valuations for projects assigned to them
+        if hasattr(user, 'role') and user.role.role == 'accessor':
+            queryset = Valuation.objects.filter(project__assigned_accessor=user)
+        else:
+            queryset = Valuation.objects.filter(field_officer=user)
         
         if project_id:
             queryset = queryset.filter(project_id=project_id)
@@ -64,7 +69,16 @@ class ValuationDetailView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = ValuationSerializer
     
     def get_queryset(self):
-        return Valuation.objects.filter(field_officer=self.request.user).select_related(
+        user = self.request.user
+        
+        # Field Officers see their own valuations
+        # Accessors see valuations for projects assigned to them
+        if hasattr(user, 'role') and user.role.role == 'accessor':
+            return Valuation.objects.filter(project__assigned_accessor=user).select_related(
+                'project', 'field_officer'
+            ).prefetch_related('photos')
+            
+        return Valuation.objects.filter(field_officer=user).select_related(
             'project', 'field_officer'
         ).prefetch_related('photos')
     
@@ -110,9 +124,9 @@ def submit_valuation(request, pk):
         field_officer=request.user
     )
     
-    if valuation.status != 'draft':
+    if valuation.status not in ['draft', 'rejected']:
         return Response(
-            {'error': 'Only draft valuations can be submitted.'},
+            {'error': 'Only draft or rejected valuations can be submitted.'},
             status=status.HTTP_400_BAD_REQUEST
         )
     
@@ -207,6 +221,13 @@ def accept_valuation(request, pk):
         f'status changed to reviewed and sent to senior valuer {senior_valuer_name} (ID: {valuation.project.assigned_senior_valuer.id})'
     )
     
+    ProjectStatusHistory.objects.create(
+        project=valuation.project,
+        status=valuation.project.status,
+        notes=f"Valuation ({valuation.get_category_display()}) accepted by Accessor and sent to Senior Valuer for approval.",
+        created_by=request.user
+    )
+    
     serializer = ValuationSerializer(valuation, context={'request': request})
     return Response({
         **serializer.data,
@@ -256,6 +277,13 @@ def reject_valuation(request, pk):
     valuation.save(update_fields=['status', 'rejection_reason', 'updated_at'])
     
     logger.info(f'Valuation {valuation.id} rejected by accessor {request.user.username}')
+    
+    ProjectStatusHistory.objects.create(
+        project=valuation.project,
+        status=valuation.project.status,
+        notes=f"Valuation ({valuation.get_category_display()}) rejected by Accessor. Reason: {rejection_reason}",
+        created_by=request.user
+    )
     
     serializer = ValuationSerializer(valuation, context={'request': request})
     return Response(serializer.data, status=status.HTTP_200_OK)
@@ -366,6 +394,13 @@ def senior_valuer_approve_valuation(request, pk):
     
     logger.info(f'Valuation {valuation.id} approved by senior valuer {request.user.username}')
     
+    ProjectStatusHistory.objects.create(
+        project=valuation.project,
+        status=valuation.project.status,
+        notes=f"Valuation ({valuation.get_category_display()}) approved by Senior Valuer.",
+        created_by=request.user
+    )
+    
     serializer = ValuationSerializer(valuation, context={'request': request})
     return Response(serializer.data, status=status.HTTP_200_OK)
 
@@ -412,6 +447,13 @@ def senior_valuer_reject_valuation(request, pk):
     valuation.save(update_fields=['status', 'rejection_reason', 'updated_at'])
     
     logger.info(f'Valuation {valuation.id} rejected by senior valuer {request.user.username}')
+    
+    ProjectStatusHistory.objects.create(
+        project=valuation.project,
+        status=valuation.project.status,
+        notes=f"Valuation ({valuation.get_category_display()}) rejected by Senior Valuer. Reason: {rejection_reason}",
+        created_by=request.user
+    )
     
     serializer = ValuationSerializer(valuation, context={'request': request})
     return Response(serializer.data, status=status.HTTP_200_OK)
