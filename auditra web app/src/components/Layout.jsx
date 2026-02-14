@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Outlet, useNavigate, useLocation, Navigate } from 'react-router-dom';
+import logo from '../assets/logo.png';
 import {
   Box, Drawer, AppBar, Toolbar, Typography, IconButton, List, ListItem,
   ListItemButton, ListItemIcon, ListItemText, Avatar, Divider, useMediaQuery,
@@ -42,22 +43,28 @@ export default function Layout() {
   const drawerContent = (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       {/* Brand */}
-      <Box sx={{ p: collapsed && !isMobile ? 1.5 : 3, textAlign: 'center', minHeight: 72, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-        <Typography
-          variant={collapsed && !isMobile ? 'body1' : 'h5'}
+      <Box sx={{
+        p: collapsed && !isMobile ? 1.5 : 2,
+        textAlign: 'center',
+        minHeight: 72,
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'center',
+        alignItems: 'center'
+      }}>
+        <Box
+          component="img"
+          src={logo}
+          alt="Auditra"
           sx={{
-            fontWeight: 700,
-            color: c.sidebarAccent,
-            letterSpacing: collapsed && !isMobile ? 0 : 1,
+            width: '100%',
+            maxWidth: collapsed && !isMobile ? 40 : 180,
+            height: (collapsed && !isMobile) ? 40 : 'auto',
+            objectFit: (collapsed && !isMobile) ? 'cover' : 'contain',
+            objectPosition: 'left',
+            transition: 'all 0.25s ease',
           }}
-        >
-          {collapsed && !isMobile ? 'A' : 'AUDITRA'}
-        </Typography>
-        {(!collapsed || isMobile) && (
-          <Typography variant="caption" sx={{ color: c.sidebarSubtitle, fontSize: 11 }}>
-            Professional Auditing
-          </Typography>
-        )}
+        />
       </Box>
 
       <Divider sx={{ borderColor: c.sidebarDivider }} />

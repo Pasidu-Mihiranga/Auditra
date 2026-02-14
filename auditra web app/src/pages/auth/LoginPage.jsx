@@ -5,6 +5,7 @@ import {
 } from '@mui/material';
 import { Visibility, VisibilityOff, Login as LoginIcon } from '@mui/icons-material';
 import { useAuth } from '../../contexts/AuthContext';
+import logo from '../../assets/logo.png';
 
 export default function LoginPage() {
   const [username, setUsername] = useState('');
@@ -40,13 +41,18 @@ export default function LoginPage() {
     }}>
       <Card sx={{ maxWidth: 440, width: '100%' }}>
         <CardContent sx={{ p: 4 }}>
-          <Box sx={{ textAlign: 'center', mb: 4 }}>
-            <Typography variant="h4" sx={{ color: 'primary.main', fontWeight: 700, letterSpacing: 2 }}>
-              AUDITRA
-            </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-              Professional Auditing Services
-            </Typography>
+          <Box sx={{ textAlign: 'center', mb: 4, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+            <Box
+              component="img"
+              src={logo}
+              alt="Auditra"
+              sx={{
+                width: '100%',
+                maxWidth: 240,
+                height: 'auto',
+                mb: 1
+              }}
+            />
           </Box>
 
           {error && <Alert severity="error" sx={{ mb: 3 }}>{error}</Alert>}

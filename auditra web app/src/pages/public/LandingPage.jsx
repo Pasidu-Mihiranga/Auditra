@@ -3,6 +3,7 @@ import { Box, Typography, Button, Container, Grid, Card, CardContent, AppBar, To
 import {
   AccountBalance, Assessment, Gavel, Business, Security, Computer,
 } from '@mui/icons-material';
+import logo from '../../assets/logo.png';
 
 const services = [
   { icon: AccountBalance, title: 'Financial Auditing', desc: 'Comprehensive financial statement audits and reviews' },
@@ -19,9 +20,16 @@ export default function LandingPage() {
       {/* Navbar */}
       <AppBar position="static" sx={{ bgcolor: '#0F172A' }}>
         <Toolbar sx={{ justifyContent: 'space-between' }}>
-          <Typography variant="h5" sx={{ fontWeight: 700, color: '#60A5FA', letterSpacing: 2 }}>
-            AUDITRA
-          </Typography>
+          <Box
+            component="img"
+            src={logo}
+            alt="Auditra"
+            sx={{
+              height: 48,
+              width: 'auto',
+              display: 'block'
+            }}
+          />
           <Box sx={{ display: 'flex', gap: 1 }}>
             <Button component={Link} to="/login" sx={{ color: '#FFF' }}>Login</Button>
             <Button component={Link} to="/register" variant="outlined" sx={{ color: '#60A5FA', borderColor: '#60A5FA' }}>
