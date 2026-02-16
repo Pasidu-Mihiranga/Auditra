@@ -2,54 +2,52 @@ import { useState, useEffect, useCallback } from 'react';
 import { Box, Container, Typography, Button, IconButton, Stack } from '@mui/material';
 import { ArrowForward, ChevronLeft, ChevronRight } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
+import hero1 from '../../../assets/hero1.png';
+import hero2 from '../../../assets/hero2.png';
+import hero3 from '../../../assets/hero3.png';
 
 const slides = [
     {
-        badge: 'AUDITRA SRI LANKA',
-        heading: 'Your Trusted Partner in\nAuditing Insight',
-        description: 'Delivering comprehensive audit and advisory services across Sri Lanka with over 15 years of trusted expertise.',
-        cta1: { label: 'Get in Touch', link: '/client-register' },
-        cta2: { label: 'Get a Quote', link: '/client-register' },
-        bg: 'linear-gradient(135deg, #0D47A1 0%, #1565C0 30%, #1976D2 60%, #1E88E5 85%, #1565C0 100%)',
+        heading: 'Your Trusted Partner in\nAuditing',
+        subtitle: 'Delivering comprehensive audit and assurance services across Sri Lanka',
+        primaryBtn: { label: 'Our Services', link: '#services' },
+        secondaryBtn: { label: 'Get a Quote', link: '#contact' },
+        image: hero1,
     },
     {
-        badge: 'AUDITRA SRI LANKA',
-        heading: 'Beyond Numbers,\nDelivering Clarity',
-        description: 'Our team of certified auditors ensure accuracy, compliance, and strategic value for every business engagement.',
-        cta1: { label: 'Our Services', link: '#services' },
-        cta2: { label: 'Get a Quote', link: '/client-register' },
-        bg: 'linear-gradient(135deg, #1565C0 0%, #1976D2 25%, #2196F3 50%, #1E88E5 75%, #1565C0 100%)',
+        heading: 'Precision.\nIntegrity.\nExcellence.',
+        subtitle: 'Over 15 years of professional auditing expertise you can rely on',
+        primaryBtn: { label: 'About Us', link: '#about' },
+        secondaryBtn: { label: 'Get a Quote', link: '#contact' },
+        image: hero2,
     },
     {
-        badge: 'AUDITRA SRI LANKA',
-        heading: '15+ Years of\nProfessional Excellence',
-        description: 'Trusted by 500+ clients for precision auditing, tax advisory, asset valuation, and business consulting.',
-        cta1: { label: 'Get in Touch', link: '/client-register' },
-        cta2: { label: 'Get a Quote', link: '/client-register' },
-        bg: 'linear-gradient(135deg, #0D47A1 0%, #1565C0 25%, #1976D2 50%, #60A5FA 75%, #1565C0 100%)',
+        heading: 'Beyond Numbers —\nStrategic Insight',
+        subtitle: 'Project valuation, compliance, and advisory that drives real results',
+        primaryBtn: { label: 'Get in Touch', link: '#contact' },
+        secondaryBtn: { label: 'Get a Quote', link: '#contact' },
+        image: hero3,
     },
 ];
 
 export default function HeroSection() {
     const [current, setCurrent] = useState(0);
     const [animating, setAnimating] = useState(false);
-    const [direction, setDirection] = useState(1); // 1 = forward, -1 = backward
     const navigate = useNavigate();
 
-    const goTo = useCallback((index, dir) => {
+    const goTo = useCallback((index) => {
         if (animating) return;
-        setDirection(dir);
         setAnimating(true);
         setCurrent(index);
         setTimeout(() => setAnimating(false), 700);
     }, [animating]);
 
     const next = useCallback(() => {
-        goTo((current + 1) % slides.length, 1);
+        goTo((current + 1) % slides.length);
     }, [current, goTo]);
 
     const prev = useCallback(() => {
-        goTo((current - 1 + slides.length) % slides.length, -1);
+        goTo((current - 1 + slides.length) % slides.length);
     }, [current, goTo]);
 
     // Auto-advance
@@ -61,7 +59,11 @@ export default function HeroSection() {
     const handleCTA = (link) => {
         if (link.startsWith('#')) {
             const el = document.querySelector(link);
-            if (el) el.scrollIntoView({ behavior: 'smooth' });
+            if (el) {
+                const offset = (link === '#services' || link === '#contact') ? 40 : 80;
+                const y = el.getBoundingClientRect().top + window.scrollY - offset;
+                window.scrollTo({ top: y, behavior: 'smooth' });
+            }
         } else {
             navigate(link);
         }
@@ -74,8 +76,8 @@ export default function HeroSection() {
             id="hero"
             sx={{
                 position: 'relative',
-                height: { xs: '85vh', md: '92vh' },
-                minHeight: 520,
+                height: { xs: '70vh', md: '78vh' },
+                minHeight: 480,
                 overflow: 'hidden',
                 mt: { xs: '64px', md: '100px' }, // offset for fixed navbar + top bar
                 pb: { xs: '60px', md: '80px' }, // extra space for angled bottom
@@ -88,7 +90,9 @@ export default function HeroSection() {
                     sx={{
                         position: 'absolute',
                         inset: 0,
-                        background: s.bg,
+                        backgroundImage: `url(${s.image})`,
+                        backgroundSize: 'cover',
+                        backgroundPosition: 'center',
                         opacity: i === current ? 1 : 0,
                         transition: 'opacity 0.7s ease-in-out',
                         zIndex: i === current ? 1 : 0,
@@ -96,13 +100,13 @@ export default function HeroSection() {
                 />
             ))}
 
-            {/* Subtle diagonal overlay */}
+            {/* Dark overlay for text readability */}
             <Box
                 sx={{
                     position: 'absolute',
                     inset: 0,
                     zIndex: 2,
-                    background: 'linear-gradient(160deg, rgba(255,255,255,0.08) 0%, transparent 40%, rgba(0,0,0,0.05) 100%)',
+                    background: 'linear-gradient(135deg, rgba(13,71,161,0.50) 0%, rgba(21,101,192,0.35) 50%, rgba(13,71,161,0.45) 100%)',
                     pointerEvents: 'none',
                 }}
             />
@@ -121,18 +125,8 @@ export default function HeroSection() {
                 }}
             >
                 <Box
-                    key={current}
                     sx={{
-                        animation: `slideIn${direction > 0 ? 'Right' : 'Left'} 0.6s ease-out`,
-                        '@keyframes slideInRight': {
-                            '0%': { opacity: 0, transform: 'translateX(60px)' },
-                            '100%': { opacity: 1, transform: 'translateX(0)' },
-                        },
-                        '@keyframes slideInLeft': {
-                            '0%': { opacity: 0, transform: 'translateX(-60px)' },
-                            '100%': { opacity: 1, transform: 'translateX(0)' },
-                        },
-                        maxWidth: 620,
+                        maxWidth: 650,
                     }}
                 >
                     {/* Badge */}
@@ -156,7 +150,7 @@ export default function HeroSection() {
                                 textTransform: 'uppercase',
                             }}
                         >
-                            {slide.badge}
+                            AUDITRA SRI LANKA
                         </Typography>
                     </Box>
 
@@ -168,7 +162,7 @@ export default function HeroSection() {
                             fontWeight: 700,
                             fontSize: { xs: '2rem', sm: '2.8rem', md: '3.5rem' },
                             lineHeight: 1.2,
-                            mb: 2.5,
+                            mb: 3,
                             whiteSpace: 'pre-line',
                             textShadow: '0 2px 20px rgba(0,0,0,0.1)',
                         }}
@@ -176,18 +170,18 @@ export default function HeroSection() {
                         {slide.heading}
                     </Typography>
 
-                    {/* Description */}
+                    {/* Subtitle */}
                     <Typography
                         variant="body1"
                         sx={{
                             color: 'rgba(255,255,255,0.85)',
-                            fontSize: { xs: '0.95rem', md: '1.05rem' },
+                            fontSize: { xs: '0.95rem', md: '1.1rem' },
                             lineHeight: 1.7,
+                            maxWidth: 520,
                             mb: 4,
-                            maxWidth: 500,
                         }}
                     >
-                        {slide.description}
+                        {slide.subtitle}
                     </Typography>
 
                     {/* CTA Buttons */}
@@ -196,50 +190,50 @@ export default function HeroSection() {
                             variant="contained"
                             size="large"
                             endIcon={<ArrowForward />}
-                            onClick={() => handleCTA(slide.cta1.link)}
+                            onClick={() => handleCTA(slide.primaryBtn.link)}
                             sx={{
-                                bgcolor: 'rgba(255,255,255,0.2)',
-                                color: '#fff',
-                                fontWeight: 600,
+                                bgcolor: '#fff',
+                                color: '#1565C0',
+                                fontWeight: 700,
                                 textTransform: 'none',
-                                px: 3.5,
-                                py: 1.3,
-                                borderRadius: 0.5,
-                                fontSize: '0.95rem',
-                                border: '1.5px solid rgba(255,255,255,0.5)',
-                                backdropFilter: 'blur(4px)',
-                                boxShadow: 'none',
+                                px: 4,
+                                py: 1.4,
+                                borderRadius: '8px',
+                                fontSize: '1rem',
+                                boxShadow: '0 4px 14px rgba(0,0,0,0.15)',
                                 '&:hover': {
-                                    bgcolor: '#fff',
-                                    color: '#1565C0',
-                                    borderColor: '#fff',
-                                    boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
+                                    bgcolor: '#F1F5F9',
+                                    boxShadow: '0 6px 20px rgba(0,0,0,0.2)',
+                                    transform: 'translateY(-2px)',
                                 },
                                 transition: 'all 0.3s',
                             }}
                         >
-                            {slide.cta1.label}
+                            {slide.primaryBtn.label}
                         </Button>
                         <Button
                             variant="outlined"
                             size="large"
-                            onClick={() => handleCTA(slide.cta2.link)}
+                            onClick={() => handleCTA(slide.secondaryBtn.link)}
                             sx={{
-                                color: 'rgba(255,255,255,0.9)',
-                                borderColor: 'rgba(255,255,255,0.35)',
-                                fontWeight: 600,
+                                color: '#fff',
+                                borderColor: '#fff',
+                                borderWidth: 2,
+                                fontWeight: 700,
                                 textTransform: 'none',
-                                px: 3.5,
-                                py: 1.3,
-                                borderRadius: 0.5,
-                                fontSize: '0.95rem',
+                                px: 4,
+                                py: 1.4,
+                                borderRadius: '8px',
+                                fontSize: '1rem',
                                 '&:hover': {
+                                    bgcolor: 'rgba(255,255,255,0.15)',
                                     borderColor: '#fff',
-                                    bgcolor: 'rgba(255,255,255,0.1)',
+                                    borderWidth: 2,
                                 },
+                                transition: 'all 0.3s',
                             }}
                         >
-                            {slide.cta2.label}
+                            {slide.secondaryBtn.label}
                         </Button>
                     </Stack>
                 </Box>
@@ -301,7 +295,7 @@ export default function HeroSection() {
                 {slides.map((_, i) => (
                     <Box
                         key={i}
-                        onClick={() => goTo(i, i > current ? 1 : -1)}
+                        onClick={() => goTo(i)}
                         sx={{
                             width: i === current ? 28 : 10,
                             height: 10,

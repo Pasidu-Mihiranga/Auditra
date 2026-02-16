@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import {
   Box, TextField, Button, Typography, Alert, InputAdornment, IconButton,
@@ -7,6 +7,11 @@ import {
 import { Visibility, VisibilityOff, Login as LoginIcon, ArrowBack } from '@mui/icons-material';
 import { useAuth } from '../../contexts/AuthContext';
 import logo from '../../assets/logo.png';
+import hero1 from '../../assets/hero1.png';
+import hero2 from '../../assets/hero2.png';
+import hero3 from '../../assets/hero3.png';
+
+const heroImages = [hero1, hero2, hero3];
 
 export default function LoginPage() {
   const [username, setUsername] = useState('');
@@ -16,6 +21,15 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
   const navigate = useNavigate();
+
+  // Hero slideshow
+  const [heroIndex, setHeroIndex] = useState(0);
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setHeroIndex((prev) => (prev + 1) % heroImages.length);
+    }, 5000);
+    return () => clearInterval(timer);
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -51,16 +65,21 @@ export default function LoginPage() {
             minHeight: { xs: 300, md: 'auto' },
           }}
         >
-          {/* Background Photo */}
-          <Box
-            sx={{
-              position: 'absolute',
-              inset: 0,
-              backgroundImage: 'url(https://images.unsplash.com/photo-1600880292203-757bb62b4baf?w=1200&q=80)',
-              backgroundSize: 'cover',
-              backgroundPosition: 'center',
-            }}
-          />
+          {/* Background Photo Slideshow */}
+          {heroImages.map((img, i) => (
+            <Box
+              key={i}
+              sx={{
+                position: 'absolute',
+                inset: 0,
+                backgroundImage: `url(${img})`,
+                backgroundSize: 'cover',
+                backgroundPosition: 'center',
+                opacity: i === heroIndex ? 1 : 0,
+                transition: 'opacity 0.8s ease-in-out',
+              }}
+            />
+          ))}
           {/* Dark overlay */}
           <Box
             sx={{

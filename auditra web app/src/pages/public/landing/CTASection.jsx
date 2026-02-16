@@ -7,26 +7,14 @@ export default function CTASection() {
 
     return (
         <Box
-            id="contact"
+            id="cta"
             sx={{
-                py: { xs: 10, md: 12 },
-                background: 'linear-gradient(135deg, #0D47A1 0%, #1565C0 50%, #1976D2 100%)',
+                py: { xs: 5, md: 6 },
+                bgcolor: '#1565C0',
                 position: 'relative',
                 overflow: 'hidden',
             }}
         >
-            {/* Decorative shapes */}
-            <Box sx={{
-                position: 'absolute', top: -60, left: -60,
-                width: 200, height: 200, borderRadius: '50%',
-                bgcolor: 'rgba(255,255,255,0.04)',
-            }} />
-            <Box sx={{
-                position: 'absolute', bottom: -40, right: -40,
-                width: 160, height: 160, borderRadius: '50%',
-                bgcolor: 'rgba(255,255,255,0.03)',
-            }} />
-
             <Container maxWidth="md" sx={{ textAlign: 'center', position: 'relative', zIndex: 1 }}>
                 <Typography
                     variant="h3"
@@ -61,13 +49,13 @@ export default function CTASection() {
                             textTransform: 'none',
                             px: 5,
                             py: 1.5,
-                            borderRadius: 2,
+                            borderRadius: '8px',
                             fontSize: '1rem',
                             '&:hover': { bgcolor: '#F1F5F9', transform: 'translateY(-2px)' },
                             transition: 'all 0.3s',
                         }}
                     >
-                        Start Your Project
+                        Get Quote
                     </Button>
                     <Button
                         variant="outlined"
@@ -78,9 +66,9 @@ export default function CTASection() {
                             borderColor: 'rgba(255,255,255,0.4)',
                             fontWeight: 600,
                             textTransform: 'none',
-                            px: 4,
+                            px: 5,
                             py: 1.5,
-                            borderRadius: 2,
+                            borderRadius: '8px',
                             fontSize: '1rem',
                             '&:hover': { borderColor: '#fff', bgcolor: 'rgba(255,255,255,0.08)' },
                         }}
