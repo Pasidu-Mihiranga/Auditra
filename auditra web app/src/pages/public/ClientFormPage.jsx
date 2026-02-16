@@ -3,9 +3,38 @@ import { Link } from 'react-router-dom';
 import {
   Box, TextField, Button, Typography, Alert, Grid, Container, Paper, Stack, Divider,
 } from '@mui/material';
-import { Send, ArrowBack, Person, Business, AssignmentInd } from '@mui/icons-material';
+import { Send, ArrowBack } from '@mui/icons-material';
 import axiosClient from '../../api/axiosClient';
-import logo from '../../assets/logo.png';
+
+/* ------------------------------------------------------------------ */
+/*  Section heading with blue underline                                */
+/* ------------------------------------------------------------------ */
+const SectionHeading = ({ children }) => (
+  <Box sx={{ mb: 3 }}>
+    <Typography
+      variant="subtitle1"
+      sx={{
+        fontWeight: 700,
+        color: '#1565C0',
+        pb: 1,
+        position: 'relative',
+        display: 'inline-block',
+        '&::after': {
+          content: '""',
+          position: 'absolute',
+          bottom: 0,
+          left: 0,
+          width: 40,
+          height: 3,
+          bgcolor: '#1565C0',
+          borderRadius: 1,
+        },
+      }}
+    >
+      {children}
+    </Typography>
+  </Box>
+);
 
 export default function ClientFormPage() {
   const [form, setForm] = useState({
@@ -44,58 +73,101 @@ export default function ClientFormPage() {
     }
   };
 
-  const inputSx = { '& .MuiOutlinedInput-root': { borderRadius: 2, '&:hover fieldset': { borderColor: '#1565C0' } } };
+  const inputSx = { '& .MuiOutlinedInput-root': { borderRadius: '8px', '&:hover fieldset': { borderColor: '#1565C0' } } };
 
   return (
     <Box sx={{ minHeight: '100vh', bgcolor: '#F1F5F9' }}>
-      {/* Top Navigation */}
-      <Box sx={{ bgcolor: '#fff', borderBottom: '1px solid #E2E8F0', py: 1.5 }}>
-        <Container maxWidth="lg">
-          <Stack direction="row" justifyContent="space-between" alignItems="center">
-            <Stack direction="row" alignItems="center" spacing={2}>
-              <Box component="img" src={logo} alt="Auditra" sx={{ height: 36 }} />
-            </Stack>
-            <Stack direction="row" spacing={1}>
-              <Button component={Link} to="/" startIcon={<ArrowBack />}
-                sx={{ color: '#64748B', textTransform: 'none', fontWeight: 500 }}>
-                Home
-              </Button>
-              <Button component={Link} to="/login"
-                sx={{ color: '#1565C0', textTransform: 'none', fontWeight: 600 }}>
-                Log In
-              </Button>
-            </Stack>
-          </Stack>
-        </Container>
-      </Box>
+      {/* White top spacer */}
+      <Box sx={{ bgcolor: '#fff', height: { xs: 44, md: 44 } }} />
 
-      <Container maxWidth="md" sx={{ py: 6 }}>
-        {/* Header */}
-        <Box sx={{ textAlign: 'center', mb: 5 }}>
-          <Typography variant="h4" sx={{ fontWeight: 700, color: '#0F172A', mb: 1 }}>
+      {/* Blue Hero Banner */}
+      <Box
+        sx={{
+          bgcolor: '#1565C0',
+          position: 'relative',
+          pt: { xs: 5, md: 6 },
+          pb: { xs: 8, md: 10 },
+        }}
+      >
+        <Container maxWidth="lg">
+          <Button
+            component={Link}
+            to="/"
+            startIcon={<ArrowBack />}
+            sx={{
+              color: 'rgba(255,255,255,0.8)',
+              textTransform: 'none',
+              fontWeight: 500,
+              fontSize: '0.85rem',
+              mb: 2,
+              px: 0,
+              '&:hover': { color: '#fff', bgcolor: 'transparent' },
+            }}
+          >
+            Back to Home
+          </Button>
+          <Typography
+            variant="h3"
+            sx={{
+              fontWeight: 700,
+              color: '#fff',
+              fontSize: { xs: '1.8rem', md: '2.4rem' },
+              mb: 1.5,
+            }}
+          >
             Client Registration
           </Typography>
-          <Typography variant="body1" sx={{ color: '#64748B' }}>
-            Submit your details and project information to get started
+          <Typography
+            variant="body1"
+            sx={{
+              color: 'rgba(255,255,255,0.75)',
+              fontSize: { xs: '0.9rem', md: '1rem' },
+              maxWidth: 500,
+              lineHeight: 1.7,
+            }}
+          >
+            Submit your details and project information. Our team will
+            reach out within 24 hours.
           </Typography>
-        </Box>
+        </Container>
 
-        <Paper elevation={0} sx={{ borderRadius: 3, border: '1px solid #E2E8F0', overflow: 'hidden' }}>
+        {/* Diagonal bottom edge */}
+        <Box
+          sx={{
+            position: 'absolute',
+            bottom: -1,
+            left: 0,
+            width: '100%',
+            lineHeight: 0,
+          }}
+        >
+          <svg
+            viewBox="0 0 1440 60"
+            preserveAspectRatio="none"
+            style={{ display: 'block', width: '100%', height: '40px' }}
+          >
+            <polygon points="0,60 1440,0 1440,60" fill="#F1F5F9" />
+          </svg>
+        </Box>
+      </Box>
+
+      {/* Form Section */}
+      <Container maxWidth="md" sx={{ py: { xs: 4, md: 6 }, mt: { xs: -2, md: -3 } }}>
+        <Paper
+          elevation={0}
+          sx={{
+            borderRadius: '16px',
+            border: '1px solid #E2E8F0',
+            overflow: 'hidden',
+          }}
+        >
           {error && <Alert severity="error" sx={{ borderRadius: 0, whiteSpace: 'pre-line' }}>{error}</Alert>}
           {success && <Alert severity="success" sx={{ borderRadius: 0 }}>{success}</Alert>}
 
           <form onSubmit={handleSubmit}>
-            {/* Section 1: Personal */}
+            {/* Section 1: Personal Information */}
             <Box sx={{ p: { xs: 3, sm: 5 } }}>
-              <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mb: 3 }}>
-                <Box sx={{ width: 40, height: 40, borderRadius: 2, bgcolor: '#EFF6FF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <Person sx={{ color: '#1565C0' }} />
-                </Box>
-                <Box>
-                  <Typography variant="subtitle1" sx={{ fontWeight: 700, color: '#0F172A' }}>Personal Information</Typography>
-                  <Typography variant="caption" sx={{ color: '#64748B' }}>Your basic contact details</Typography>
-                </Box>
-              </Stack>
+              <SectionHeading>Personal Information</SectionHeading>
               <Grid container spacing={2.5}>
                 <Grid item xs={12} sm={6}><TextField fullWidth label="First Name" name="first_name" value={form.first_name} onChange={handleChange} sx={inputSx} /></Grid>
                 <Grid item xs={12} sm={6}><TextField fullWidth label="Last Name" name="last_name" value={form.last_name} onChange={handleChange} sx={inputSx} /></Grid>
@@ -109,17 +181,9 @@ export default function ClientFormPage() {
 
             <Divider />
 
-            {/* Section 2: Project */}
+            {/* Section 2: Project Information */}
             <Box sx={{ p: { xs: 3, sm: 5 } }}>
-              <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mb: 3 }}>
-                <Box sx={{ width: 40, height: 40, borderRadius: 2, bgcolor: '#EFF6FF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <Business sx={{ color: '#1565C0' }} />
-                </Box>
-                <Box>
-                  <Typography variant="subtitle1" sx={{ fontWeight: 700, color: '#0F172A' }}>Project Information</Typography>
-                  <Typography variant="caption" sx={{ color: '#64748B' }}>Details about your project or engagement</Typography>
-                </Box>
-              </Stack>
+              <SectionHeading>Project Information</SectionHeading>
               <Grid container spacing={2.5}>
                 <Grid item xs={12}><TextField fullWidth label="Project Title" name="project_title" value={form.project_title} onChange={handleChange} required sx={inputSx} /></Grid>
                 <Grid item xs={12}><TextField fullWidth label="Project Description" name="project_description" value={form.project_description} onChange={handleChange} required multiline rows={4} sx={inputSx} /></Grid>
@@ -128,17 +192,9 @@ export default function ClientFormPage() {
 
             <Divider />
 
-            {/* Section 3: Agent */}
+            {/* Section 3: Agent Information */}
             <Box sx={{ p: { xs: 3, sm: 5 } }}>
-              <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mb: 3 }}>
-                <Box sx={{ width: 40, height: 40, borderRadius: 2, bgcolor: '#EFF6FF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <AssignmentInd sx={{ color: '#1565C0' }} />
-                </Box>
-                <Box>
-                  <Typography variant="subtitle1" sx={{ fontWeight: 700, color: '#0F172A' }}>Agent Information</Typography>
-                  <Typography variant="caption" sx={{ color: '#64748B' }}>Details of your referring agent (if applicable)</Typography>
-                </Box>
-              </Stack>
+              <SectionHeading>Agent Information</SectionHeading>
               <Grid container spacing={2.5}>
                 <Grid item xs={12}><TextField fullWidth label="Agent Name" name="agent_name" value={form.agent_name} onChange={handleChange} required sx={inputSx} /></Grid>
                 <Grid item xs={12} sm={6}><TextField fullWidth label="Agent Phone" name="agent_phone" value={form.agent_phone} onChange={handleChange} required sx={inputSx} /></Grid>
@@ -149,7 +205,7 @@ export default function ClientFormPage() {
                 type="submit" fullWidth variant="contained" size="large" disabled={loading}
                 endIcon={<Send />}
                 sx={{
-                  mt: 4, py: 1.5, borderRadius: 2, bgcolor: '#1565C0',
+                  mt: 4, py: 1.5, borderRadius: '8px', bgcolor: '#1565C0',
                   fontWeight: 600, textTransform: 'none', fontSize: '1rem',
                   '&:hover': { bgcolor: '#0D47A1' },
                 }}

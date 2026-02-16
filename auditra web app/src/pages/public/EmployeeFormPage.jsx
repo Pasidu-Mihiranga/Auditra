@@ -3,9 +3,38 @@ import { Link } from 'react-router-dom';
 import {
   Box, TextField, Button, Typography, Alert, Grid, Container, Paper, Stack, Divider,
 } from '@mui/material';
-import { Upload, Send, ArrowBack, Person, AttachFile } from '@mui/icons-material';
+import { Upload, Send, ArrowBack } from '@mui/icons-material';
 import authService from '../../services/authService';
-import logo from '../../assets/logo.png';
+
+/* ------------------------------------------------------------------ */
+/*  Section heading with blue underline                                */
+/* ------------------------------------------------------------------ */
+const SectionHeading = ({ children }) => (
+  <Box sx={{ mb: 3 }}>
+    <Typography
+      variant="subtitle1"
+      sx={{
+        fontWeight: 700,
+        color: '#1565C0',
+        pb: 1,
+        position: 'relative',
+        display: 'inline-block',
+        '&::after': {
+          content: '""',
+          position: 'absolute',
+          bottom: 0,
+          left: 0,
+          width: 40,
+          height: 3,
+          bgcolor: '#1565C0',
+          borderRadius: 1,
+        },
+      }}
+    >
+      {children}
+    </Typography>
+  </Box>
+);
 
 export default function EmployeeFormPage() {
   const [form, setForm] = useState({
@@ -58,58 +87,101 @@ export default function EmployeeFormPage() {
     }
   };
 
-  const inputSx = { '& .MuiOutlinedInput-root': { borderRadius: 2, '&:hover fieldset': { borderColor: '#16A34A' } } };
+  const inputSx = { '& .MuiOutlinedInput-root': { borderRadius: '8px', '&:hover fieldset': { borderColor: '#1565C0' } } };
 
   return (
     <Box sx={{ minHeight: '100vh', bgcolor: '#F1F5F9' }}>
-      {/* Top Navigation */}
-      <Box sx={{ bgcolor: '#fff', borderBottom: '1px solid #E2E8F0', py: 1.5 }}>
-        <Container maxWidth="lg">
-          <Stack direction="row" justifyContent="space-between" alignItems="center">
-            <Stack direction="row" alignItems="center" spacing={2}>
-              <Box component="img" src={logo} alt="Auditra" sx={{ height: 36 }} />
-            </Stack>
-            <Stack direction="row" spacing={1}>
-              <Button component={Link} to="/" startIcon={<ArrowBack />}
-                sx={{ color: '#64748B', textTransform: 'none', fontWeight: 500 }}>
-                Home
-              </Button>
-              <Button component={Link} to="/login"
-                sx={{ color: '#1565C0', textTransform: 'none', fontWeight: 600 }}>
-                Log In
-              </Button>
-            </Stack>
-          </Stack>
-        </Container>
-      </Box>
+      {/* White top spacer */}
+      <Box sx={{ bgcolor: '#fff', height: { xs: 44, md: 44 } }} />
 
-      <Container maxWidth="md" sx={{ py: 6 }}>
-        {/* Header */}
-        <Box sx={{ textAlign: 'center', mb: 5 }}>
-          <Typography variant="h4" sx={{ fontWeight: 700, color: '#0F172A', mb: 1 }}>
+      {/* Blue Hero Banner */}
+      <Box
+        sx={{
+          bgcolor: '#1565C0',
+          position: 'relative',
+          pt: { xs: 5, md: 6 },
+          pb: { xs: 8, md: 10 },
+        }}
+      >
+        <Container maxWidth="lg">
+          <Button
+            component={Link}
+            to="/"
+            startIcon={<ArrowBack />}
+            sx={{
+              color: 'rgba(255,255,255,0.8)',
+              textTransform: 'none',
+              fontWeight: 500,
+              fontSize: '0.85rem',
+              mb: 2,
+              px: 0,
+              '&:hover': { color: '#fff', bgcolor: 'transparent' },
+            }}
+          >
+            Back to Home
+          </Button>
+          <Typography
+            variant="h3"
+            sx={{
+              fontWeight: 700,
+              color: '#fff',
+              fontSize: { xs: '1.8rem', md: '2.4rem' },
+              mb: 1.5,
+            }}
+          >
             Employee Registration
           </Typography>
-          <Typography variant="body1" sx={{ color: '#64748B' }}>
-            Submit your application to join the Auditra team
+          <Typography
+            variant="body1"
+            sx={{
+              color: 'rgba(255,255,255,0.75)',
+              fontSize: { xs: '0.9rem', md: '1rem' },
+              maxWidth: 500,
+              lineHeight: 1.7,
+            }}
+          >
+            Submit your application to join the Auditra team. We review
+            all applications and will get back to you shortly.
           </Typography>
-        </Box>
+        </Container>
 
-        <Paper elevation={0} sx={{ borderRadius: 3, border: '1px solid #E2E8F0', overflow: 'hidden' }}>
+        {/* Diagonal bottom edge */}
+        <Box
+          sx={{
+            position: 'absolute',
+            bottom: -1,
+            left: 0,
+            width: '100%',
+            lineHeight: 0,
+          }}
+        >
+          <svg
+            viewBox="0 0 1440 60"
+            preserveAspectRatio="none"
+            style={{ display: 'block', width: '100%', height: '40px' }}
+          >
+            <polygon points="0,60 1440,0 1440,60" fill="#F1F5F9" />
+          </svg>
+        </Box>
+      </Box>
+
+      {/* Form Section */}
+      <Container maxWidth="md" sx={{ py: { xs: 4, md: 6 }, mt: { xs: -2, md: -3 } }}>
+        <Paper
+          elevation={0}
+          sx={{
+            borderRadius: '16px',
+            border: '1px solid #E2E8F0',
+            overflow: 'hidden',
+          }}
+        >
           {error && <Alert severity="error" sx={{ borderRadius: 0, whiteSpace: 'pre-line' }}>{error}</Alert>}
           {success && <Alert severity="success" sx={{ borderRadius: 0 }}>{success}</Alert>}
 
           <form onSubmit={handleSubmit}>
-            {/* Section 1: Personal */}
+            {/* Section 1: Personal Information */}
             <Box sx={{ p: { xs: 3, sm: 5 } }}>
-              <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mb: 3 }}>
-                <Box sx={{ width: 40, height: 40, borderRadius: 2, bgcolor: '#F0FDF4', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <Person sx={{ color: '#16A34A' }} />
-                </Box>
-                <Box>
-                  <Typography variant="subtitle1" sx={{ fontWeight: 700, color: '#0F172A' }}>Personal Information</Typography>
-                  <Typography variant="caption" sx={{ color: '#64748B' }}>Your basic details</Typography>
-                </Box>
-              </Stack>
+              <SectionHeading>Personal Information</SectionHeading>
               <Grid container spacing={2.5}>
                 <Grid item xs={12} sm={6}><TextField fullWidth label="First Name" name="first_name" value={form.first_name} onChange={handleChange} required sx={inputSx} /></Grid>
                 <Grid item xs={12} sm={6}><TextField fullWidth label="Last Name" name="last_name" value={form.last_name} onChange={handleChange} required sx={inputSx} /></Grid>
@@ -128,15 +200,7 @@ export default function EmployeeFormPage() {
 
             {/* Section 2: Documents */}
             <Box sx={{ p: { xs: 3, sm: 5 } }}>
-              <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mb: 3 }}>
-                <Box sx={{ width: 40, height: 40, borderRadius: 2, bgcolor: '#F0FDF4', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <AttachFile sx={{ color: '#16A34A' }} />
-                </Box>
-                <Box>
-                  <Typography variant="subtitle1" sx={{ fontWeight: 700, color: '#0F172A' }}>Documents</Typography>
-                  <Typography variant="caption" sx={{ color: '#64748B' }}>Upload your CV or resume</Typography>
-                </Box>
-              </Stack>
+              <SectionHeading>Documents</SectionHeading>
 
               <input type="file" ref={fileRef} accept=".pdf,.doc,.docx" onChange={handleFileChange} style={{ display: 'none' }} />
               <Button
@@ -147,12 +211,12 @@ export default function EmployeeFormPage() {
                 sx={{
                   py: 2,
                   justifyContent: 'flex-start',
-                  borderRadius: 2,
+                  borderRadius: '8px',
                   borderColor: '#E2E8F0',
-                  color: cvFile ? '#16A34A' : '#64748B',
+                  color: cvFile ? '#1565C0' : '#64748B',
                   borderStyle: 'dashed',
                   bgcolor: '#FAFAFA',
-                  '&:hover': { borderColor: '#16A34A', bgcolor: '#F0FDF4' },
+                  '&:hover': { borderColor: '#1565C0', bgcolor: '#EFF6FF' },
                 }}
               >
                 {cvFile ? cvFile.name : 'Upload CV (PDF, DOC, DOCX)'}
@@ -162,10 +226,9 @@ export default function EmployeeFormPage() {
                 type="submit" fullWidth variant="contained" size="large" disabled={loading}
                 endIcon={<Send />}
                 sx={{
-                  mt: 4, py: 1.5, borderRadius: 2,
-                  background: 'linear-gradient(135deg, #16A34A 0%, #15803D 100%)',
+                  mt: 4, py: 1.5, borderRadius: '8px', bgcolor: '#1565C0',
                   fontWeight: 600, textTransform: 'none', fontSize: '1rem',
-                  '&:hover': { background: 'linear-gradient(135deg, #15803D 0%, #166534 100%)' },
+                  '&:hover': { bgcolor: '#0D47A1' },
                 }}
               >
                 {loading ? 'Submitting...' : 'Submit Application'}
