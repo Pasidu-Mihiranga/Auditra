@@ -49,6 +49,9 @@ local.properties
 **/.sconsign.dblite
 **/.tags*
 
+# Node.js
+node_modules/
+
 # Python/Django
 __pycache__/
 *.py[cod]
