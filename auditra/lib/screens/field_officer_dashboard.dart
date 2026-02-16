@@ -1346,21 +1346,29 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
                 colors: isAfter5PM
                     ? [Colors.red[300]!, Colors.red[500]!]
                     : isNearEnd
-                        ? [Colors.orange[300]!, Colors.orange[500]!]
+                        ? [Colors.blue[400]!, Colors.blue[600]!]
                         : [Colors.blue[300]!, Colors.blue[500]!],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
               borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: (isAfter5PM ? Colors.red[200]! : Colors.blue[200]!)
+                    .withOpacity(0.9),
+                width: 1.5,
+              ),
               boxShadow: [
                 BoxShadow(
-                  color: (isAfter5PM
-                          ? Colors.red
-                          : isNearEnd
-                              ? Colors.orange
-                              : Colors.blue)
+                  color: (isAfter5PM ? Colors.red : Colors.blue)
+                      .withOpacity(0.35),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                  spreadRadius: 0,
+                ),
+                BoxShadow(
+                  color: (isAfter5PM ? Colors.red : Colors.blue)
                       .withOpacity(0.4),
-                  blurRadius: 12,
+                  blurRadius: 14,
                   offset: const Offset(0, 6),
                   spreadRadius: 1,
                 ),
@@ -1371,7 +1379,7 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
                 // Pulsing background animation
                 if (!isAfter5PM)
                   _PulsingContainer(
-                    color: isNearEnd ? Colors.orange : Colors.blue,
+                    color: Colors.blue,
                   ),
                 // Content
                 Padding(
@@ -1434,18 +1442,29 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [
-            Colors.green[400]!,
-            Colors.green[600]!,
+            Colors.blue[400]!,
+            Colors.blue[600]!,
           ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: Colors.blue[200]!.withOpacity(0.9),
+          width: 1.5,
+        ),
         boxShadow: [
           BoxShadow(
-            color: Colors.green.withOpacity(0.4),
-            blurRadius: 15,
-            offset: const Offset(0, 8),
+            color: Colors.blue.withOpacity(0.35),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+            spreadRadius: 0,
+          ),
+          BoxShadow(
+            color: Colors.blue.withOpacity(0.4),
+            blurRadius: 14,
+            offset: const Offset(0, 6),
+            spreadRadius: 1,
           ),
         ],
       ),

@@ -1926,13 +1926,34 @@ class ApiService {
         },
       );
 
-      final data = jsonDecode(response.body);
-
       if (response.statusCode == 200) {
-        return {'success': true, 'data': data};
-      } else {
-        return {'success': false, 'message': data['error'] ?? data['detail'] ?? 'Failed to submit valuation'};
+        try {
+          final data = response.body.isNotEmpty ? jsonDecode(response.body) : <String, dynamic>{};
+          return {'success': true, 'data': data};
+        } catch (_) {
+          return {'success': true, 'data': null};
+        }
       }
+
+      String message = 'Failed to submit report';
+      if (response.body.isNotEmpty) {
+        try {
+          final data = jsonDecode(response.body);
+          if (data is Map<String, dynamic>) {
+            final d = data['error'] ?? data['detail'] ?? data['message'];
+            if (d is String) {
+              message = d;
+            } else if (d is List && d.isNotEmpty) {
+              message = d.map((e) => e.toString()).join(' ');
+            } else if (d != null) {
+              message = d.toString();
+            }
+          }
+        } catch (_) {
+          message = response.body.length > 200 ? '${response.body.substring(0, 200)}...' : response.body;
+        }
+      }
+      return {'success': false, 'message': message};
     } catch (e) {
       return {'success': false, 'message': 'Connection error: $e'};
     }

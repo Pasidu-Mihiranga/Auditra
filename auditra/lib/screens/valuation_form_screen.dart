@@ -72,6 +72,8 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
   List<File> _selectedPhotos = [];
   List<ValuationPhoto> _existingPhotos = [];
   int? _valuationId;
+  /// True when report can be submitted (draft/rejected loaded, or just saved).
+  bool _submitAllowed = false;
 
   @override
   void initState() {
@@ -91,6 +93,7 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
   void _loadExistingValuation(Valuation valuation) {
     setState(() {
       _valuationId = valuation.id;
+      _submitAllowed = valuation.status.toLowerCase() == 'draft' || valuation.status.toLowerCase() == 'rejected';
       _category = valuation.category;
       _descriptionController.text = valuation.description ?? '';
       
@@ -650,15 +653,18 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
           }
         }
 
-        // Show success message and close form
+        // Update state so Submit to Assessor button appears; stay on form
         if (mounted) {
+          setState(() {
+            _valuationId = newValuationId;
+            _submitAllowed = true;
+          });
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('Valuation saved successfully!'),
-              backgroundColor: const Color(0xFF84BCDA),
+              content: Text('Report saved. You can now submit to assessor.'),
+              backgroundColor: Color(0xFF84BCDA),
             ),
           );
-          Navigator.of(context).pop(true);
         }
       } else {
         if (mounted) {
@@ -1235,7 +1241,7 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
                             ),
                     ),
                   ),
-                  if (_valuationId != null && (widget.existingValuation?.status == 'draft' || widget.existingValuation?.status == 'rejected')) ...[
+                  if (_valuationId != null && _submitAllowed) ...[
                     const SizedBox(height: 12),
                     SizedBox(
                       width: double.infinity,
