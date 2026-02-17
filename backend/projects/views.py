@@ -195,6 +195,37 @@ class ProjectListView(generics.ListCreateAPIView):
         except Exception:
             pass
 
+        # Send project assignment notification emails to assigned users
+        try:
+            from authentication.services import EmailService
+            coordinator_name = f'{self.request.user.first_name} {self.request.user.last_name}'.strip() or self.request.user.username
+
+            # Notify client
+            if project.assigned_client:
+                client = project.assigned_client
+                client_name = f'{client.first_name} {client.last_name}'.strip() or client.username
+                EmailService.send_project_assignment_notification(
+                    email=client.email,
+                    name=client_name,
+                    project_title=project.title,
+                    role_in_project='Client',
+                    coordinator_name=coordinator_name,
+                )
+
+            # Notify agent
+            if project.assigned_agent:
+                agent = project.assigned_agent
+                agent_name = f'{agent.first_name} {agent.last_name}'.strip() or agent.username
+                EmailService.send_project_assignment_notification(
+                    email=agent.email,
+                    name=agent_name,
+                    project_title=project.title,
+                    role_in_project='Agent',
+                    coordinator_name=coordinator_name,
+                )
+        except Exception:
+            pass
+
         # If created from a client submission, update submission status to approved
         submission_id = self.request.data.get('submission_id', None)
         if submission_id:

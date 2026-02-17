@@ -42,11 +42,15 @@ export default function EmployeeFormPage() {
   });
   const [cvFile, setCvFile] = useState(null);
   const [error, setError] = useState('');
+  const [emailError, setEmailError] = useState('');
   const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
   const fileRef = useRef();
 
-  const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
+  const handleChange = (e) => {
+    if (e.target.name === 'email' && emailError) setEmailError('');
+    setForm({ ...form, [e.target.name]: e.target.value });
+  };
 
   const handleFileChange = (e) => {
     const file = e.target.files[0];
@@ -65,6 +69,7 @@ export default function EmployeeFormPage() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+    setEmailError('');
     setSuccess('');
     setLoading(true);
     try {
@@ -76,9 +81,11 @@ export default function EmployeeFormPage() {
       setCvFile(null);
     } catch (err) {
       const data = err.response?.data;
-      if (data && typeof data === 'object') {
-        const messages = Object.entries(data).map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`);
-        setError(messages.join('\n'));
+      if (data?.field === 'email') {
+        setEmailError(data.error || 'An account with this email already exists.');
+      } else if (data && typeof data === 'object') {
+        const msg = data.error || Object.entries(data).map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`).join('\n');
+        setError(msg);
       } else {
         setError('Submission failed. Please try again.');
       }
@@ -192,7 +199,7 @@ export default function EmployeeFormPage() {
                     InputLabelProps={{ shrink: true }} sx={inputSx} />
                 </Grid>
                 <Grid item xs={12} sm={6}><TextField fullWidth label="NIC" name="nic" value={form.nic} onChange={handleChange} sx={inputSx} /></Grid>
-                <Grid item xs={12} sm={6}><TextField fullWidth label="Email" name="email" type="email" value={form.email} onChange={handleChange} sx={inputSx} /></Grid>
+                <Grid item xs={12} sm={6}><TextField fullWidth label="Email" name="email" type="email" value={form.email} onChange={handleChange} error={!!emailError} helperText={emailError} sx={inputSx} /></Grid>
               </Grid>
             </Box>
 

@@ -1,6 +1,6 @@
 import { Box, Container, Grid, Typography, Stack, IconButton, Divider, Link as MuiLink } from '@mui/material';
 import { Phone, Email, LocationOn, AccessTime, Facebook, LinkedIn, Instagram, Twitter } from '@mui/icons-material';
-import logo from '../../../assets/logo.png';
+import logo from '../../../assets/logo.webp';
 
 const quickLinks = [
     { label: 'Home', href: '#hero' },

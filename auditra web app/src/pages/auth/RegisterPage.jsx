@@ -5,7 +5,7 @@ import {
 } from '@mui/material';
 import { PersonAdd, ArrowBack } from '@mui/icons-material';
 import axiosClient from '../../api/axiosClient';
-import logo from '../../assets/logo.png';
+import logo from '../../assets/logo.webp';
 
 export default function RegisterPage() {
   const [form, setForm] = useState({

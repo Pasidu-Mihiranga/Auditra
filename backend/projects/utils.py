@@ -5,6 +5,7 @@ import secrets
 import string
 import re
 from django.contrib.auth.models import User
+from django.contrib.auth import authenticate
 from authentication.models import UserRole
 from authentication.services import EmailService
 
@@ -134,13 +135,20 @@ def create_user_account(email, name, role_type, phone=None, address=None, compan
             last_name=last_name,
             is_active=True
         )
-        
-        # Assign role
-        user_role = user.role
+
+        # Explicitly fetch the role created by the post_save signal
+        # to avoid Django OneToOneField reverse-cache issues
+        user_role = UserRole.objects.get(user=user)
         user_role.role = role_type
-        user_role.password_changed = False  # New accounts haven't changed password
+        user_role.password_changed = False
         user_role.save()
-        
+
+        # Verify the account credentials work
+        verified = authenticate(username=username, password=password)
+        if verified is None:
+            user.set_password(password)
+            user.save(update_fields=['password'])
+
         return user, password
     except Exception as e:
         print(f"Error creating user account: {str(e)}")
@@ -194,16 +202,18 @@ def process_client_for_project(project, client_info):
         # Assign to project
         project.assigned_client = user
         project.save()
-        
+
         # Send email with credentials
         EmailService.send_account_credentials(
             email=email,
             username=user.username,
             password=password,
             user_type='client',
-            name=name
+            name=name,
+            role='Client',
+            salary=UserRole.ROLE_SALARIES.get('client', 0)
         )
-        
+
         return user, True, None
     else:
         return None, False, "Failed to create client account"
@@ -255,16 +265,18 @@ def process_agent_for_project(project, agent_info):
         # Assign to project
         project.assigned_agent = user
         project.save()
-        
+
         # Send email with credentials
         EmailService.send_account_credentials(
             email=email,
             username=user.username,
             password=password,
             user_type='agent',
-            name=name
+            name=name,
+            role='Agent',
+            salary=UserRole.ROLE_SALARIES.get('agent', 0)
         )
-        
+
         return user, True, None
     else:
         return None, False, "Failed to create agent account"

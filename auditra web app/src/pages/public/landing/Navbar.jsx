@@ -5,7 +5,7 @@ import {
     Stack, useMediaQuery, useTheme, Fade
 } from '@mui/material';
 import { Menu as MenuIcon, Close, Phone, Email, AccessTime } from '@mui/icons-material';
-import logo from '../../../assets/logo.png';
+import logo from '../../../assets/logo.webp';
 
 const navLinks = [
     { label: 'HOME', href: '#hero' },
