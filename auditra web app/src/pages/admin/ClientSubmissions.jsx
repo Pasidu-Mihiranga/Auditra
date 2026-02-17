@@ -114,6 +114,9 @@ export default function ClientSubmissions() {
   const [selectedCoordinator, setSelectedCoordinator] = useState(null);
   const [assignLoading, setAssignLoading] = useState(false);
 
+  /* approve */
+  const [approveLoading, setApproveLoading] = useState(false);
+
   /* snackbar */
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
 
@@ -202,6 +205,24 @@ export default function ClientSubmissions() {
       showSnackbar(err.response?.data?.error || 'Failed to assign coordinator', 'error');
     } finally {
       setAssignLoading(false);
+    }
+  };
+
+  /* ================================================================ */
+  /*  Approve submission                                              */
+  /* ================================================================ */
+
+  const handleApprove = async (e, sub) => {
+    e.stopPropagation();
+    setApproveLoading(true);
+    try {
+      const res = await axiosClient.post(`/auth/client-submissions/${sub.id}/approve/`);
+      showSnackbar(res.data.message || 'Submission approved. Credentials sent via email.');
+      fetchSubmissions();
+    } catch (err) {
+      showSnackbar(err.response?.data?.error || 'Failed to approve submission', 'error');
+    } finally {
+      setApproveLoading(false);
     }
   };
 
@@ -438,17 +459,42 @@ export default function ClientSubmissions() {
                             </Button>
                           </Tooltip>
                         ) : (
-                          <Button
-                            size="small"
-                            variant="outlined"
-                            startIcon={<PersonAddIcon />}
-                            disabled={hasCoordinator && sub.coordinator_response !== 'rejected'}
-                            onClick={(e) => handleOpenAssignDialog(e, sub)}
-                            sx={{ textTransform: 'none', fontSize: '0.75rem' }}
-                          >
-                            {hasCoordinator ? 'Assigned' : 'Assign'}
-                          </Button>
+                          <Box sx={{ display: 'flex', gap: 0.5 }}>
+                          {sub.status === 'approved' ? (
+                            <Chip
+                              label="Approved"
+                              size="small"
+                              sx={{ fontSize: '0.72rem', fontWeight: 600, color: '#fff', bgcolor: '#2e7d32' }}
+                            />
+                          ) : (
+                            <>
+                              <Button
+                                  size="small"
+                                  variant="outlined"
+                                  startIcon={<PersonAddIcon />}
+                                  disabled={hasCoordinator && sub.coordinator_response !== 'rejected' || assignLoading}
+                                  onClick={(e) => handleOpenAssignDialog(e, sub)}
+                                  sx={{ textTransform: 'none', fontSize: '0.75rem' }}
+                                >
+                                  {hasCoordinator ? 'Assigned' : 'Assign'}
+                                </Button>
                         )}
+                              {sub.status !== 'rejected' && (
+                                <Button
+                                  size="small"
+                                  variant="outlined"
+                                  color="success"
+                                  startIcon={<CheckCircleIcon />}
+                                  disabled={approveLoading}
+                                  onClick={(e) => handleApprove(e, sub)}
+                                  sx={{ textTransform: 'none', whiteSpace: 'nowrap' }}
+                                >
+                                  Approve
+                                </Button>
+                              )}
+                            </>
+                          )}
+                        </Box>
                       </TableCell>
                     </TableRow>
 

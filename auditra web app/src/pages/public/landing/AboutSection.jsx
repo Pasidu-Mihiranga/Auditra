@@ -1,153 +1,126 @@
-import { Box, Container, Grid, Typography, Stack } from '@mui/material';
-import { CheckCircle } from '@mui/icons-material';
-import { motion } from 'framer-motion';
+import { Box, Container, Grid, Typography } from '@mui/material';
+import {
+    VerifiedUser, Gavel, TrendingUp, Groups, Description, Security,
+} from '@mui/icons-material';
 
 const features = [
-    'Certified Audit Professionals',
-    'ISO Compliant Processes',
-    'Regulatory Compliance Experts',
-    'Tailored Advisory Solutions',
-    'Transparent Reporting',
-    'Industry Best Practices',
+    { icon: VerifiedUser, title: 'Certified Professionals', desc: 'Team of qualified and experienced audit professionals.' },
+    { icon: Gavel, title: 'Regulatory Compliance', desc: 'Full adherence to Sri Lankan and international standards.' },
+    { icon: TrendingUp, title: 'Strategic Advisory', desc: 'Insights that drive growth and informed decision-making.' },
+    { icon: Groups, title: 'Client Focused', desc: 'Tailored solutions built around your unique business needs.' },
+    { icon: Description, title: 'Transparent Reporting', desc: 'Clear, accurate, and timely reporting you can trust.' },
+    { icon: Security, title: 'Data Security', desc: 'Your information is protected with industry-best practices.' },
 ];
-
-const MotionBox = motion.create(Box);
 
 export default function AboutSection() {
     return (
-        <Box
-            id="about"
-            sx={{ py: { xs: 10, md: 14 }, bgcolor: '#FFFFFF' }}
-        >
+        <Box id="about" sx={{ py: { xs: 5, md: 6 }, bgcolor: '#FFFFFF' }}>
             <Container maxWidth="lg">
-                <Grid container spacing={8} alignItems="center">
-                    {/* Left — Image / Illustration */}
-                    <Grid item xs={12} md={6}>
-                        <MotionBox
-                            initial={{ opacity: 0, x: -40 }}
-                            whileInView={{ opacity: 1, x: 0 }}
-                            viewport={{ once: true, margin: '-100px' }}
-                            transition={{ duration: 0.7 }}
-                            sx={{ position: 'relative' }}
+                <Grid container spacing={6} alignItems="center">
+                    {/* Left — Text */}
+                    <Grid item xs={12} md={5}>
+                        <Typography
+                            variant="overline"
+                            sx={{ color: '#1565C0', fontWeight: 700, letterSpacing: 2.5, fontSize: '0.8rem' }}
                         >
-                            <Box
-                                sx={{
-                                    width: '100%',
-                                    height: { xs: 320, md: 460 },
-                                    borderRadius: 4,
-                                    background: 'linear-gradient(135deg, #E3F2FD 0%, #BBDEFB 100%)',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    position: 'relative',
-                                    overflow: 'hidden',
-                                }}
-                            >
-                                {/* Decorative elements inside the image placeholder */}
-                                <Box sx={{
-                                    position: 'absolute', top: 20, right: 20,
-                                    width: 80, height: 80, borderRadius: '50%',
-                                    bgcolor: 'rgba(21,101,192,0.1)',
-                                }} />
-                                <Box sx={{
-                                    position: 'absolute', bottom: 30, left: 30,
-                                    width: 60, height: 60, borderRadius: 2,
-                                    bgcolor: 'rgba(21,101,192,0.08)',
-                                }} />
-                                <Typography
-                                    sx={{
-                                        color: '#1565C0',
-                                        fontWeight: 700,
-                                        fontSize: { xs: '1.5rem', md: '2rem' },
-                                        textAlign: 'center',
-                                        opacity: 0.6,
-                                        letterSpacing: 2,
-                                    }}
-                                >
-                                    ABOUT<br />AUDITRA
-                                </Typography>
-                            </Box>
+                            ABOUT US
+                        </Typography>
 
-                            {/* Experience badge */}
-                            <Box
-                                sx={{
-                                    position: 'absolute',
-                                    bottom: -20,
-                                    right: { xs: 10, md: -20 },
-                                    bgcolor: '#1565C0',
-                                    color: '#fff',
-                                    px: 3,
-                                    py: 2,
-                                    borderRadius: 2,
-                                    boxShadow: '0 8px 24px rgba(21,101,192,0.3)',
-                                    textAlign: 'center',
-                                }}
-                            >
-                                <Typography variant="h3" fontWeight="800">15+</Typography>
-                                <Typography variant="caption" fontWeight="600" sx={{ letterSpacing: 1 }}>
-                                    YEARS OF TRUST
+                        <Typography
+                            variant="h3"
+                            sx={{
+                                fontWeight: 700,
+                                color: '#0F172A',
+                                mt: 1,
+                                mb: 3,
+                                fontSize: { xs: '1.8rem', md: '2.4rem' },
+                                lineHeight: 1.25,
+                            }}
+                        >
+                            Your Trusted Partner in Financial Excellence
+                        </Typography>
+
+                        <Typography
+                            variant="body1"
+                            sx={{ color: '#64748B', lineHeight: 1.8, fontSize: '1.05rem', mb: 3 }}
+                        >
+                            At Auditra, we deliver more than numbers — we provide clarity, insight,
+                            and confidence. Our team of seasoned professionals combines cutting-edge
+                            technology with deep industry knowledge to ensure accuracy, compliance,
+                            and strategic value for every engagement.
+                        </Typography>
+
+                        {/* Experience badge inline */}
+                        <Box
+                            sx={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: 1.5,
+                                bgcolor: '#EFF6FF',
+                                border: '1px solid #DBEAFE',
+                                borderRadius: '16px',
+                                px: 3,
+                                py: 1.5,
+                            }}
+                        >
+                            <Typography variant="h4" sx={{ fontWeight: 800, color: '#1565C0' }}>
+                                15+
+                            </Typography>
+                            <Box>
+                                <Typography variant="body2" sx={{ fontWeight: 600, color: '#0F172A', lineHeight: 1.2 }}>
+                                    Years of Trust
+                                </Typography>
+                                <Typography variant="caption" sx={{ color: '#64748B' }}>
+                                    Serving businesses across Sri Lanka
                                 </Typography>
                             </Box>
-                        </MotionBox>
+                        </Box>
                     </Grid>
 
-                    {/* Right — Text */}
-                    <Grid item xs={12} md={6}>
-                        <MotionBox
-                            initial={{ opacity: 0, x: 40 }}
-                            whileInView={{ opacity: 1, x: 0 }}
-                            viewport={{ once: true, margin: '-100px' }}
-                            transition={{ duration: 0.7, delay: 0.15 }}
-                        >
-                            <Typography
-                                variant="overline"
-                                sx={{ color: '#1565C0', fontWeight: 700, letterSpacing: 2.5, fontSize: '0.8rem' }}
-                            >
-                                ABOUT US
-                            </Typography>
-
-                            <Typography
-                                variant="h3"
-                                sx={{
-                                    fontWeight: 700,
-                                    color: '#0F172A',
-                                    mt: 1,
-                                    mb: 3,
-                                    fontSize: { xs: '1.8rem', md: '2.4rem' },
-                                    lineHeight: 1.25,
-                                }}
-                            >
-                                Your Trusted Partner in Financial Excellence
-                            </Typography>
-
-                            <Typography
-                                variant="body1"
-                                sx={{
-                                    color: '#64748B',
-                                    lineHeight: 1.8,
-                                    fontSize: '1.05rem',
-                                    mb: 4,
-                                }}
-                            >
-                                At Auditra, we deliver more than numbers — we provide clarity, insight,
-                                and confidence. Our team of seasoned professionals combines cutting-edge
-                                technology with deep industry knowledge to ensure accuracy, compliance,
-                                and strategic value for every engagement.
-                            </Typography>
-
-                            <Grid container spacing={1.5}>
-                                {features.map((feature, i) => (
-                                    <Grid item xs={12} sm={6} key={i}>
-                                        <Stack direction="row" spacing={1.5} alignItems="center">
-                                            <CheckCircle sx={{ color: '#16A34A', fontSize: 20 }} />
-                                            <Typography variant="body2" sx={{ fontWeight: 500, color: '#0F172A' }}>
-                                                {feature}
-                                            </Typography>
-                                        </Stack>
-                                    </Grid>
-                                ))}
-                            </Grid>
-                        </MotionBox>
+                    {/* Right — Feature cards grid */}
+                    <Grid item xs={12} md={7}>
+                        <Grid container spacing={2}>
+                            {features.map((feature, i) => (
+                                <Grid item xs={12} sm={6} key={i}>
+                                    <Box
+                                        sx={{
+                                            p: 2.5,
+                                            borderRadius: '16px',
+                                            bgcolor: '#F8FAFC',
+                                            border: '1px solid #E2E8F0',
+                                            height: '100%',
+                                            transition: 'all 0.3s',
+                                            '&:hover': {
+                                                bgcolor: '#EFF6FF',
+                                                borderColor: '#DBEAFE',
+                                                boxShadow: '0 4px 16px rgba(21,101,192,0.08)',
+                                            },
+                                        }}
+                                    >
+                                        <Box
+                                            sx={{
+                                                width: 44,
+                                                height: 44,
+                                                borderRadius: '12px',
+                                                bgcolor: '#EFF6FF',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                mb: 1.5,
+                                            }}
+                                        >
+                                            <feature.icon sx={{ color: '#1565C0', fontSize: 22 }} />
+                                        </Box>
+                                        <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#0F172A', mb: 0.5 }}>
+                                            {feature.title}
+                                        </Typography>
+                                        <Typography variant="body2" sx={{ color: '#64748B', lineHeight: 1.5, fontSize: '0.82rem' }}>
+                                            {feature.desc}
+                                        </Typography>
+                                    </Box>
+                                </Grid>
+                            ))}
+                        </Grid>
                     </Grid>
                 </Grid>
             </Container>
