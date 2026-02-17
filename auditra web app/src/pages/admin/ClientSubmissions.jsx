@@ -4,7 +4,7 @@ import {
   TableHead, TableRow, TablePagination, TextField, MenuItem, Chip, Alert,
   Button, Snackbar, InputAdornment, CircularProgress, Collapse,
   Dialog, DialogTitle, DialogContent, DialogActions, Grid, IconButton,
-  List, ListItemButton, ListItemText, ListItemIcon, Radio,
+  List, ListItemButton, ListItemText, ListItemIcon, Radio, Tooltip,
 } from '@mui/material';
 import {
   Search as SearchIcon,
@@ -14,6 +14,9 @@ import {
   PersonAdd as PersonAddIcon,
   KeyboardArrowDown as ExpandMoreIcon,
   KeyboardArrowUp as ExpandLessIcon,
+  Replay as ReplayIcon,
+  Cancel as CancelIcon,
+  HourglassEmpty as HourglassIcon,
 } from '@mui/icons-material';
 import PendingIcon from '@mui/icons-material/Pending';
 import axiosClient from '../../api/axiosClient';
@@ -33,11 +36,17 @@ const STATUS_OPTIONS = [
 ];
 
 const STATUS_CHIP_COLORS = {
-  pending: '#ed6c02',
-  rejected: '#d32f2f',
-  approved: '#2e7d32',
-  reviewed: '#1976d2',
-  assigned: '#009688',
+  pending: '#D97706',
+  rejected: '#DC2626',
+  approved: '#16A34A',
+  reviewed: '#1565C0',
+  assigned: '#1565C0',
+};
+
+const COORDINATOR_RESPONSE_CONFIG = {
+  pending: { label: 'Awaiting', color: '#D97706', bg: '#FEF3C7', icon: HourglassIcon },
+  accepted: { label: 'Accepted', color: '#16A34A', bg: '#D1FAE5', icon: CheckCircleIcon },
+  rejected: { label: 'Rejected', color: '#DC2626', bg: '#FEE2E2', icon: CancelIcon },
 };
 
 const formatDate = (dateStr) => {
@@ -57,11 +66,19 @@ const DetailField = ({ label, value }) => (
   <Box sx={{ mb: 1.5 }}>
     <Typography
       variant="caption"
-      sx={{ color: 'primary.main', fontWeight: 600, display: 'block', mb: 0.25 }}
+      sx={{ 
+        color: 'text.secondary', 
+        fontWeight: 600, 
+        display: 'block', 
+        mb: 0.25,
+        textTransform: 'uppercase',
+        fontSize: '0.65rem',
+        letterSpacing: '0.5px'
+      }}
     >
       {label}
     </Typography>
-    <Typography variant="body2" sx={{ wordBreak: 'break-word' }}>
+    <Typography variant="body2" sx={{ fontWeight: 500, wordBreak: 'break-word' }}>
       {value || '-'}
     </Typography>
   </Box>
@@ -234,7 +251,7 @@ export default function ClientSubmissions() {
             icon={AssignmentIcon}
             title="Assigned"
             value={summary.assigned}
-            color="#009688"
+            color="#1565C0"
           />
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
@@ -293,32 +310,30 @@ export default function ClientSubmissions() {
       {/* ========================================================== */}
       {/*  Data Table                                                  */}
       {/* ========================================================== */}
-      <TableContainer component={Paper}>
-        <Table size="small">
+      <TableContainer component={Paper} sx={{ borderRadius: 2, overflow: 'hidden' }}>
+        <Table size="small" sx={{ tableLayout: 'fixed', minWidth: 900 }}>
           <TableHead>
-            <TableRow sx={{ bgcolor: 'action.hover' }}>
-              <TableCell sx={{ fontWeight: 700, width: 40 }} />
-              <TableCell sx={{ fontWeight: 700 }}>Name</TableCell>
-              <TableCell sx={{ fontWeight: 700 }}>Email</TableCell>
-              <TableCell sx={{ fontWeight: 700 }}>Company</TableCell>
-              <TableCell sx={{ fontWeight: 700 }}>Project Title</TableCell>
-              <TableCell sx={{ fontWeight: 700 }}>Agent</TableCell>
-              <TableCell sx={{ fontWeight: 700 }}>Status</TableCell>
-              <TableCell sx={{ fontWeight: 700 }}>Coordinator</TableCell>
-              <TableCell sx={{ fontWeight: 700 }}>Date</TableCell>
-              <TableCell sx={{ fontWeight: 700 }}>Actions</TableCell>
+            <TableRow sx={{ bgcolor: (t) => t.palette.custom.tableHeader }}>
+              <TableCell sx={{ fontWeight: 700, width: 48 }} />
+              <TableCell sx={{ fontWeight: 700, width: 130 }}>Name</TableCell>
+              <TableCell sx={{ fontWeight: 700, width: 130 }}>Company</TableCell>
+              <TableCell sx={{ fontWeight: 700, width: 150 }}>Project Title</TableCell>
+              <TableCell sx={{ fontWeight: 700, width: 100, textAlign: 'center' }}>Status</TableCell>
+              <TableCell sx={{ fontWeight: 700, width: 130 }}>Coordinator</TableCell>
+              <TableCell sx={{ fontWeight: 700, width: 100 }}>Date</TableCell>
+              <TableCell sx={{ fontWeight: 700, width: 110, textAlign: 'center' }}>Actions</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={10} align="center" sx={{ py: 6 }}>
+                <TableCell colSpan={8} align="center" sx={{ py: 6 }}>
                   <CircularProgress size={28} />
                 </TableCell>
               </TableRow>
             ) : submissions.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={10} align="center" sx={{ py: 6, color: 'text.secondary' }}>
+                <TableCell colSpan={8} align="center" sx={{ py: 6, color: 'text.secondary' }}>
                   No submissions found
                 </TableCell>
               </TableRow>
@@ -337,26 +352,23 @@ export default function ClientSubmissions() {
                       onClick={() => handleToggleExpand(sub.id)}
                       sx={{ cursor: 'pointer', '& > *': { borderBottom: isExpanded ? 'unset' : undefined } }}
                     >
-                      <TableCell sx={{ width: 40 }}>
+                      <TableCell sx={{ width: 48 }}>
                         <IconButton size="small">
                           {isExpanded ? <ExpandLessIcon /> : <ExpandMoreIcon />}
                         </IconButton>
                       </TableCell>
-                      <TableCell sx={{ fontWeight: 500 }}>{fullName}</TableCell>
-                      <TableCell>{sub.email || '-'}</TableCell>
-                      <TableCell>{sub.company_name || '-'}</TableCell>
-                      <TableCell
-                        sx={{
-                          maxWidth: 180,
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          whiteSpace: 'nowrap',
-                        }}
-                      >
-                        {sub.project_title || '-'}
+                      <TableCell sx={{ fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {fullName}
                       </TableCell>
-                      <TableCell>{sub.agent_name || '-'}</TableCell>
-                      <TableCell>
+                      <TableCell sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {sub.company_name || '-'}
+                      </TableCell>
+                      <TableCell sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        <Tooltip title={sub.project_title || '-'}>
+                          <span>{sub.project_title || '-'}</span>
+                        </Tooltip>
+                      </TableCell>
+                      <TableCell sx={{ textAlign: 'center' }}>
                         <Chip
                           label={
                             sub.status
@@ -372,69 +384,280 @@ export default function ClientSubmissions() {
                           }}
                         />
                       </TableCell>
-                      <TableCell>{sub.coordinator_name || '-'}</TableCell>
-                      <TableCell sx={{ whiteSpace: 'nowrap', fontSize: '0.8rem' }}>
+                      <TableCell sx={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {sub.coordinator_name ? (
+                          <Box>
+                            <Typography variant="body2" sx={{ fontWeight: 500, fontSize: '0.85rem' }}>
+                              {sub.coordinator_name}
+                            </Typography>
+                            {sub.coordinator_response && (
+                              <Chip
+                                label={COORDINATOR_RESPONSE_CONFIG[sub.coordinator_response]?.label || sub.coordinator_response}
+                                size="small"
+                                sx={{
+                                  mt: 0.5,
+                                  fontSize: '0.65rem',
+                                  fontWeight: 600,
+                                  height: 20,
+                                  bgcolor: COORDINATOR_RESPONSE_CONFIG[sub.coordinator_response]?.bg || '#F3F4F6',
+                                  color: COORDINATOR_RESPONSE_CONFIG[sub.coordinator_response]?.color || '#6B7280',
+                                }}
+                              />
+                            )}
+                          </Box>
+                        ) : sub.coordinator_response === 'rejected' ? (
+                          <Chip
+                            label="Rejected"
+                            size="small"
+                            sx={{
+                              fontSize: '0.7rem',
+                              fontWeight: 600,
+                              bgcolor: COORDINATOR_RESPONSE_CONFIG.rejected?.bg || '#FEE2E2',
+                              color: COORDINATOR_RESPONSE_CONFIG.rejected?.color || '#DC2626',
+                            }}
+                          />
+                        ) : (
+                          <Typography variant="body2" color="text.secondary">-</Typography>
+                        )}
+                      </TableCell>
+                      <TableCell sx={{ whiteSpace: 'nowrap', fontSize: '0.85rem' }}>
                         {formatDate(sub.submitted_at)}
                       </TableCell>
-                      <TableCell>
-                        <Button
-                          size="small"
-                          variant="outlined"
-                          startIcon={<PersonAddIcon />}
-                          disabled={hasCoordinator}
-                          onClick={(e) => handleOpenAssignDialog(e, sub)}
-                          sx={{ textTransform: 'none', whiteSpace: 'nowrap' }}
-                        >
-                          {hasCoordinator ? 'Assigned' : 'Assign'}
-                        </Button>
+                      <TableCell sx={{ textAlign: 'center' }}>
+                        {sub.coordinator_response === 'rejected' ? (
+                          <Tooltip title="Re-assign a new coordinator">
+                            <Button
+                              size="small"
+                              variant="contained"
+                              color="warning"
+                              startIcon={<ReplayIcon />}
+                              onClick={(e) => handleOpenAssignDialog(e, sub)}
+                              sx={{ textTransform: 'none', fontWeight: 600, fontSize: '0.75rem', whiteSpace: 'nowrap' }}
+                            >
+                              Re-assign
+                            </Button>
+                          </Tooltip>
+                        ) : (
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            startIcon={<PersonAddIcon />}
+                            disabled={hasCoordinator && sub.coordinator_response !== 'rejected'}
+                            onClick={(e) => handleOpenAssignDialog(e, sub)}
+                            sx={{ textTransform: 'none', fontSize: '0.75rem' }}
+                          >
+                            {hasCoordinator ? 'Assigned' : 'Assign'}
+                          </Button>
+                        )}
                       </TableCell>
                     </TableRow>
 
                     {/* Expandable Detail Row */}
                     <TableRow>
                       <TableCell
-                        colSpan={10}
+                        colSpan={8}
                         sx={{ py: 0, px: 0, borderBottom: isExpanded ? undefined : 'none' }}
                       >
                         <Collapse in={isExpanded} timeout="auto" unmountOnExit>
-                          <Box sx={{ p: 3, bgcolor: 'grey.50' }}>
-                            <Typography
-                              variant="subtitle1"
-                              sx={{ fontWeight: 700, mb: 2, color: '#1976d2' }}
-                            >
-                              Submission Details
-                            </Typography>
-                            <Grid container spacing={3}>
-                              {/* Left Column */}
-                              <Grid item xs={12} md={4}>
+                          <Box sx={{ p: 3, bgcolor: (t) => t.palette.custom.cardInner }}>
+                            {/* Rejection Alert */}
+                            {sub.coordinator_response === 'rejected' && (
+                              <Alert 
+                                severity="error" 
+                                sx={{ mb: 3 }}
+                                action={
+                                  <Button
+                                    color="inherit"
+                                    size="small"
+                                    startIcon={<ReplayIcon />}
+                                    onClick={(e) => handleOpenAssignDialog(e, sub)}
+                                    sx={{ fontWeight: 600 }}
+                                  >
+                                    Re-assign
+                                  </Button>
+                                }
+                              >
+                                <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                                  Coordinator Rejected This Assignment
+                                </Typography>
+                                <Typography variant="body2">
+                                  {sub.rejection_reason || 'No reason provided'}
+                                </Typography>
+                                {sub.responded_at && (
+                                  <Typography variant="caption" sx={{ display: 'block', mt: 0.5 }}>
+                                    Rejected on: {formatDate(sub.responded_at)}
+                                  </Typography>
+                                )}
+                              </Alert>
+                            )}
+
+                            <Grid container spacing={4}>
+                              {/* Client Information */}
+                              <Grid item xs={12} md={3}>
+                                <Typography variant="subtitle2" sx={{ fontWeight: 700, color: 'primary.main', mb: 2 }}>
+                                  Client Information
+                                </Typography>
                                 <DetailField label="Full Name" value={fullName} />
                                 <DetailField label="Email" value={sub.email} />
                                 <DetailField label="Phone" value={sub.phone} />
                                 <DetailField label="NIC" value={sub.nic} />
                               </Grid>
 
-                              {/* Center Column */}
-                              <Grid item xs={12} md={4}>
+                              {/* Company & Address */}
+                              <Grid item xs={12} md={3}>
+                                <Typography variant="subtitle2" sx={{ fontWeight: 700, color: 'primary.main', mb: 2 }}>
+                                  Company Details
+                                </Typography>
                                 <DetailField label="Company" value={sub.company_name} />
                                 <DetailField label="Address" value={sub.address} />
-                                <DetailField label="Project Title" value={sub.project_title} />
-                                <DetailField
-                                  label="Project Description"
-                                  value={sub.project_description}
-                                />
                               </Grid>
 
-                              {/* Right Column */}
-                              <Grid item xs={12} md={4}>
-                                <DetailField label="Agent" value={sub.agent_name} />
-                                <DetailField label="Agent Email" value={sub.agent_email} />
-                                <DetailField label="Agent Phone" value={sub.agent_phone} />
-                                <DetailField
-                                  label="Coordinator"
-                                  value={sub.coordinator_name || 'Not Assigned'}
-                                />
+                              {/* Project Information */}
+                              <Grid item xs={12} md={3}>
+                                <Typography variant="subtitle2" sx={{ fontWeight: 700, color: 'primary.main', mb: 2 }}>
+                                  Project Details
+                                </Typography>
+                                <DetailField label="Project Title" value={sub.project_title} />
+                                <Box sx={{ mb: 1.5 }}>
+                                  <Typography
+                                    variant="caption"
+                                    sx={{ 
+                                      color: 'text.secondary', 
+                                      fontWeight: 600, 
+                                      display: 'block', 
+                                      mb: 0.5,
+                                      textTransform: 'uppercase',
+                                      fontSize: '0.65rem',
+                                      letterSpacing: '0.5px'
+                                    }}
+                                  >
+                                    Description
+                                  </Typography>
+                                  <Typography 
+                                    variant="body2" 
+                                    sx={{ 
+                                      fontWeight: 500,
+                                      bgcolor: 'background.paper',
+                                      p: 1,
+                                      borderRadius: 1,
+                                      border: '1px solid',
+                                      borderColor: 'divider',
+                                      maxHeight: 80,
+                                      overflow: 'auto',
+                                      fontSize: '0.8rem'
+                                    }}
+                                  >
+                                    {sub.project_description || '-'}
+                                  </Typography>
+                                </Box>
+                              </Grid>
+
+                              {/* Agent Information */}
+                              <Grid item xs={12} md={3}>
+                                <Typography variant="subtitle2" sx={{ fontWeight: 700, color: 'primary.main', mb: 2 }}>
+                                  Agent Information
+                                </Typography>
+                                <DetailField label="Agent Name" value={sub.agent_name || 'Not provided'} />
+                                <DetailField label="Agent Email" value={sub.agent_email || 'Not provided'} />
+                                <DetailField label="Agent Phone" value={sub.agent_phone || 'Not provided'} />
                               </Grid>
                             </Grid>
+
+                            {/* Action Button for rejected */}
+                            {sub.coordinator_response === 'rejected' && (
+                              <Box sx={{ mt: 3, pt: 2, borderTop: '1px solid', borderColor: 'divider', textAlign: 'center' }}>
+                                <Button
+                                  variant="contained"
+                                  color="primary"
+                                  startIcon={<ReplayIcon />}
+                                  onClick={(e) => handleOpenAssignDialog(e, sub)}
+                                  sx={{ fontWeight: 600 }}
+                                >
+                                  Re-assign to New Coordinator
+                                </Button>
+                              </Box>
+                            )}
+
+                            {/* Assignment History */}
+                            {sub.assignment_history && sub.assignment_history.length > 0 && (
+                              <Box sx={{ mt: 3, pt: 2, borderTop: '1px solid', borderColor: 'divider' }}>
+                                <Typography variant="subtitle2" sx={{ fontWeight: 700, color: 'primary.main', mb: 2 }}>
+                                  Assignment History
+                                </Typography>
+                                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+                                  {sub.assignment_history.map((assignment, index) => (
+                                    <Box 
+                                      key={assignment.id}
+                                      sx={{ 
+                                        display: 'flex', 
+                                        alignItems: 'center', 
+                                        gap: 2,
+                                        p: 1.5,
+                                        bgcolor: 'background.paper',
+                                        borderRadius: 1,
+                                        border: '1px solid',
+                                        borderColor: 'divider',
+                                      }}
+                                    >
+                                      <Box sx={{ 
+                                        width: 24, 
+                                        height: 24, 
+                                        borderRadius: '50%', 
+                                        bgcolor: 'primary.main', 
+                                        color: 'white',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        fontSize: '0.75rem',
+                                        fontWeight: 700,
+                                        flexShrink: 0
+                                      }}>
+                                        {sub.assignment_history.length - index}
+                                      </Box>
+                                      <Box sx={{ flex: 1 }}>
+                                        <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                                          {assignment.coordinator_name}
+                                        </Typography>
+                                        <Typography variant="caption" color="text.secondary">
+                                          Assigned: {formatDate(assignment.assigned_at)}
+                                          {assignment.assigned_by_name && ` by ${assignment.assigned_by_name}`}
+                                        </Typography>
+                                      </Box>
+                                      <Chip
+                                        label={assignment.status_display}
+                                        size="small"
+                                        sx={{
+                                          fontSize: '0.7rem',
+                                          fontWeight: 600,
+                                          bgcolor: 
+                                            assignment.status === 'accepted' ? '#D1FAE5' :
+                                            assignment.status === 'rejected' ? '#FEE2E2' : '#FEF3C7',
+                                          color: 
+                                            assignment.status === 'accepted' ? '#16A34A' :
+                                            assignment.status === 'rejected' ? '#DC2626' : '#D97706',
+                                        }}
+                                      />
+                                      {assignment.status === 'rejected' && assignment.rejection_reason && (
+                                        <Tooltip title={assignment.rejection_reason}>
+                                          <Typography 
+                                            variant="caption" 
+                                            sx={{ 
+                                              color: 'error.main',
+                                              maxWidth: 200,
+                                              overflow: 'hidden',
+                                              textOverflow: 'ellipsis',
+                                              whiteSpace: 'nowrap'
+                                            }}
+                                          >
+                                            {assignment.rejection_reason}
+                                          </Typography>
+                                        </Tooltip>
+                                      )}
+                                    </Box>
+                                  ))}
+                                </Box>
+                              </Box>
+                            )}
                           </Box>
                         </Collapse>
                       </TableCell>

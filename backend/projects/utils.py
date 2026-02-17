@@ -196,13 +196,18 @@ def process_client_for_project(project, client_info):
         project.save()
         
         # Send email with credentials
-        EmailService.send_account_credentials(
+        print(f"[CLIENT_EMAIL] Attempting to send credentials to {email} for user {user.username}")
+        email_sent = EmailService.send_account_credentials(
             email=email,
             username=user.username,
             password=password,
             user_type='client',
             name=name
         )
+        if email_sent:
+            print(f"[CLIENT_EMAIL] Successfully sent credentials to {email}")
+        else:
+            print(f"[CLIENT_EMAIL] FAILED to send credentials to {email}")
         
         return user, True, None
     else:

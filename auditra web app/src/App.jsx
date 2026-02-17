@@ -20,6 +20,7 @@ import RemovalRequests from './pages/admin/RemovalRequests';
 import SystemLogs from './pages/admin/SystemLogs';
 import ClientSubmissions from './pages/admin/ClientSubmissions';
 import EmployeeSubmissions from './pages/admin/EmployeeSubmissions';
+import CancellationRequests from './pages/admin/CancellationRequests';
 
 // Coordinator pages
 import CoordinatorDashboard from './pages/coordinator/CoordinatorDashboard';
@@ -57,6 +58,9 @@ import MyProjects from './pages/shared/MyProjects';
 
 // Field Officer
 import FieldOfficerDashboard from './pages/field-officer/FieldOfficerDashboard';
+
+// Client pages
+import ClientPayments from './pages/client/ClientPayments';
 
 // Unassigned
 import UnassignedDashboard from './pages/unassigned/UnassignedDashboard';
@@ -122,6 +126,7 @@ export default function App() {
         <Route path="system-logs" element={<ProtectedRoute allowedRoles={['admin']}><SystemLogs /></ProtectedRoute>} />
         <Route path="client-submissions" element={<ProtectedRoute allowedRoles={['admin']}><ClientSubmissions /></ProtectedRoute>} />
         <Route path="employee-submissions" element={<ProtectedRoute allowedRoles={['admin']}><EmployeeSubmissions /></ProtectedRoute>} />
+        <Route path="cancellation-requests" element={<ProtectedRoute allowedRoles={['admin']}><CancellationRequests /></ProtectedRoute>} />
 
         {/* Coordinator routes */}
         <Route path="assigned-submissions" element={<ProtectedRoute allowedRoles={['coordinator']}><AssignedSubmissions /></ProtectedRoute>} />
@@ -142,6 +147,9 @@ export default function App() {
 
         {/* MD/GM routes */}
         <Route path="project-approval" element={<ProtectedRoute allowedRoles={['md_gm']}><ProjectApproval /></ProtectedRoute>} />
+
+        {/* Client routes */}
+        <Route path="client-payments" element={<ProtectedRoute allowedRoles={['client']}><ClientPayments /></ProtectedRoute>} />
 
         {/* Shared routes - accessible by all authenticated users */}
         <Route path="my-attendance" element={<MyAttendance />} />

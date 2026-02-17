@@ -3,12 +3,13 @@ import { useParams, useNavigate } from 'react-router-dom';
 import {
   Box, Typography, Card, CardContent, Grid, Chip, Button, Alert,
   Select, MenuItem, Dialog, DialogTitle, DialogContent, DialogActions,
-  Divider, IconButton, Tooltip, FormControl, InputLabel
+  Divider, IconButton, Tooltip, FormControl, InputLabel, TextField
 } from '@mui/material';
 import {
   ArrowBack, PersonAdd, PlayArrow, CheckCircle, Cancel, Lock,
   Timeline as TimelineIcon, Update, Description, Download,
-  EventNote, AssignmentInd, FactCheck
+  EventNote, AssignmentInd, FactCheck, Payment, Send, Receipt,
+  HourglassEmpty, AttachMoney, AssignmentTurnedIn, Block
 } from '@mui/icons-material';
 import projectService from '../../services/projectService';
 import LoadingSpinner from '../../components/LoadingSpinner';
@@ -30,6 +31,17 @@ export default function ProjectDetail() {
   const [starting, setStarting] = useState(false);
   const [updatingStatus, setUpdatingStatus] = useState(false);
   const [statusToUpdate, setStatusToUpdate] = useState('');
+  
+  // Payment management states
+  const [paymentLoading, setPaymentLoading] = useState(false);
+  const [rejectPaymentDialog, setRejectPaymentDialog] = useState(false);
+  const [paymentRejectReason, setPaymentRejectReason] = useState('');
+  
+  // Cancellation request states
+  const [cancelDialog, setCancelDialog] = useState(false);
+  const [cancelReason, setCancelReason] = useState('');
+  const [cancelLoading, setCancelLoading] = useState(false);
+  const [cancellationStatus, setCancellationStatus] = useState(null);
 
   const fetchProject = async () => {
     try {
@@ -41,9 +53,19 @@ export default function ProjectDetail() {
       setLoading(false);
     }
   };
+  
+  const fetchCancellationStatus = async () => {
+    try {
+      const res = await projectService.getCancellationStatus(id);
+      setCancellationStatus(res.data);
+    } catch {
+      // Ignore errors
+    }
+  };
 
   useEffect(() => {
     fetchProject();
+    fetchCancellationStatus();
   }, [id]);
 
   useEffect(() => {
@@ -116,7 +138,7 @@ export default function ProjectDetail() {
     setStarting(true);
     setError('');
     try {
-      await projectService.updateProject(id, { status: 'in_progress' });
+      await projectService.startProject(id);
       setSuccess('Project started successfully!');
       await fetchProject();
     } catch (err) {
@@ -127,6 +149,8 @@ export default function ProjectDetail() {
         setError(data.join('. '));
       } else if (data?.detail) {
         setError(data.detail);
+      } else if (data?.error) {
+        setError(data.error);
       } else if (data && typeof data === 'object') {
         const msgs = Object.values(data).flat();
         setError(msgs.join('. '));
@@ -137,12 +161,87 @@ export default function ProjectDetail() {
       setStarting(false);
     }
   };
+  
+  // Payment management handlers
+  const handleSendPaymentRequest = async () => {
+    setPaymentLoading(true);
+    setError('');
+    try {
+      await projectService.sendPaymentRequest(id);
+      setSuccess('Payment request sent to client!');
+      await fetchProject();
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to send payment request');
+    } finally {
+      setPaymentLoading(false);
+    }
+  };
+  
+  const handleApprovePayment = async () => {
+    setPaymentLoading(true);
+    setError('');
+    try {
+      await projectService.approvePayment(id);
+      setSuccess('Payment approved successfully! You can now start the project.');
+      await fetchProject();
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to approve payment');
+    } finally {
+      setPaymentLoading(false);
+    }
+  };
+  
+  const handleRejectPayment = async () => {
+    if (!paymentRejectReason.trim()) {
+      setError('Please provide a reason for rejection');
+      return;
+    }
+    setPaymentLoading(true);
+    setError('');
+    try {
+      await projectService.rejectPayment(id, paymentRejectReason);
+      setSuccess('Payment rejected. Client has been notified.');
+      setRejectPaymentDialog(false);
+      setPaymentRejectReason('');
+      await fetchProject();
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to reject payment');
+    } finally {
+      setPaymentLoading(false);
+    }
+  };
+  
+  // Cancellation request handler
+  const handleRequestCancellation = async () => {
+    if (!cancelReason.trim()) {
+      setError('Please provide a reason for cancellation');
+      return;
+    }
+    setCancelLoading(true);
+    setError('');
+    try {
+      await projectService.requestCancellation(id, cancelReason);
+      setSuccess('Cancellation request submitted. Admin will review your request.');
+      setCancelDialog(false);
+      setCancelReason('');
+      await fetchCancellationStatus();
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to submit cancellation request');
+    } finally {
+      setCancelLoading(false);
+    }
+  };
 
   if (loading) return <LoadingSpinner />;
   if (!project) return <Alert severity="error">Project not found</Alert>;
 
   const isCoordinator = role === 'coordinator';
   const isPending = project.status === 'pending';
+  
+  // Payment status
+  const payment = project.payment;
+  const paymentStatus = payment?.payment_status || 'pending';
+  const isPaymentApproved = paymentStatus === 'approved';
 
   // Readiness check for starting the project
   const requiredAssignments = [
@@ -155,36 +254,59 @@ export default function ProjectDetail() {
     requiredAssignments.splice(2, 0, { label: 'Agent', assigned: !!project.assigned_agent });
   }
   const allAssigned = requiredAssignments.every(r => r.assigned);
+  const canStartProject = allAssigned && isPaymentApproved;
 
   return (
     <Box>
       <Button startIcon={<ArrowBack />} onClick={() => navigate(-1)} sx={{ mb: 2 }}>Back</Button>
       {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
       {success && <Alert severity="success" sx={{ mb: 2 }} onClose={() => setSuccess('')}>{success}</Alert>}
+      
+      {/* Cancellation Request Status */}
+      {cancellationStatus?.has_request && cancellationStatus?.request?.status === 'pending' && (
+        <Alert severity="warning" sx={{ mb: 2 }} icon={<HourglassEmpty />}>
+          <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>Cancellation Request Pending</Typography>
+          <Typography variant="body2">
+            Your cancellation request is under review by the admin. Reason: {cancellationStatus.request.reason}
+          </Typography>
+        </Alert>
+      )}
+      {cancellationStatus?.has_request && cancellationStatus?.request?.status === 'rejected' && (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>Cancellation Request Rejected</Typography>
+          <Typography variant="body2">
+            Admin remarks: {cancellationStatus.request.admin_remarks || 'No remarks provided'}
+          </Typography>
+        </Alert>
+      )}
 
       <Card sx={{ mb: 3 }}>
         <CardContent sx={{ p: 3 }}>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 3 }}>
             <Box>
-              <Typography variant="h5" sx={{ fontWeight: 700 }}>{project.title}</Typography>
-              <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
+              <Typography variant="h5" sx={{ fontWeight: 700, mb: 1 }}>{project.title}</Typography>
+              <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
                 <StatusChip status={project.status} label={project.status_display || project.status} />
-                <Chip label={project.priority} size="small" sx={{ bgcolor: `${getPriorityColor(project.priority)}20`, color: getPriorityColor(project.priority), fontWeight: 600 }} />
+                <Chip label={project.priority} size="small" sx={{ bgcolor: `${getPriorityColor(project.priority)}20`, color: getPriorityColor(project.priority), fontWeight: 600, textTransform: 'capitalize' }} />
               </Box>
             </Box>
             {isCoordinator && (
               <Box sx={{ display: 'flex', gap: 1 }}>
                 {isPending ? (
-                  <Button
-                    variant="contained"
-                    color="success"
-                    startIcon={<PlayArrow />}
-                    onClick={handleStartProject}
-                    disabled={starting || !allAssigned}
-                    sx={{ fontWeight: 600 }}
-                  >
-                    {starting ? 'Starting...' : 'Start Project'}
-                  </Button>
+                  <Tooltip title={!canStartProject ? 'Please complete all requirements before starting the project' : ''}>
+                    <span>
+                      <Button
+                        variant="contained"
+                        color="success"
+                        startIcon={<PlayArrow />}
+                        onClick={handleStartProject}
+                        disabled={starting || !canStartProject}
+                        sx={{ fontWeight: 600 }}
+                      >
+                        {starting ? 'Starting...' : 'Start Project'}
+                      </Button>
+                    </span>
+                  </Tooltip>
                 ) : (
                   <FormControl size="small" sx={{ minWidth: 150 }}>
                     <InputLabel>Update Status</InputLabel>
@@ -197,61 +319,265 @@ export default function ProjectDetail() {
                       <MenuItem value="pending">Pending</MenuItem>
                       <MenuItem value="in_progress">In Progress</MenuItem>
                       <MenuItem value="completed">Completed</MenuItem>
-                      <MenuItem value="cancelled">Cancelled</MenuItem>
                     </Select>
                   </FormControl>
+                )}
+                {/* Cancel Project Button - always available unless cancelled or has pending request */}
+                {project.status !== 'cancelled' && (!cancellationStatus?.has_request || cancellationStatus?.request?.status === 'rejected') && (
+                  <Button
+                    variant="outlined"
+                    color="error"
+                    startIcon={<Block />}
+                    onClick={() => setCancelDialog(true)}
+                    sx={{ fontWeight: 600 }}
+                  >
+                    Cancel Project
+                  </Button>
                 )}
               </Box>
             )}
           </Box>
-          <Typography variant="body1" sx={{ mb: 3 }}>{project.description}</Typography>
-          <Grid container spacing={2}>
+          
+          {project.description && (
+            <Box sx={{ mb: 3 }}>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5, fontWeight: 500 }}>Description</Typography>
+              <Typography variant="body1">{project.description}</Typography>
+            </Box>
+          )}
+          
+          <Divider sx={{ my: 2 }} />
+          
+          <Grid container spacing={3}>
             <Grid item xs={6} sm={3}>
-              <Typography variant="body2" color="text.secondary">Start Date</Typography>
-              <Typography fontWeight={600}>{formatDate(project.start_date)}</Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500, mb: 0.5 }}>Start Date</Typography>
+              <Typography sx={{ fontWeight: 600 }}>{formatDate(project.start_date)}</Typography>
             </Grid>
             <Grid item xs={6} sm={3}>
-              <Typography variant="body2" color="text.secondary">End Date</Typography>
-              <Typography fontWeight={600}>{formatDate(project.end_date)}</Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500, mb: 0.5 }}>End Date</Typography>
+              <Typography sx={{ fontWeight: 600 }}>{formatDate(project.end_date)}</Typography>
             </Grid>
             <Grid item xs={6} sm={3}>
-              <Typography variant="body2" color="text.secondary">Coordinator</Typography>
-              <Typography fontWeight={600}>{project.coordinator_name || project.coordinator_username || '-'}</Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500, mb: 0.5 }}>Project Coordinator</Typography>
+              <Typography sx={{ fontWeight: 600 }}>{project.coordinator_name || project.coordinator_username || '-'}</Typography>
             </Grid>
             <Grid item xs={6} sm={3}>
-              <Typography variant="body2" color="text.secondary">Created</Typography>
-              <Typography fontWeight={600}>{formatDate(project.created_at)}</Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500, mb: 0.5 }}>Date Created</Typography>
+              <Typography sx={{ fontWeight: 600 }}>{formatDate(project.created_at)}</Typography>
             </Grid>
           </Grid>
         </CardContent>
       </Card>
 
-      {/* Readiness checklist - shown only for coordinator when project is pending */}
+      {/* Project Requirements Checklist - shown only for coordinator when project is pending */}
       {isCoordinator && isPending && (
-        <Card sx={{ mb: 3, border: (t) => allAssigned ? `1px solid ${t.palette.success.main}` : `1px solid ${t.palette.warning.main}` }}>
+        <Card sx={{ mb: 3 }}>
           <CardContent sx={{ p: 3 }}>
-            <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
-              {allAssigned ? 'Ready to Start' : 'Assign Team Before Starting'}
-            </Typography>
-            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.5 }}>
-              {requiredAssignments.map(({ label, assigned }) => (
-                <Chip
-                  key={label}
-                  icon={assigned ? <CheckCircle /> : <Cancel />}
-                  label={label}
-                  color={assigned ? 'success' : 'warning'}
-                  variant="outlined"
-                  sx={{ fontWeight: 600 }}
-                />
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2.5 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <AssignmentTurnedIn color="primary" />
+                <Typography variant="h6" sx={{ fontWeight: 600 }}>Project Requirements</Typography>
+              </Box>
+              <Chip 
+                label={`${requiredAssignments.filter(r => r.assigned).length + (isPaymentApproved ? 1 : 0)}/${requiredAssignments.length + 1}`}
+                size="small"
+                color={canStartProject ? 'success' : 'default'}
+                sx={{ fontWeight: 600 }}
+              />
+            </Box>
+            
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
+              {[...requiredAssignments, { label: 'Payment', assigned: isPaymentApproved }].map(({ label, assigned }) => (
+                <Box key={label} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  {assigned ? (
+                    <CheckCircle sx={{ fontSize: 20, color: 'success.main' }} />
+                  ) : (
+                    <Box sx={{ 
+                      width: 20, 
+                      height: 20, 
+                      borderRadius: '50%', 
+                      border: '2px solid',
+                      borderColor: 'grey.300'
+                    }} />
+                  )}
+                  <Typography variant="body2" sx={{ fontWeight: 500, color: assigned ? 'text.primary' : 'text.secondary' }}>
+                    {label}
+                  </Typography>
+                </Box>
               ))}
             </Box>
+            
+            {canStartProject && (
+              <Alert severity="success" sx={{ mt: 2 }} icon={<CheckCircle />}>
+                All requirements met. Ready to start the project.
+              </Alert>
+            )}
+          </CardContent>
+        </Card>
+      )}
+      
+      {/* Payment Management - shown for coordinator when project is pending */}
+      {isCoordinator && isPending && (
+        <Card sx={{ mb: 3 }}>
+          <CardContent sx={{ p: 3 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Payment color="primary" />
+                <Typography variant="h6" sx={{ fontWeight: 600 }}>Payment Management</Typography>
+              </Box>
+              <Typography variant="h6" sx={{ fontWeight: 600, color: 'primary.main' }}>
+                Rs. {Number(project.estimated_value || 50000).toLocaleString()}
+              </Typography>
+            </Box>
+            
+            {/* Status Steps */}
+            <Box sx={{ 
+              display: 'flex', 
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              p: 2,
+              mb: 2,
+              borderRadius: 1,
+              bgcolor: (t) => t.palette.custom.cardInner
+            }}>
+              {[
+                { key: 'request', label: 'Request', done: paymentStatus !== 'pending' },
+                { key: 'payment', label: 'Payment', done: ['submitted', 'under_review', 'approved'].includes(paymentStatus) },
+                { key: 'verification', label: 'Verification', done: paymentStatus === 'approved' },
+                { key: 'completed', label: 'Completed', done: paymentStatus === 'approved' }
+              ].map((step, index, arr) => (
+                <Box 
+                  key={step.key}
+                  sx={{ 
+                    display: 'flex',
+                    alignItems: 'center',
+                    flex: 1
+                  }}
+                >
+                  <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: 70 }}>
+                    <Box sx={{ 
+                      width: 24, 
+                      height: 24, 
+                      borderRadius: '50%',
+                      bgcolor: step.done ? 'success.main' : 'grey.300',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      mb: 0.5
+                    }}>
+                      {step.done ? (
+                        <CheckCircle sx={{ fontSize: 16, color: 'white' }} />
+                      ) : (
+                        <Typography variant="caption" sx={{ color: 'white', fontWeight: 600, fontSize: 11 }}>{index + 1}</Typography>
+                      )}
+                    </Box>
+                    <Typography variant="caption" sx={{ fontWeight: 500, color: step.done ? 'success.main' : 'text.secondary' }}>
+                      {step.label}
+                    </Typography>
+                  </Box>
+                  {index < arr.length - 1 && (
+                    <Box sx={{ flex: 1, height: 2, bgcolor: step.done ? 'success.main' : 'grey.200', mx: 1 }} />
+                  )}
+                </Box>
+              ))}
+            </Box>
+            
+            {/* Status and Actions */}
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Box sx={{
+                  width: 8,
+                  height: 8,
+                  borderRadius: '50%',
+                  bgcolor: 
+                    paymentStatus === 'approved' ? 'success.main' :
+                    paymentStatus === 'rejected' ? 'error.main' :
+                    paymentStatus === 'submitted' || paymentStatus === 'under_review' ? 'info.main' :
+                    paymentStatus === 'requested' ? 'warning.main' : 'grey.400'
+                }} />
+                <Typography variant="body2" color="text.secondary">
+                  {paymentStatus === 'pending' ? 'Payment request not sent yet' :
+                   paymentStatus === 'requested' ? 'Waiting for client to make payment' :
+                   paymentStatus === 'submitted' ? 'Payment received, awaiting verification' :
+                   paymentStatus === 'under_review' ? 'Payment is under verification' :
+                   paymentStatus === 'approved' ? 'Payment verified successfully' :
+                   paymentStatus === 'rejected' ? 'Payment verification failed' : 'Unknown status'}
+                </Typography>
+              </Box>
+              
+              {paymentStatus === 'pending' && (
+                <Button
+                  variant="contained"
+                  startIcon={<Send />}
+                  onClick={handleSendPaymentRequest}
+                  disabled={paymentLoading || !project.assigned_client}
+                  size="small"
+                  sx={{ alignSelf: 'flex-start' }}
+                >
+                  {paymentLoading ? 'Sending...' : 'Send Request'}
+                </Button>
+              )}
+              
+              {(paymentStatus === 'submitted' || paymentStatus === 'under_review') && (
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
+                  {payment?.bank_slip_url && (
+                    <Button
+                      variant="outlined"
+                      startIcon={<Receipt />}
+                      href={payment.bank_slip_url}
+                      target="_blank"
+                      size="small"
+                    >
+                      View Receipt
+                    </Button>
+                  )}
+                  <Button
+                    variant="contained"
+                    color="success"
+                    startIcon={<CheckCircle />}
+                    onClick={handleApprovePayment}
+                    disabled={paymentLoading}
+                    size="small"
+                  >
+                    {paymentLoading ? 'Verifying...' : 'Verify'}
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    color="error"
+                    startIcon={<Cancel />}
+                    onClick={() => setRejectPaymentDialog(true)}
+                    disabled={paymentLoading}
+                    size="small"
+                  >
+                    Reject
+                  </Button>
+                </Box>
+              )}
+            </Box>
+            
+            {!project.assigned_client && paymentStatus === 'pending' && (
+              <Typography variant="caption" color="error.main" sx={{ display: 'block', mt: 2 }}>
+                Please assign a client before sending payment request.
+              </Typography>
+            )}
+            
+            {payment?.rejection_reason && paymentStatus === 'rejected' && (
+              <Typography variant="caption" color="error.main" sx={{ display: 'block', mt: 2 }}>
+                Reason: {payment.rejection_reason}
+              </Typography>
+            )}
           </CardContent>
         </Card>
       )}
 
       <Card sx={{ mb: 3 }}>
         <CardContent sx={{ p: 3 }}>
-          <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>Team Assignments</Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+            <AssignmentInd color="primary" />
+            <Typography variant="h6" sx={{ fontWeight: 600 }}>Team Assignments</Typography>
+          </Box>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+            Team members assigned to this project
+          </Typography>
           <Grid container spacing={3}>
             {/* First column: Field Officer, Accessor, Senior Valuer */}
             <Grid item xs={12} sm={6}>
@@ -261,14 +587,14 @@ export default function ProjectDetail() {
                   { label: 'Accessor', key: 'assigned_accessor', type: 'accessor', nameKey: 'assigned_accessor_name' },
                   { label: 'Senior Valuer', key: 'assigned_senior_valuer', type: 'senior_valuer', nameKey: 'assigned_senior_valuer_name' },
                 ].map(({ label, key, type, nameKey }) => (
-                  <Box key={key} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', p: 1.5, bgcolor: (t) => t.palette.custom.cardInner, borderRadius: 2 }}>
+                  <Box key={key} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', p: 2, bgcolor: (t) => t.palette.custom.cardInner, borderRadius: 2 }}>
                     <Box>
-                      <Typography variant="body2" color="text.secondary">{label}</Typography>
-                      <Typography fontWeight={600}>{project[nameKey] || (project[key] ? `User #${project[key]}` : 'Not assigned')}</Typography>
+                      <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500, mb: 0.5 }}>{label}</Typography>
+                      <Typography sx={{ fontWeight: 600 }}>{project[nameKey] || (project[key] ? `User #${project[key]}` : 'Not Assigned')}</Typography>
                     </Box>
                     {isCoordinator && (
-                      <Button size="small" startIcon={<PersonAdd />} onClick={() => openAssignDialog(type)}>
-                        {project[key] ? 'Change' : 'Assign'}
+                      <Button size="small" variant="outlined" startIcon={<PersonAdd />} onClick={() => openAssignDialog(type)}>
+                        {project[key] ? 'Reassign' : 'Assign'}
                       </Button>
                     )}
                   </Box>
@@ -282,13 +608,13 @@ export default function ProjectDetail() {
                   { label: 'Client', key: 'assigned_client', type: 'client', nameKey: 'assigned_client_name' },
                   { label: 'Agent', key: 'assigned_agent', type: 'agent', nameKey: 'assigned_agent_name' },
                 ].map(({ label, key, type, nameKey }) => (
-                  <Box key={key} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', p: 1.5, bgcolor: (t) => t.palette.custom.cardInner, borderRadius: 2 }}>
+                  <Box key={key} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', p: 2, bgcolor: (t) => t.palette.custom.cardInner, borderRadius: 2 }}>
                     <Box>
-                      <Typography variant="body2" color="text.secondary">{label}</Typography>
-                      <Typography fontWeight={600}>{project[nameKey] || (project[key] ? `User #${project[key]}` : 'Not assigned')}</Typography>
+                      <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500, mb: 0.5 }}>{label}</Typography>
+                      <Typography sx={{ fontWeight: 600 }}>{project[nameKey] || (project[key] ? `User #${project[key]}` : 'Not Assigned')}</Typography>
                     </Box>
                     {isCoordinator && (
-                      <Chip icon={<Lock />} label="Set at creation" size="small" variant="outlined" color="default" />
+                      <Chip icon={<Lock />} label="Assigned at Creation" size="small" variant="outlined" color="default" />
                     )}
                   </Box>
                 ))}
@@ -301,22 +627,42 @@ export default function ProjectDetail() {
       {project.client_info && (
         <Card sx={{ mb: 3 }}>
           <CardContent sx={{ p: 3 }}>
-            <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>Client Information</Typography>
-            <Grid container spacing={2}>
-              {['name', 'email', 'phone', 'company'].map(f => (
-                <Grid item xs={6} sm={3} key={f}>
-                  <Typography variant="body2" color="text.secondary" sx={{ textTransform: 'capitalize' }}>{f}</Typography>
-                  <Typography fontWeight={600}>{project.client_info[f] || '-'}</Typography>
-                </Grid>
-              ))}
+            <Typography variant="h6" sx={{ fontWeight: 600, mb: 1 }}>Client Information</Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+              Contact details of the client associated with this project
+            </Typography>
+            <Grid container spacing={3}>
+              <Grid item xs={6} sm={3}>
+                <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500, mb: 0.5 }}>Full Name</Typography>
+                <Typography sx={{ fontWeight: 600 }}>{project.client_info.name || '-'}</Typography>
+              </Grid>
+              <Grid item xs={6} sm={3}>
+                <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500, mb: 0.5 }}>Email Address</Typography>
+                <Typography sx={{ fontWeight: 600 }}>{project.client_info.email || '-'}</Typography>
+              </Grid>
+              <Grid item xs={6} sm={3}>
+                <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500, mb: 0.5 }}>Phone Number</Typography>
+                <Typography sx={{ fontWeight: 600 }}>{project.client_info.phone || '-'}</Typography>
+              </Grid>
+              <Grid item xs={6} sm={3}>
+                <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500, mb: 0.5 }}>Company</Typography>
+                <Typography sx={{ fontWeight: 600 }}>{project.client_info.company || '-'}</Typography>
+              </Grid>
             </Grid>
           </CardContent>
         </Card>
       )}
 
       <Dialog open={!!assignDialog} onClose={() => { setAssignDialog(null); setSelectedUser(''); }} maxWidth="sm" fullWidth>
-        <DialogTitle>Assign {assignDialog?.replace(/_/g, ' ')}</DialogTitle>
+        <DialogTitle sx={{ pb: 1 }}>
+          <Typography variant="h6" sx={{ fontWeight: 600, textTransform: 'capitalize' }}>
+            Assign {assignDialog?.replace(/_/g, ' ')}
+          </Typography>
+        </DialogTitle>
         <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Please select a {assignDialog?.replace(/_/g, ' ')} to assign to this project.
+          </Typography>
           <Select
             fullWidth
             value={selectedUser}
@@ -325,11 +671,11 @@ export default function ProjectDetail() {
             sx={{ mt: 1 }}
           >
             <MenuItem value="" disabled>
-              {assignDialog === 'field_officer' && 'Select a field officer...'}
-              {assignDialog === 'accessor' && 'Select an accessor...'}
-              {assignDialog === 'senior_valuer' && 'Select a senior valuer...'}
-              {assignDialog === 'client' && 'Select a client...'}
-              {assignDialog === 'agent' && 'Select an agent...'}
+              {assignDialog === 'field_officer' && 'Select a Field Officer'}
+              {assignDialog === 'accessor' && 'Select an Accessor'}
+              {assignDialog === 'senior_valuer' && 'Select a Senior Valuer'}
+              {assignDialog === 'client' && 'Select a Client'}
+              {assignDialog === 'agent' && 'Select an Agent'}
             </MenuItem>
             {availableUsers.map((u) => (
               <MenuItem key={u.id} value={u.id}>
@@ -340,14 +686,14 @@ export default function ProjectDetail() {
             ))}
           </Select>
           {availableUsers.length === 0 && (
-            <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-              No {assignDialog?.replace(/_/g, ' ')}s available
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 2, fontStyle: 'italic' }}>
+              No {assignDialog?.replace(/_/g, ' ')}s are currently available.
             </Typography>
           )}
         </DialogContent>
-        <DialogActions>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
           <Button onClick={() => { setAssignDialog(null); setSelectedUser(''); }}>Cancel</Button>
-          <Button variant="contained" onClick={handleAssign} disabled={!selectedUser}>Assign</Button>
+          <Button variant="contained" onClick={handleAssign} disabled={!selectedUser}>Confirm Assignment</Button>
         </DialogActions>
       </Dialog>
       {/* Project Timeline & Approved Reports */}
@@ -355,10 +701,13 @@ export default function ProjectDetail() {
         <Grid item xs={12} md={6}>
           <Card sx={{ height: '100%', minHeight: 400 }}>
             <CardContent sx={{ p: 3 }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 3 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
                 <TimelineIcon color="primary" />
                 <Typography variant="h6" sx={{ fontWeight: 600 }}>Project Timeline</Typography>
               </Box>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                Activity history and status updates
+              </Typography>
 
               {project.history && project.history.length > 0 ? (
                 <Box sx={{ position: 'relative', pl: 2, '&::before': { content: '""', position: 'absolute', left: 7, top: 0, bottom: 0, width: '2px', bgcolor: 'divider' } }}>
@@ -395,7 +744,7 @@ export default function ProjectDetail() {
                 </Box>
               ) : (
                 <Box sx={{ py: 4, textAlign: 'center' }}>
-                  <Typography color="text.secondary">No activity recorded yet</Typography>
+                  <Typography color="text.secondary">No activity has been recorded yet.</Typography>
                 </Box>
               )}
             </CardContent>
@@ -405,10 +754,13 @@ export default function ProjectDetail() {
         <Grid item xs={12} md={6}>
           <Card sx={{ height: '100%', minHeight: 400 }}>
             <CardContent sx={{ p: 3 }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 3 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
                 <FactCheck color="primary" />
                 <Typography variant="h6" sx={{ fontWeight: 600 }}>Final Valuation Reports</Typography>
               </Box>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                Approved reports available for download
+              </Typography>
 
               {project.valuations && project.valuations.filter(v => v.status === 'approved').length > 0 ? (
                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -446,13 +798,90 @@ export default function ProjectDetail() {
               ) : (
                 <Box sx={{ py: 4, textAlign: 'center' }}>
                   <Description sx={{ fontSize: 48, color: 'text.disabled', mb: 1 }} />
-                  <Typography color="text.secondary">No approved reports available yet</Typography>
+                  <Typography color="text.secondary">No approved reports are available at this time.</Typography>
                 </Box>
               )}
             </CardContent>
           </Card>
         </Grid>
       </Grid>
+      
+      {/* Payment Rejection Dialog */}
+      <Dialog open={rejectPaymentDialog} onClose={() => !paymentLoading && setRejectPaymentDialog(false)} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ pb: 1 }}>
+          <Typography variant="h6" sx={{ fontWeight: 700, color: 'error.main' }}>
+            Reject Payment
+          </Typography>
+        </DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Please provide a reason for rejecting this payment. The client will be notified and may re-submit a bank slip.
+          </Typography>
+          <TextField
+            fullWidth
+            multiline
+            rows={3}
+            label="Rejection Reason"
+            placeholder="Please specify the reason for rejection (e.g., bank slip is unclear, amount does not match the invoice, etc.)"
+            value={paymentRejectReason}
+            onChange={(e) => setPaymentRejectReason(e.target.value)}
+            required
+            error={!paymentRejectReason.trim() && rejectPaymentDialog}
+          />
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setRejectPaymentDialog(false)} disabled={paymentLoading}>
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            color="error"
+            onClick={handleRejectPayment}
+            disabled={paymentLoading || !paymentRejectReason.trim()}
+          >
+            {paymentLoading ? 'Processing...' : 'Confirm Rejection'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+      
+      {/* Cancellation Request Dialog */}
+      <Dialog open={cancelDialog} onClose={() => !cancelLoading && setCancelDialog(false)} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ pb: 1 }}>
+          <Typography variant="h6" sx={{ fontWeight: 700, color: 'error.main' }}>
+            Request Project Cancellation
+          </Typography>
+        </DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Please provide a reason for cancelling this project. Your request will be sent to the admin for review. All assigned team members will be notified of the decision.
+          </Typography>
+          <TextField
+            fullWidth
+            multiline
+            rows={4}
+            label="Cancellation Reason"
+            placeholder="Please explain why this project needs to be cancelled..."
+            value={cancelReason}
+            onChange={(e) => setCancelReason(e.target.value)}
+            required
+            error={!cancelReason.trim() && cancelDialog}
+          />
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setCancelDialog(false)} disabled={cancelLoading}>
+            Go Back
+          </Button>
+          <Button
+            variant="contained"
+            color="error"
+            onClick={handleRequestCancellation}
+            disabled={cancelLoading || !cancelReason.trim()}
+            startIcon={<Block />}
+          >
+            {cancelLoading ? 'Submitting...' : 'Submit Request'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

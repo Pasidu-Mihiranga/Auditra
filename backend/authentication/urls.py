@@ -36,6 +36,8 @@ from .views import (
     EmployeeSubmissionDetailView,
     HireEmployeeSubmissionView,
     RoleSalariesView,
+    AcceptAssignmentView,
+    RejectAssignmentView,
 )
 
 urlpatterns = [
@@ -70,6 +72,8 @@ urlpatterns = [
     path('client-submissions/', AllClientSubmissionsView.as_view(), name='all-client-submissions'),
     path('client-submissions/<int:pk>/', ClientSubmissionDetailView.as_view(), name='client-submission-detail'),
     path('client-submissions/<int:pk>/assign-coordinator/', AssignCoordinatorView.as_view(), name='assign-coordinator'),
+    path('client-submissions/<int:pk>/accept/', AcceptAssignmentView.as_view(), name='accept-assignment'),
+    path('client-submissions/<int:pk>/reject/', RejectAssignmentView.as_view(), name='reject-assignment'),
     path('coordinators/', AvailableCoordinatorsView.as_view(), name='available-coordinators'),
     # Employee submissions management
     path('employee-submissions/', AllEmployeeSubmissionsView.as_view(), name='all-employee-submissions'),

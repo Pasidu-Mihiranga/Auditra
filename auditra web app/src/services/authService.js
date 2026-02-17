@@ -37,6 +37,13 @@ const authService = {
       headers: { 'Content-Type': undefined },
     });
   },
+
+  // Assignment response methods for coordinators
+  acceptAssignment: (submissionId) =>
+    axiosClient.post(`/auth/client-submissions/${submissionId}/accept/`),
+
+  rejectAssignment: (submissionId, rejectionReason) =>
+    axiosClient.post(`/auth/client-submissions/${submissionId}/reject/`, { rejection_reason: rejectionReason }),
 };
 
 export default authService;

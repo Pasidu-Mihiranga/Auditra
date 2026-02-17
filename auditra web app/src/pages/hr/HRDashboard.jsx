@@ -42,7 +42,7 @@ export default function HRDashboard() {
             onClick={() => navigate('/dashboard/leave-requests')} />
         </Grid>
         <Grid item xs={12} sm={4}>
-          <StatsCard title="Weekly Attendance" value={stats.attendance} icon={EventNoteIcon} color="#2563EB"
+          <StatsCard title="Weekly Attendance" value={stats.attendance} icon={EventNoteIcon} color="#1565C0"
             onClick={() => navigate('/dashboard/attendance-view')} />
         </Grid>
         <Grid item xs={12} sm={4}>

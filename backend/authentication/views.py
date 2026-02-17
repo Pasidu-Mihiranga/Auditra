@@ -1541,10 +1541,13 @@ class AllClientSubmissionsView(APIView):
 
         # Filters
         status_filter = request.query_params.get('status', None)
+        coordinator_response_filter = request.query_params.get('coordinator_response', None)
         search = request.query_params.get('search', None)
 
         if status_filter:
             queryset = queryset.filter(status=status_filter)
+        if coordinator_response_filter:
+            queryset = queryset.filter(coordinator_response=coordinator_response_filter)
         if search:
             queryset = queryset.filter(
                 Q(first_name__icontains=search) |
@@ -1644,7 +1647,20 @@ class AssignCoordinatorView(APIView):
         except User.DoesNotExist:
             return Response({'error': 'Coordinator not found'}, status=status.HTTP_404_NOT_FOUND)
 
+        # Create a new CoordinatorAssignment record
+        from .models import CoordinatorAssignment
+        CoordinatorAssignment.objects.create(
+            submission=submission,
+            coordinator=coordinator,
+            assigned_by=request.user,
+            status='pending'
+        )
+
+        # Update submission with new coordinator and reset response fields
         submission.coordinator = coordinator
+        submission.coordinator_response = 'pending'
+        submission.rejection_reason = None
+        submission.responded_at = None
         # Only change status to 'assigned' if not already approved
         if submission.status != 'approved':
             submission.status = 'assigned'
@@ -2027,3 +2043,143 @@ class HireEmployeeSubmissionView(APIView):
             return Response({'error': 'Submission not found'}, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
             return Response({'error': f'Error hiring employee: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class AcceptAssignmentView(APIView):
+    """Coordinator endpoint to accept an assigned submission"""
+    permission_classes = (IsAuthenticated,)
+
+    def post(self, request, pk):
+        if not hasattr(request.user, 'role') or request.user.role.role != 'coordinator':
+            return Response({'error': 'Only coordinators can accept assignments'}, status=status.HTTP_403_FORBIDDEN)
+
+        try:
+            submission = ClientFormSubmission.objects.get(pk=pk)
+            
+            # Check if this submission is assigned to the current coordinator
+            if submission.coordinator != request.user:
+                return Response({'error': 'This submission is not assigned to you'}, status=status.HTTP_403_FORBIDDEN)
+            
+            # Check if already responded
+            if submission.coordinator_response != 'pending':
+                return Response({'error': f'Already responded to this assignment ({submission.coordinator_response})'}, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Accept the assignment
+            submission.coordinator_response = 'accepted'
+            submission.responded_at = timezone.now()
+            submission.save()
+            
+            # Update the CoordinatorAssignment record
+            from .models import CoordinatorAssignment
+            assignment = CoordinatorAssignment.objects.filter(
+                submission=submission,
+                coordinator=request.user,
+                status='pending'
+            ).order_by('-assigned_at').first()
+            if assignment:
+                assignment.status = 'accepted'
+                assignment.responded_at = timezone.now()
+                assignment.save()
+            
+            try:
+                from system_logs.utils import log_action, get_client_ip
+                log_action(
+                    action='ASSIGNMENT_ACCEPTED',
+                    user=request.user,
+                    description=f'Coordinator {request.user.username} accepted assignment for submission from {submission.first_name} {submission.last_name}',
+                    category='submission',
+                    ip_address=get_client_ip(request),
+                )
+            except Exception:
+                pass
+            
+            serializer = ClientFormSubmissionSerializer(submission)
+            return Response({
+                'success': True,
+                'message': 'Assignment accepted successfully. You can now create a project.',
+                'data': serializer.data
+            }, status=status.HTTP_200_OK)
+            
+        except ClientFormSubmission.DoesNotExist:
+            return Response({'error': 'Submission not found'}, status=status.HTTP_404_NOT_FOUND)
+
+
+class RejectAssignmentView(APIView):
+    """Coordinator endpoint to reject an assigned submission"""
+    permission_classes = (IsAuthenticated,)
+
+    def post(self, request, pk):
+        if not hasattr(request.user, 'role') or request.user.role.role != 'coordinator':
+            return Response({'error': 'Only coordinators can reject assignments'}, status=status.HTTP_403_FORBIDDEN)
+
+        rejection_reason = request.data.get('rejection_reason', '').strip()
+        if not rejection_reason:
+            return Response({'error': 'Rejection reason is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            submission = ClientFormSubmission.objects.get(pk=pk)
+            
+            # Check if this submission is assigned to the current coordinator
+            if submission.coordinator != request.user:
+                return Response({'error': 'This submission is not assigned to you'}, status=status.HTTP_403_FORBIDDEN)
+            
+            # Check if already responded
+            if submission.coordinator_response != 'pending':
+                return Response({'error': f'Already responded to this assignment ({submission.coordinator_response})'}, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Update the CoordinatorAssignment record first
+            from .models import CoordinatorAssignment
+            assignment = CoordinatorAssignment.objects.filter(
+                submission=submission,
+                coordinator=request.user,
+                status='pending'
+            ).order_by('-assigned_at').first()
+            if assignment:
+                assignment.status = 'rejected'
+                assignment.rejection_reason = rejection_reason
+                assignment.responded_at = timezone.now()
+                assignment.save()
+            
+            # Reject the assignment on submission
+            submission.coordinator_response = 'rejected'
+            submission.rejection_reason = rejection_reason
+            submission.responded_at = timezone.now()
+            # Reset coordinator and status so admin can reassign
+            old_coordinator = submission.coordinator
+            submission.coordinator = None
+            submission.status = 'pending'  # Reset to pending for reassignment
+            submission.save()
+            
+            # Send email notification to admin(s) about the rejection
+            try:
+                from .services import EmailService
+                EmailService.send_assignment_rejection_to_admin(
+                    submission=submission,
+                    coordinator=old_coordinator,
+                    rejection_reason=rejection_reason
+                )
+            except Exception:
+                pass
+            
+            try:
+                from system_logs.utils import log_action, get_client_ip
+                log_action(
+                    action='ASSIGNMENT_REJECTED',
+                    user=request.user,
+                    description=f'Coordinator {request.user.username} rejected assignment for submission from {submission.first_name} {submission.last_name}. Reason: {rejection_reason}',
+                    category='submission',
+                    ip_address=get_client_ip(request),
+                )
+            except Exception:
+                pass
+            
+            serializer = ClientFormSubmissionSerializer(submission)
+            return Response({
+                'success': True,
+                'message': 'Assignment rejected. Admin has been notified for reassignment.',
+                'data': serializer.data
+            }, status=status.HTTP_200_OK)
+            
+        except ClientFormSubmission.DoesNotExist:
+            return Response({'error': 'Submission not found'}, status=status.HTTP_404_NOT_FOUND)
+

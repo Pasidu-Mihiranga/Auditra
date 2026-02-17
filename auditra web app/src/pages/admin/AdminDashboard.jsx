@@ -54,7 +54,7 @@ export default function AdminDashboard() {
             onClick={() => navigate('/dashboard/users')} />
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
-          <StatsCard title="This Week" value={stats.attendance} icon={EventNoteIcon} color="#2563EB" subtitle="Attendance Records"
+          <StatsCard title="This Week" value={stats.attendance} icon={EventNoteIcon} color="#1565C0" subtitle="Attendance Records"
             onClick={() => navigate('/dashboard/attendance-summary')} />
         </Grid>
         <Grid item xs={12} sm={6} md={3}>

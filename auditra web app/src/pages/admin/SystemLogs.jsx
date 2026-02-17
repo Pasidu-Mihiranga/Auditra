@@ -87,15 +87,15 @@ const ACTION_OPTIONS = [
 /* Colour map — keys match backend category values exactly */
 const getCategoryColor = (cat) => {
   const colorMap = {
-    auth: '#2563EB',
-    user: '#7C3AED',
-    project: '#0EA5E9',
-    payment: '#059669',
+    auth: '#1565C0',
+    user: '#1565C0',
+    project: '#1565C0',
+    payment: '#16A34A',
     leave: '#D97706',
-    removal: '#E11D48',
-    submission: '#8B5CF6',
-    attendance: '#0D9488',
-    valuation: '#EA580C',
+    removal: '#DC2626',
+    submission: '#1565C0',
+    attendance: '#1565C0',
+    valuation: '#D97706',
     system: '#DC2626',
   };
   return colorMap[cat] || '#64748B';

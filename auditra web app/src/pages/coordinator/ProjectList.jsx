@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Box, Typography, Tabs, Tab, Table, TableBody, TableCell, TableContainer,
   TableHead, TableRow, Paper, Button, TextField, InputAdornment, Alert, Chip,
+  Tooltip,
 } from '@mui/material';
 import { Search, Add, Visibility } from '@mui/icons-material';
 import projectService from '../../services/projectService';
@@ -11,6 +12,15 @@ import StatusChip from '../../components/StatusChip';
 import { formatDate, getPriorityColor } from '../../utils/helpers';
 
 const STATUS_TAB_MAP = { pending: 1, in_progress: 2, completed: 3 };
+
+const PAYMENT_STATUS_CONFIG = {
+  pending: { label: 'Not Requested', color: '#6B7280', bg: '#6B728020' },
+  requested: { label: 'Awaiting Payment', color: '#D97706', bg: '#D9770620' },
+  submitted: { label: 'Slip Uploaded', color: '#1565C0', bg: '#1565C020' },
+  under_review: { label: 'Under Review', color: '#1565C0', bg: '#1565C020' },
+  approved: { label: 'Completed', color: '#16A34A', bg: '#16A34A20' },
+  rejected: { label: 'Payment Rejected', color: '#DC2626', bg: '#DC262620' },
+};
 
 export default function ProjectList() {
   const [projects, setProjects] = useState([]);
@@ -71,6 +81,8 @@ export default function ProjectList() {
               <TableCell>Title</TableCell>
               <TableCell>Priority</TableCell>
               <TableCell>Status</TableCell>
+              <TableCell>Payment Status</TableCell>
+              <TableCell>Est. Value</TableCell>
               <TableCell>Start</TableCell>
               <TableCell>End</TableCell>
               <TableCell>Actions</TableCell>
@@ -78,24 +90,44 @@ export default function ProjectList() {
           </TableHead>
           <TableBody>
             {filtered.length === 0 ? (
-              <TableRow><TableCell colSpan={6} align="center">No projects found</TableCell></TableRow>
+              <TableRow><TableCell colSpan={8} align="center">No projects found</TableCell></TableRow>
             ) : (
-              filtered.map((p) => (
-                <TableRow key={p.id} hover sx={{ cursor: 'pointer' }} onClick={() => navigate(`/dashboard/projects/${p.id}`)}>
-                  <TableCell sx={{ fontWeight: 600 }}>{p.title}</TableCell>
-                  <TableCell>
-                    <Chip label={p.priority} size="small" sx={{ bgcolor: `${getPriorityColor(p.priority)}20`, color: getPriorityColor(p.priority), fontWeight: 600, fontSize: 11 }} />
-                  </TableCell>
-                  <TableCell><StatusChip status={p.status} label={p.status_display || p.status} /></TableCell>
-                  <TableCell>{formatDate(p.start_date)}</TableCell>
-                  <TableCell>{formatDate(p.end_date)}</TableCell>
-                  <TableCell>
-                    <Button size="small" startIcon={<Visibility />} onClick={(e) => { e.stopPropagation(); navigate(`/dashboard/projects/${p.id}`); }}>
-                      View
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))
+              filtered.map((p) => {
+                const paymentStatus = p.payment?.payment_status || 'pending';
+                const paymentConfig = PAYMENT_STATUS_CONFIG[paymentStatus] || PAYMENT_STATUS_CONFIG.pending;
+                
+                return (
+                  <TableRow key={p.id} hover sx={{ cursor: 'pointer' }} onClick={() => navigate(`/dashboard/projects/${p.id}`)}>
+                    <TableCell sx={{ fontWeight: 600 }}>{p.title}</TableCell>
+                    <TableCell>
+                      <Chip label={p.priority} size="small" sx={{ bgcolor: `${getPriorityColor(p.priority)}20`, color: getPriorityColor(p.priority), fontWeight: 600, fontSize: 12 }} />
+                    </TableCell>
+                    <TableCell><StatusChip status={p.status} label={p.status_display || p.status} /></TableCell>
+                    <TableCell>
+                      <Chip 
+                        label={paymentConfig.label} 
+                        size="small" 
+                        sx={{ 
+                          bgcolor: paymentConfig.bg, 
+                          color: paymentConfig.color, 
+                          fontWeight: 600, 
+                          fontSize: 12
+                        }} 
+                      />
+                    </TableCell>
+                    <TableCell>
+                      {p.estimated_value ? `Rs. ${Number(p.estimated_value).toLocaleString()}` : '-'}
+                    </TableCell>
+                    <TableCell>{formatDate(p.start_date)}</TableCell>
+                    <TableCell>{formatDate(p.end_date)}</TableCell>
+                    <TableCell>
+                      <Button size="small" startIcon={<Visibility />} onClick={(e) => { e.stopPropagation(); navigate(`/dashboard/projects/${p.id}`); }}>
+                        View
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                );
+              })
             )}
           </TableBody>
         </Table>

@@ -445,6 +445,29 @@ class ClientFormSubmission(models.Model):
     )
     assigned_at = models.DateTimeField(null=True, blank=True)
     
+    # Coordinator response fields
+    COORDINATOR_RESPONSE_CHOICES = [
+        ('pending', 'Pending Response'),
+        ('accepted', 'Accepted'),
+        ('rejected', 'Rejected'),
+    ]
+    coordinator_response = models.CharField(
+        max_length=20,
+        choices=COORDINATOR_RESPONSE_CHOICES,
+        default='pending',
+        help_text='Coordinator response to the assignment'
+    )
+    rejection_reason = models.TextField(
+        blank=True,
+        null=True,
+        help_text='Reason for rejecting the assignment (if rejected)'
+    )
+    responded_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text='When the coordinator responded to the assignment'
+    )
+    
     class Meta:
         db_table = 'client_form_submissions'
         verbose_name = 'Client Form Submission'
@@ -454,6 +477,50 @@ class ClientFormSubmission(models.Model):
     def __str__(self):
         name = f"{self.first_name} {self.last_name}".strip() or "Unknown"
         return f"{name} - {self.email} - {self.get_status_display()}"
+
+
+class CoordinatorAssignment(models.Model):
+    """Tracks coordinator assignments for client submissions"""
+    
+    STATUS_CHOICES = [
+        ('pending', 'Pending Response'),
+        ('accepted', 'Accepted'),
+        ('rejected', 'Rejected'),
+    ]
+    
+    submission = models.ForeignKey(
+        ClientFormSubmission,
+        on_delete=models.CASCADE,
+        related_name='coordinator_assignments'
+    )
+    coordinator = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='coordinator_assignment_records'
+    )
+    assigned_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='coordinator_assignments_made'
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default='pending'
+    )
+    rejection_reason = models.TextField(blank=True, null=True)
+    assigned_at = models.DateTimeField(auto_now_add=True)
+    responded_at = models.DateTimeField(null=True, blank=True)
+    
+    class Meta:
+        db_table = 'coordinator_assignments'
+        ordering = ['-assigned_at']
+    
+    def __str__(self):
+        coord_name = f"{self.coordinator.first_name} {self.coordinator.last_name}".strip() or self.coordinator.username
+        return f"Assignment #{self.id} - {coord_name} - {self.get_status_display()}"
 
 
 class EmployeeFormSubmission(models.Model):

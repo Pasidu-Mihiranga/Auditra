@@ -35,10 +35,10 @@ const STATUS_OPTIONS = [
 ];
 
 const STATUS_CHIP_COLORS = {
-  pending: '#ed6c02',
-  rejected: '#d32f2f',
-  approved: '#2e7d32',
-  reviewed: '#1976d2',
+  pending: '#D97706',
+  rejected: '#DC2626',
+  approved: '#16A34A',
+  reviewed: '#1565C0',
 };
 
 const ROLE_OPTIONS = [
@@ -321,7 +321,7 @@ export default function EmployeeSubmissions() {
             icon={ReviewIcon}
             title="Reviewed"
             value={summary.reviewed}
-            color="#2563EB"
+            color="#1565C0"
           />
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
@@ -457,7 +457,7 @@ export default function EmployeeSubmissions() {
                             <Chip
                               label="Hired"
                               size="small"
-                              sx={{ fontSize: '0.72rem', fontWeight: 600, color: '#fff', bgcolor: '#2e7d32' }}
+                              sx={{ fontSize: '0.72rem', fontWeight: 600, color: '#fff', bgcolor: '#16A34A' }}
                             />
                           ) : (
                             <>
