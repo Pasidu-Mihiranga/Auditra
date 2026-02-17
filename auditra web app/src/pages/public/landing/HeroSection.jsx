@@ -11,21 +11,21 @@ const slides = [
         heading: 'Your Trusted Partner in\nAuditing',
         subtitle: 'Delivering comprehensive audit and assurance services across Sri Lanka',
         primaryBtn: { label: 'Our Services', link: '#services' },
-        secondaryBtn: { label: 'Get a Quote', link: '#contact' },
+        secondaryBtn: { label: 'Get Quote', link: '/client-register' },
         image: hero1,
     },
     {
         heading: 'Precision.\nIntegrity.\nExcellence.',
         subtitle: 'Over 15 years of professional auditing expertise you can rely on',
         primaryBtn: { label: 'About Us', link: '#about' },
-        secondaryBtn: { label: 'Get a Quote', link: '#contact' },
+        secondaryBtn: { label: 'Get Quote', link: '/client-register' },
         image: hero2,
     },
     {
         heading: 'Beyond Numbers —\nStrategic Insight',
         subtitle: 'Project valuation, compliance, and advisory that drives real results',
         primaryBtn: { label: 'Get in Touch', link: '#contact' },
-        secondaryBtn: { label: 'Get a Quote', link: '#contact' },
+        secondaryBtn: { label: 'Get Quote', link: '/client-register' },
         image: hero3,
     },
 ];
@@ -239,20 +239,21 @@ export default function HeroSection() {
                 </Box>
             </Container>
 
-            {/* Navigation Arrows */}
+            {/* Navigation Arrows — hidden on mobile to avoid overlap */}
             <IconButton
                 onClick={prev}
                 sx={{
                     position: 'absolute',
-                    left: { xs: 8, md: 24 },
+                    left: 24,
                     top: '50%',
                     transform: 'translateY(-50%)',
                     zIndex: 10,
+                    display: { xs: 'none', md: 'flex' },
                     color: 'rgba(255,255,255,0.7)',
                     bgcolor: 'rgba(255,255,255,0.08)',
                     border: '1px solid rgba(255,255,255,0.2)',
-                    width: { xs: 40, md: 48 },
-                    height: { xs: 40, md: 48 },
+                    width: 48,
+                    height: 48,
                     '&:hover': { bgcolor: 'rgba(255,255,255,0.15)', color: '#fff' },
                     transition: 'all 0.3s',
                 }}
@@ -263,15 +264,16 @@ export default function HeroSection() {
                 onClick={next}
                 sx={{
                     position: 'absolute',
-                    right: { xs: 8, md: 24 },
+                    right: 24,
                     top: '50%',
                     transform: 'translateY(-50%)',
                     zIndex: 10,
+                    display: { xs: 'none', md: 'flex' },
                     color: 'rgba(255,255,255,0.7)',
                     bgcolor: 'rgba(255,255,255,0.08)',
                     border: '1px solid rgba(255,255,255,0.2)',
-                    width: { xs: 40, md: 48 },
-                    height: { xs: 40, md: 48 },
+                    width: 48,
+                    height: 48,
                     '&:hover': { bgcolor: 'rgba(255,255,255,0.15)', color: '#fff' },
                     transition: 'all 0.3s',
                 }}
