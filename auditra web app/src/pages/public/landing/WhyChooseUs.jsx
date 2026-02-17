@@ -1,6 +1,5 @@
-import { Box, Container, Grid, Typography, Stack } from '@mui/material';
+import { Box, Container, Grid, Typography } from '@mui/material';
 import { Speed, Shield, Handshake, SupportAgent } from '@mui/icons-material';
-import { motion } from 'framer-motion';
 
 const reasons = [
     {
@@ -25,43 +24,34 @@ const reasons = [
     },
 ];
 
-const MotionBox = motion.create(Box);
-
 export default function WhyChooseUs() {
     return (
-        <Box id="why-us" sx={{ py: { xs: 10, md: 14 }, bgcolor: '#FFFFFF' }}>
+        <Box id="why-us" sx={{ py: { xs: 5, md: 6 }, bgcolor: '#FFFFFF' }}>
             <Container maxWidth="lg">
-                <Grid container spacing={8} alignItems="center">
+                <Grid container spacing={6} alignItems="center">
                     {/* Left — Section Text */}
                     <Grid item xs={12} md={5}>
-                        <MotionBox
-                            initial={{ opacity: 0, x: -30 }}
-                            whileInView={{ opacity: 1, x: 0 }}
-                            viewport={{ once: true, margin: '-100px' }}
-                            transition={{ duration: 0.6 }}
+                        <Typography
+                            variant="overline"
+                            sx={{ color: '#1565C0', fontWeight: 700, letterSpacing: 2.5, fontSize: '0.8rem' }}
                         >
-                            <Typography
-                                variant="overline"
-                                sx={{ color: '#1565C0', fontWeight: 700, letterSpacing: 2.5, fontSize: '0.8rem' }}
-                            >
-                                WHY CHOOSE US
-                            </Typography>
-                            <Typography
-                                variant="h3"
-                                sx={{
-                                    fontWeight: 700, color: '#0F172A', mt: 1, mb: 3,
-                                    fontSize: { xs: '1.8rem', md: '2.4rem' }, lineHeight: 1.25,
-                                }}
-                            >
-                                Excellence You Can Count On
-                            </Typography>
-                            <Typography variant="body1" sx={{ color: '#64748B', lineHeight: 1.8, fontSize: '1.05rem' }}>
-                                With over 15 years of experience in auditing, tax advisory, and business
-                                consulting, Auditra has built a reputation for integrity, precision,
-                                and client satisfaction. We don't just audit — we partner with you
-                                for long-term success.
-                            </Typography>
-                        </MotionBox>
+                            WHY CHOOSE US
+                        </Typography>
+                        <Typography
+                            variant="h3"
+                            sx={{
+                                fontWeight: 700, color: '#0F172A', mt: 1, mb: 3,
+                                fontSize: { xs: '1.8rem', md: '2.4rem' }, lineHeight: 1.25,
+                            }}
+                        >
+                            Excellence You Can Count On
+                        </Typography>
+                        <Typography variant="body1" sx={{ color: '#64748B', lineHeight: 1.8, fontSize: '1.05rem' }}>
+                            With over 15 years of experience in auditing, tax advisory, and business
+                            consulting, Auditra has built a reputation for integrity, precision,
+                            and client satisfaction. We don't just audit — we partner with you
+                            for long-term success.
+                        </Typography>
                     </Grid>
 
                     {/* Right — Feature Cards */}
@@ -69,14 +59,10 @@ export default function WhyChooseUs() {
                         <Grid container spacing={3}>
                             {reasons.map((reason, i) => (
                                 <Grid item xs={12} sm={6} key={i}>
-                                    <MotionBox
-                                        initial={{ opacity: 0, y: 25 }}
-                                        whileInView={{ opacity: 1, y: 0 }}
-                                        viewport={{ once: true, margin: '-50px' }}
-                                        transition={{ duration: 0.5, delay: i * 0.1 }}
+                                    <Box
                                         sx={{
                                             p: 3,
-                                            borderRadius: 3,
+                                            borderRadius: '16px',
                                             bgcolor: '#F8FAFC',
                                             border: '1px solid #E2E8F0',
                                             height: '100%',
@@ -90,7 +76,7 @@ export default function WhyChooseUs() {
                                     >
                                         <Box
                                             sx={{
-                                                width: 48, height: 48, borderRadius: 2,
+                                                width: 48, height: 48, borderRadius: '12px',
                                                 bgcolor: '#DBEAFE', display: 'flex',
                                                 alignItems: 'center', justifyContent: 'center', mb: 2,
                                             }}
@@ -103,7 +89,7 @@ export default function WhyChooseUs() {
                                         <Typography variant="body2" sx={{ color: '#64748B', lineHeight: 1.6 }}>
                                             {reason.desc}
                                         </Typography>
-                                    </MotionBox>
+                                    </Box>
                                 </Grid>
                             ))}
                         </Grid>
