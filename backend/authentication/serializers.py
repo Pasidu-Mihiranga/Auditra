@@ -258,7 +258,7 @@ class ClientFormSubmissionSerializer(serializers.ModelSerializer):
             'agent_email', 'status', 'submitted_at', 'reviewed_at',
             'notes', 'reviewed_by', 'coordinator', 'coordinator_name',
             'assigned_at', 'coordinator_response', 'coordinator_response_display',
-            'rejection_reason', 'responded_at', 'assignment_history'
+            'rejection_reason', 'responded_at', 'assignment_history', 'project_created'
         )
         read_only_fields = ('status', 'submitted_at', 'reviewed_at', 'reviewed_by', 'coordinator', 'assigned_at', 'responded_at')
 

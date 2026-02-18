@@ -1672,7 +1672,10 @@ class AllClientSubmissionsView(APIView):
         search = request.query_params.get('search', None)
 
         if status_filter:
-            queryset = queryset.filter(status=status_filter)
+            if status_filter == 'pending':
+                queryset = queryset.filter(status__in=['pending', 'reviewed', 'assigned'])
+            else:
+                queryset = queryset.filter(status=status_filter)
         if coordinator_response_filter:
             queryset = queryset.filter(coordinator_response=coordinator_response_filter)
         if search:
@@ -1756,6 +1759,31 @@ class ClientSubmissionDetailView(APIView):
         except ClientFormSubmission.DoesNotExist:
             return Response({'error': 'Submission not found'}, status=status.HTTP_404_NOT_FOUND)
 
+    def delete(self, request, pk):
+        """Delete a rejected submission (cancel project)"""
+        if not hasattr(request.user, 'role') or request.user.role.role != 'admin':
+            return Response({'error': 'Only admins can delete submissions'}, status=status.HTTP_403_FORBIDDEN)
+        try:
+            submission = ClientFormSubmission.objects.get(pk=pk)
+            if submission.status != 'rejected':
+                return Response({'error': 'Only rejected submissions can be cancelled'}, status=status.HTTP_400_BAD_REQUEST)
+
+            try:
+                from system_logs.utils import log_action, get_client_ip
+                log_action(
+                    action='SUBMISSION_CANCELLED',
+                    user=request.user,
+                    description=f'Rejected client submission from {submission.first_name} {submission.last_name} was cancelled and removed',
+                    category='submission',
+                    ip_address=get_client_ip(request),
+                )
+            except Exception:
+                pass
+
+            submission.delete()
+            return Response({'success': True, 'message': 'Submission cancelled and removed.'})
+        except ClientFormSubmission.DoesNotExist:
+            return Response({'error': 'Submission not found'}, status=status.HTTP_404_NOT_FOUND)
 
 
 class AssignCoordinatorView(APIView):

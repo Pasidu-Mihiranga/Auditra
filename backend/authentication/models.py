@@ -500,6 +500,10 @@ class ClientFormSubmission(models.Model):
         blank=True,
         help_text='When the coordinator responded to the assignment'
     )
+    project_created = models.BooleanField(
+        default=False,
+        help_text='Whether a project has been created from this submission'
+    )
     
     class Meta:
         db_table = 'client_form_submissions'

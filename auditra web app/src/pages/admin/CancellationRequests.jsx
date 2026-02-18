@@ -1,14 +1,42 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Fragment } from 'react';
 import {
   Box, Typography, Table, TableBody, TableCell, TableContainer,
   TableHead, TableRow, Paper, Button, Alert, Tabs, Tab, Dialog,
-  DialogTitle, DialogContent, DialogActions, TextField
+  DialogTitle, DialogContent, DialogActions, TextField, IconButton,
+  Collapse, Grid, Chip
 } from '@mui/material';
-import { Check, Close, Visibility } from '@mui/icons-material';
+import {
+  Check, Close, KeyboardArrowDown, KeyboardArrowUp
+} from '@mui/icons-material';
 import projectService from '../../services/projectService';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import StatusChip from '../../components/StatusChip';
 import { formatDateTime } from '../../utils/helpers';
+
+/* ------------------------------------------------------------------ */
+/*  Detail field helper                                               */
+/* ------------------------------------------------------------------ */
+const DetailField = ({ label, value }) => (
+  <Box sx={{ mb: 2.5 }}>
+    <Typography
+      variant="caption"
+      sx={{
+        color: 'text.secondary',
+        fontWeight: 600,
+        display: 'block',
+        mb: 0.5,
+        textTransform: 'uppercase',
+        fontSize: '0.65rem',
+        letterSpacing: '0.8px'
+      }}
+    >
+      {label}
+    </Typography>
+    <Typography variant="body1" sx={{ fontWeight: 500, wordBreak: 'break-word', fontSize: '0.95rem' }}>
+      {value || '-'}
+    </Typography>
+  </Box>
+);
 
 export default function CancellationRequests() {
   const [requests, setRequests] = useState([]);
@@ -17,13 +45,13 @@ export default function CancellationRequests() {
   const [success, setSuccess] = useState('');
   const [tab, setTab] = useState(0);
   const [processing, setProcessing] = useState(false);
-  
-  // Dialog states
-  const [viewDialog, setViewDialog] = useState(null);
+  const [expandedRow, setExpandedRow] = useState(null);
+
+  // Dialog states (keep approve/reject dialogs since they need input)
   const [approveDialog, setApproveDialog] = useState(null);
   const [rejectDialog, setRejectDialog] = useState(null);
   const [adminRemarks, setAdminRemarks] = useState('');
-  
+
   // All requests for counts
   const [allRequests, setAllRequests] = useState([]);
 
@@ -90,6 +118,10 @@ export default function CancellationRequests() {
     }
   };
 
+  const handleToggleExpand = (id) => {
+    setExpandedRow((prev) => (prev === id ? null : id));
+  };
+
   const pendingCount = allRequests.filter(r => r.status === 'pending').length;
   const approvedCount = allRequests.filter(r => r.status === 'approved').length;
   const rejectedCount = allRequests.filter(r => r.status === 'rejected').length;
@@ -100,6 +132,8 @@ export default function CancellationRequests() {
     allRequests.filter(r => r.status === 'rejected');
 
   if (loading) return <LoadingSpinner />;
+
+  const colCount = 7;
 
   return (
     <Box>
@@ -114,114 +148,213 @@ export default function CancellationRequests() {
         <Tab label={`Rejected (${rejectedCount})`} />
       </Tabs>
 
-      <TableContainer component={Paper}>
+      <TableContainer component={Paper} sx={{ borderRadius: 2 }}>
         <Table size="small">
           <TableHead>
-            <TableRow>
-              <TableCell>Project</TableCell>
-              <TableCell>Coordinator</TableCell>
-              <TableCell>Reason</TableCell>
-              <TableCell>Requested</TableCell>
-              <TableCell>Status</TableCell>
-              <TableCell>Actions</TableCell>
+            <TableRow sx={{ bgcolor: (t) => t.palette.custom?.tableHeader || '#F1F5F9' }}>
+              <TableCell sx={{ width: 48 }} />
+              <TableCell sx={{ fontWeight: 700 }}>Project</TableCell>
+              <TableCell sx={{ fontWeight: 700 }}>Coordinator</TableCell>
+              <TableCell sx={{ fontWeight: 700 }}>Reason</TableCell>
+              <TableCell sx={{ fontWeight: 700 }}>Requested</TableCell>
+              <TableCell sx={{ fontWeight: 700 }}>Status</TableCell>
+              <TableCell sx={{ fontWeight: 700, textAlign: 'center' }}>Actions</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
             {filtered.length === 0 ? (
-              <TableRow><TableCell colSpan={6} align="center">No cancellation requests</TableCell></TableRow>
+              <TableRow><TableCell colSpan={colCount} align="center" sx={{ py: 6 }}>No cancellation requests</TableCell></TableRow>
             ) : (
-              filtered.map((request) => (
-                <TableRow key={request.id}>
-                  <TableCell sx={{ fontWeight: 600 }}>{request.project_title}</TableCell>
-                  <TableCell>{request.coordinator_name}</TableCell>
-                  <TableCell sx={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {request.reason}
-                  </TableCell>
-                  <TableCell>{formatDateTime(request.created_at)}</TableCell>
-                  <TableCell><StatusChip status={request.status} /></TableCell>
-                  <TableCell>
-                    <Button size="small" startIcon={<Visibility />} onClick={() => setViewDialog(request)}>
-                      View
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))
+              filtered.map((request) => {
+                const isExpanded = expandedRow === request.id;
+
+                return (
+                  <Fragment key={request.id}>
+                    {/* Main Row */}
+                    <TableRow
+                      hover
+                      sx={{ '& > *': { borderBottom: 'unset' } }}
+                    >
+                      <TableCell sx={{ width: 48 }}>
+                        <IconButton size="small" onClick={() => handleToggleExpand(request.id)}>
+                          {isExpanded ? <KeyboardArrowUp /> : <KeyboardArrowDown />}
+                        </IconButton>
+                      </TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>{request.project_title}</TableCell>
+                      <TableCell>{request.coordinator_name}</TableCell>
+                      <TableCell sx={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {request.reason}
+                      </TableCell>
+                      <TableCell sx={{ whiteSpace: 'nowrap', fontSize: '0.85rem' }}>
+                        {formatDateTime(request.created_at)}
+                      </TableCell>
+                      <TableCell><StatusChip status={request.status} /></TableCell>
+                      <TableCell sx={{ textAlign: 'center' }}>
+                        {request.status === 'pending' && (
+                          <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'center' }}>
+                            <Button
+                              size="small"
+                              variant="contained"
+                              color="success"
+                              startIcon={<Check />}
+                              onClick={() => { setAdminRemarks(''); setApproveDialog(request); }}
+                              sx={{ textTransform: 'none', fontWeight: 600, fontSize: '0.75rem' }}
+                            >
+                              Approve
+                            </Button>
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              color="error"
+                              startIcon={<Close />}
+                              onClick={() => { setAdminRemarks(''); setRejectDialog(request); }}
+                              sx={{ textTransform: 'none', fontWeight: 600, fontSize: '0.75rem' }}
+                            >
+                              Reject
+                            </Button>
+                          </Box>
+                        )}
+                      </TableCell>
+                    </TableRow>
+
+                    {/* Expandable Detail Row */}
+                    <TableRow>
+                      <TableCell
+                        colSpan={colCount}
+                        sx={{ py: 0, px: 0, borderBottom: isExpanded ? undefined : 'none' }}
+                      >
+                        <Collapse in={isExpanded} timeout="auto" unmountOnExit>
+                          <Box sx={{ py: 3, px: 3, bgcolor: (t) => t.palette.custom?.cardInner || '#FAFBFC' }}>
+                            <Grid container spacing={4}>
+                              {/* Request Information */}
+                              <Grid item xs={12} md={3}>
+                                <Typography variant="subtitle2" sx={{ fontWeight: 700, color: 'primary.main', mb: 2 }}>
+                                  Project Information
+                                </Typography>
+                                <DetailField label="Project" value={request.project_title} />
+                                <DetailField label="Project Status" value={request.project_status} />
+                              </Grid>
+
+                              {/* Requester Information */}
+                              <Grid item xs={12} md={3}>
+                                <Typography variant="subtitle2" sx={{ fontWeight: 700, color: 'primary.main', mb: 2 }}>
+                                  Requester Details
+                                </Typography>
+                                <DetailField label="Requested By" value={request.coordinator_name} />
+                                <DetailField label="Request Date" value={formatDateTime(request.created_at)} />
+                              </Grid>
+
+                              {/* Reason */}
+                              <Grid item xs={12} md={3}>
+                                <Typography variant="subtitle2" sx={{ fontWeight: 700, color: 'primary.main', mb: 2 }}>
+                                  Cancellation Details
+                                </Typography>
+                                <Box sx={{ mb: 2 }}>
+                                  <Typography
+                                    variant="caption"
+                                    sx={{
+                                      color: 'text.secondary',
+                                      fontWeight: 600,
+                                      display: 'block',
+                                      mb: 0.5,
+                                      textTransform: 'uppercase',
+                                      fontSize: '0.65rem',
+                                      letterSpacing: '0.8px'
+                                    }}
+                                  >
+                                    Reason for Cancellation
+                                  </Typography>
+                                  <Typography
+                                    variant="body1"
+                                    sx={{
+                                      fontWeight: 500,
+                                      fontSize: '0.95rem',
+                                      bgcolor: 'background.paper',
+                                      p: 1.5,
+                                      borderRadius: 1,
+                                      border: '1px solid',
+                                      borderColor: 'divider',
+                                    }}
+                                  >
+                                    {request.reason || '-'}
+                                  </Typography>
+                                </Box>
+                              </Grid>
+
+                              {/* Status & Review */}
+                              <Grid item xs={12} md={3}>
+                                <Typography variant="subtitle2" sx={{ fontWeight: 700, color: 'primary.main', mb: 2 }}>
+                                  Review Status
+                                </Typography>
+                                <Box sx={{ mb: 2.5 }}>
+                                  <Typography
+                                    variant="caption"
+                                    sx={{
+                                      color: 'text.secondary',
+                                      fontWeight: 600,
+                                      display: 'block',
+                                      mb: 0.5,
+                                      textTransform: 'uppercase',
+                                      fontSize: '0.65rem',
+                                      letterSpacing: '0.8px'
+                                    }}
+                                  >
+                                    Status
+                                  </Typography>
+                                  <StatusChip status={request.status} />
+                                </Box>
+                                {request.status !== 'pending' && (
+                                  <>
+                                    <DetailField label="Reviewed By" value={request.reviewed_by_name} />
+                                    <DetailField label="Review Date" value={request.reviewed_at ? formatDateTime(request.reviewed_at) : '-'} />
+                                    {request.admin_remarks && (
+                                      <Box sx={{ mb: 2 }}>
+                                        <Typography
+                                          variant="caption"
+                                          sx={{
+                                            color: 'text.secondary',
+                                            fontWeight: 600,
+                                            display: 'block',
+                                            mb: 0.5,
+                                            textTransform: 'uppercase',
+                                            fontSize: '0.65rem',
+                                            letterSpacing: '0.8px'
+                                          }}
+                                        >
+                                          Admin Remarks
+                                        </Typography>
+                                        <Typography
+                                          variant="body1"
+                                          sx={{
+                                            fontWeight: 500,
+                                            fontSize: '0.95rem',
+                                            bgcolor: 'background.paper',
+                                            p: 1.5,
+                                            borderRadius: 1,
+                                            border: '1px solid',
+                                            borderColor: 'divider',
+                                          }}
+                                        >
+                                          {request.admin_remarks}
+                                        </Typography>
+                                      </Box>
+                                    )}
+                                  </>
+                                )}
+                              </Grid>
+                            </Grid>
+
+                          </Box>
+                        </Collapse>
+                      </TableCell>
+                    </TableRow>
+                  </Fragment>
+                );
+              })
             )}
           </TableBody>
         </Table>
       </TableContainer>
-
-      {/* View Dialog */}
-      <Dialog open={!!viewDialog} onClose={() => setViewDialog(null)} maxWidth="sm" fullWidth>
-        <DialogTitle sx={{ fontWeight: 700 }}>Cancellation Request Details</DialogTitle>
-        {viewDialog && (
-          <DialogContent dividers>
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-              <Box>
-                <Typography variant="subtitle2" color="text.secondary">Project</Typography>
-                <Typography sx={{ fontWeight: 600 }}>{viewDialog.project_title}</Typography>
-              </Box>
-              <Box>
-                <Typography variant="subtitle2" color="text.secondary">Project Status</Typography>
-                <Typography>{viewDialog.project_status}</Typography>
-              </Box>
-              <Box>
-                <Typography variant="subtitle2" color="text.secondary">Requested By</Typography>
-                <Typography>{viewDialog.coordinator_name}</Typography>
-              </Box>
-              <Box>
-                <Typography variant="subtitle2" color="text.secondary">Request Date</Typography>
-                <Typography>{formatDateTime(viewDialog.created_at)}</Typography>
-              </Box>
-              <Box>
-                <Typography variant="subtitle2" color="text.secondary">Reason for Cancellation</Typography>
-                <Paper variant="outlined" sx={{ p: 2, mt: 0.5, bgcolor: 'grey.50' }}>
-                  <Typography>{viewDialog.reason}</Typography>
-                </Paper>
-              </Box>
-              <Box>
-                <Typography variant="subtitle2" color="text.secondary">Status</Typography>
-                <StatusChip status={viewDialog.status} />
-              </Box>
-              {viewDialog.status !== 'pending' && (
-                <>
-                  <Box>
-                    <Typography variant="subtitle2" color="text.secondary">Reviewed By</Typography>
-                    <Typography>{viewDialog.reviewed_by_name || '-'}</Typography>
-                  </Box>
-                  <Box>
-                    <Typography variant="subtitle2" color="text.secondary">Review Date</Typography>
-                    <Typography>{viewDialog.reviewed_at ? formatDateTime(viewDialog.reviewed_at) : '-'}</Typography>
-                  </Box>
-                  {viewDialog.admin_remarks && (
-                    <Box>
-                      <Typography variant="subtitle2" color="text.secondary">Admin Remarks</Typography>
-                      <Paper variant="outlined" sx={{ p: 2, mt: 0.5, bgcolor: 'grey.50' }}>
-                        <Typography>{viewDialog.admin_remarks}</Typography>
-                      </Paper>
-                    </Box>
-                  )}
-                </>
-              )}
-            </Box>
-          </DialogContent>
-        )}
-        <DialogActions sx={{ px: 3, pb: 2 }}>
-          {viewDialog?.status === 'pending' && (
-            <>
-              <Button variant="contained" color="success" startIcon={<Check />}
-                onClick={() => { setViewDialog(null); setApproveDialog(viewDialog); }}>
-                Approve
-              </Button>
-              <Button variant="outlined" color="error" startIcon={<Close />}
-                onClick={() => { setViewDialog(null); setRejectDialog(viewDialog); }}>
-                Reject
-              </Button>
-            </>
-          )}
-          <Button onClick={() => setViewDialog(null)}>Close</Button>
-        </DialogActions>
-      </Dialog>
 
       {/* Approve Dialog */}
       <Dialog open={!!approveDialog} onClose={() => !processing && setApproveDialog(null)} maxWidth="sm" fullWidth>

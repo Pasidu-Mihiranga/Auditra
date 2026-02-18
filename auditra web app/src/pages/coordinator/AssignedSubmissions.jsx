@@ -4,7 +4,7 @@ import {
   TableHead, TableRow, TablePagination, TextField, Chip,
   Button, InputAdornment, IconButton, CircularProgress, Collapse, Grid,
   Card, CardContent, Dialog, DialogTitle, DialogContent, DialogActions,
-  Snackbar, Alert, Tabs, Tab, Avatar, Stack,
+  Snackbar, Alert, Tabs, Tab, Stack,
 } from '@mui/material';
 import {
   Search as SearchIcon,
@@ -46,24 +46,25 @@ const formatDate = (dateStr) => {
 /* ------------------------------------------------------------------ */
 /*  Detail field helper                                               */
 /* ------------------------------------------------------------------ */
-const DetailField = ({ label, value, icon: Icon }) => (
-  <Box sx={{ mb: 2, display: 'flex', alignItems: 'flex-start', gap: 1.5 }}>
-    {Icon && (
-      <Avatar sx={{ width: 32, height: 32, bgcolor: 'primary.light' }}>
-        <Icon sx={{ fontSize: 16, color: 'primary.main' }} />
-      </Avatar>
-    )}
-    <Box>
-      <Typography
-        variant="caption"
-        sx={{ color: 'text.secondary', fontWeight: 600, display: 'block', mb: 0.25, textTransform: 'uppercase', fontSize: '0.65rem', letterSpacing: '0.5px' }}
-      >
-        {label}
-      </Typography>
-      <Typography variant="body2" sx={{ fontWeight: 500, wordBreak: 'break-word' }}>
-        {value || '-'}
-      </Typography>
-    </Box>
+const DetailField = ({ label, value }) => (
+  <Box sx={{ mb: 2.5 }}>
+    <Typography
+      variant="caption"
+      sx={{
+        color: 'text.secondary',
+        fontWeight: 600,
+        display: 'block',
+        mb: 0.5,
+        textTransform: 'uppercase',
+        fontSize: '0.65rem',
+        letterSpacing: '0.8px'
+      }}
+    >
+      {label}
+    </Typography>
+    <Typography variant="body1" sx={{ fontWeight: 500, wordBreak: 'break-word', fontSize: '0.95rem' }}>
+      {value || '-'}
+    </Typography>
   </Box>
 );
 
@@ -71,24 +72,20 @@ const DetailField = ({ label, value, icon: Icon }) => (
 /*  Section Card Component                                            */
 /* ------------------------------------------------------------------ */
 const InfoSection = ({ title, icon: Icon, children, color = 'primary.main' }) => (
-  <Card 
-    elevation={0} 
-    sx={{ 
-      height: '100%', 
+  <Card
+    elevation={0}
+    sx={{
+      height: '100%',
+      bgcolor: 'background.paper',
       border: '1px solid',
-      borderColor: 'divider',
+      borderColor: 'grey.200',
       borderRadius: 2,
-      '&:hover': {
-        borderColor: color,
-        boxShadow: `0 0 0 1px ${color}15`,
-      },
-      transition: 'all 0.2s ease',
     }}
   >
-    <CardContent sx={{ p: 2.5 }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-        <Icon sx={{ color, fontSize: 20 }} />
-        <Typography variant="subtitle2" sx={{ fontWeight: 700, color }}>
+    <CardContent sx={{ p: 3 }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 3 }}>
+        <Icon sx={{ color, fontSize: 24 }} />
+        <Typography variant="h6" sx={{ fontWeight: 700, color, fontSize: '1rem' }}>
           {title}
         </Typography>
       </Box>
@@ -173,16 +170,10 @@ export default function AssignedSubmissions() {
       await authService.acceptAssignment(submission.id);
       setSnackbar({
         open: true,
-        message: 'Assignment accepted! You can now create a project.',
+        message: 'Assignment accepted! Click "Create Project" to create a project.',
         severity: 'success'
       });
       fetchSubmissions();
-      navigate('/dashboard/projects/create', {
-        state: {
-          submissionData: submission,
-          submissionId: submission.id,
-        },
-      });
     } catch (err) {
       setSnackbar({
         open: true,
@@ -344,7 +335,7 @@ export default function AssignedSubmissions() {
               <TableCell sx={{ fontWeight: 700 }}>Company</TableCell>
               <TableCell sx={{ fontWeight: 700 }}>Response Status</TableCell>
               <TableCell sx={{ fontWeight: 700 }}>Submitted</TableCell>
-              <TableCell sx={{ fontWeight: 700, textAlign: 'center' }}>Actions</TableCell>
+              <TableCell sx={{ fontWeight: 700, textAlign: 'center', minWidth: 200 }}>Actions</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
@@ -375,9 +366,12 @@ export default function AssignedSubmissions() {
                 const fullName = [sub.first_name, sub.last_name].filter(Boolean).join(' ') || 'Unknown';
                 const responseStatus = sub.coordinator_response || 'pending';
                 const responseChip = RESPONSE_CHIP_COLORS[responseStatus] || RESPONSE_CHIP_COLORS.pending;
-                const canRespond = sub.status === 'assigned' && responseStatus === 'pending';
-                const canCreateProject = responseStatus === 'accepted' && sub.status !== 'approved';
-                const projectCreated = sub.status === 'approved';
+                // Show Accept/Reject when coordinator hasn't responded yet
+                const canRespond = responseStatus === 'pending';
+                // Show Create when coordinator accepted but project not yet created
+                const canCreateProject = responseStatus === 'accepted' && !sub.project_created;
+                // Show Project Created status when project has been created
+                const projectCreated = responseStatus === 'accepted' && sub.project_created;
 
                 return (
                   <Fragment key={sub.id}>
@@ -436,12 +430,12 @@ export default function AssignedSubmissions() {
                         {formatDate(sub.submitted_at)}
                       </TableCell>
 
-                      <TableCell>
-                        <Stack direction="row" spacing={1} justifyContent="center">
+                      <TableCell sx={{ minWidth: 200 }}>
+                        <Stack direction="row" spacing={1} justifyContent="center" alignItems="center">
                           {canRespond && (
                             <>
                               <Button
-                                variant="contained"
+                                variant="outlined"
                                 color="success"
                                 size="small"
                                 startIcon={<CheckCircleIcon />}
@@ -450,8 +444,7 @@ export default function AssignedSubmissions() {
                                 sx={{ 
                                   textTransform: 'none',
                                   fontWeight: 600,
-                                  boxShadow: 'none',
-                                  '&:hover': { boxShadow: 'none' }
+                                  minWidth: 80,
                                 }}
                               >
                                 Accept
@@ -463,7 +456,11 @@ export default function AssignedSubmissions() {
                                 startIcon={<CancelIcon />}
                                 onClick={() => handleOpenRejectDialog(sub)}
                                 disabled={actionLoading}
-                                sx={{ textTransform: 'none', fontWeight: 600 }}
+                                sx={{ 
+                                  textTransform: 'none', 
+                                  fontWeight: 600,
+                                  minWidth: 80,
+                                }}
                               >
                                 Reject
                               </Button>
@@ -471,7 +468,7 @@ export default function AssignedSubmissions() {
                           )}
                           {canCreateProject && (
                             <Button
-                              variant="contained"
+                              variant="outlined"
                               color="primary"
                               size="small"
                               startIcon={<AddCircleIcon />}
@@ -479,8 +476,7 @@ export default function AssignedSubmissions() {
                               sx={{ 
                                 textTransform: 'none',
                                 fontWeight: 600,
-                                boxShadow: 'none',
-                                '&:hover': { boxShadow: 'none' }
+                                minWidth: 120,
                               }}
                             >
                               Create Project
@@ -488,15 +484,16 @@ export default function AssignedSubmissions() {
                           )}
                           {projectCreated && (
                             <Chip
-                              icon={<CheckCircleIcon sx={{ color: '#fff !important', fontSize: 16 }} />}
+                              icon={<CheckCircleIcon sx={{ color: '#16A34A !important', fontSize: 16 }} />}
                               label="Project Created"
                               size="small"
                               sx={{
                                 fontSize: '0.72rem',
                                 fontWeight: 600,
-                                bgcolor: '#16A34A',
-                                color: '#fff',
-                                '& .MuiChip-icon': { color: '#fff' },
+                                bgcolor: 'transparent',
+                                color: '#16A34A',
+                                border: '1px solid #16A34A',
+                                '& .MuiChip-icon': { color: '#16A34A' },
                               }}
                             />
                           )}
@@ -511,62 +508,74 @@ export default function AssignedSubmissions() {
                         sx={{ py: 0, borderBottom: isExpanded ? undefined : 'none' }}
                       >
                         <Collapse in={isExpanded} timeout="auto" unmountOnExit>
-                          <Box sx={{ py: 3, px: 2 }}>
-                            <Grid container spacing={3}>
-                              <Grid item xs={12} md={4}>
-                                <InfoSection title="Client Information" icon={PersonIcon} color="#1565C0">
-                                  <DetailField label="Full Name" value={fullName} icon={PersonIcon} />
-                                  <DetailField label="Email" value={sub.email} icon={EmailIcon} />
-                                  <DetailField label="Phone" value={sub.phone} icon={PhoneIcon} />
-                                  <DetailField label="NIC" value={sub.nic} />
-                                  <DetailField label="Address" value={sub.address} />
-                                </InfoSection>
+                          <Box sx={{ py: 3, px: 3 }}>
+                            <Grid container spacing={4}>
+                              {/* Client Information */}
+                              <Grid item xs={12} md={3}>
+                                <Typography variant="subtitle2" sx={{ fontWeight: 700, color: 'primary.main', mb: 2 }}>
+                                  Client Information
+                                </Typography>
+                                <DetailField label="Full Name" value={fullName} />
+                                <DetailField label="Email" value={sub.email} />
+                                <DetailField label="Phone" value={sub.phone} />
+                                <DetailField label="NIC" value={sub.nic} />
                               </Grid>
 
-                              <Grid item xs={12} md={4}>
-                                <InfoSection title="Project Information" icon={DescriptionIcon} color="#1565C0">
-                                  <DetailField label="Company" value={sub.company_name} icon={BusinessIcon} />
-                                  <DetailField label="Project Title" value={sub.project_title} icon={AssignmentIcon} />
-                                  <Box sx={{ mb: 2 }}>
-                                    <Typography
-                                      variant="caption"
-                                      sx={{ color: 'text.secondary', fontWeight: 600, display: 'block', mb: 0.5, textTransform: 'uppercase', fontSize: '0.65rem' }}
-                                    >
-                                      Project Description
-                                    </Typography>
-                                    <Typography 
-                                      variant="body2" 
-                                      sx={{ 
-                                        fontWeight: 500,
-                                        bgcolor: 'grey.50',
-                                        p: 1.5,
-                                        borderRadius: 1,
-                                        maxHeight: 120,
-                                        overflow: 'auto',
-                                      }}
-                                    >
-                                      {sub.project_description || '-'}
-                                    </Typography>
-                                  </Box>
-                                </InfoSection>
+                              {/* Company Details */}
+                              <Grid item xs={12} md={3}>
+                                <Typography variant="subtitle2" sx={{ fontWeight: 700, color: 'primary.main', mb: 2 }}>
+                                  Company Details
+                                </Typography>
+                                <DetailField label="Company" value={sub.company_name} />
+                                <DetailField label="Address" value={sub.address} />
                               </Grid>
 
-                              <Grid item xs={12} md={4}>
-                                <InfoSection title="Agent Information" icon={AgentIcon} color="#16A34A">
-                                  {sub.agent_name || sub.agent_email || sub.agent_phone ? (
-                                    <>
-                                      <DetailField label="Agent Name" value={sub.agent_name} icon={PersonIcon} />
-                                      <DetailField label="Agent Email" value={sub.agent_email} icon={EmailIcon} />
-                                      <DetailField label="Agent Phone" value={sub.agent_phone} icon={PhoneIcon} />
-                                    </>
-                                  ) : (
-                                    <Box sx={{ py: 4, textAlign: 'center' }}>
-                                      <Typography variant="body2" color="text.secondary">
-                                        No agent information provided
-                                      </Typography>
-                                    </Box>
-                                  )}
-                                </InfoSection>
+                              {/* Project Details */}
+                              <Grid item xs={12} md={3}>
+                                <Typography variant="subtitle2" sx={{ fontWeight: 700, color: 'primary.main', mb: 2 }}>
+                                  Project Details
+                                </Typography>
+                                <DetailField label="Project Title" value={sub.project_title} />
+                                <Box sx={{ mb: 2 }}>
+                                  <Typography
+                                    variant="caption"
+                                    sx={{
+                                      color: 'text.secondary',
+                                      fontWeight: 600,
+                                      display: 'block',
+                                      mb: 0.5,
+                                      textTransform: 'uppercase',
+                                      fontSize: '0.65rem',
+                                      letterSpacing: '0.8px'
+                                    }}
+                                  >
+                                    Description
+                                  </Typography>
+                                  <Typography
+                                    variant="body1"
+                                    sx={{
+                                      fontWeight: 500,
+                                      fontSize: '0.95rem',
+                                      bgcolor: 'background.paper',
+                                      p: 1.5,
+                                      borderRadius: 1,
+                                      border: '1px solid',
+                                      borderColor: 'divider',
+                                    }}
+                                  >
+                                    {sub.project_description || '-'}
+                                  </Typography>
+                                </Box>
+                              </Grid>
+
+                              {/* Agent Information */}
+                              <Grid item xs={12} md={3}>
+                                <Typography variant="subtitle2" sx={{ fontWeight: 700, color: 'primary.main', mb: 2 }}>
+                                  Agent Information
+                                </Typography>
+                                <DetailField label="Agent Name" value={sub.agent_name || 'Not provided'} />
+                                <DetailField label="Agent Email" value={sub.agent_email || 'Not provided'} />
+                                <DetailField label="Agent Phone" value={sub.agent_phone || 'Not provided'} />
                               </Grid>
                             </Grid>
 

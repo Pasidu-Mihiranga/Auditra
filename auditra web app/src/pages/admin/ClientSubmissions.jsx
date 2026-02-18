@@ -10,7 +10,6 @@ import {
   Search as SearchIcon,
   People as PeopleIcon,
   CheckCircle as CheckCircleIcon,
-  Assignment as AssignmentIcon,
   PersonAdd as PersonAddIcon,
   KeyboardArrowDown as ExpandMoreIcon,
   KeyboardArrowUp as ExpandLessIcon,
@@ -29,8 +28,6 @@ import StatsCard from '../../components/StatsCard';
 const STATUS_OPTIONS = [
   { value: '', label: 'All' },
   { value: 'pending', label: 'Pending' },
-  { value: 'reviewed', label: 'Reviewed' },
-  { value: 'assigned', label: 'Assigned' },
   { value: 'approved', label: 'Approved' },
   { value: 'rejected', label: 'Rejected' },
 ];
@@ -39,8 +36,12 @@ const STATUS_CHIP_COLORS = {
   pending: '#D97706',
   rejected: '#DC2626',
   approved: '#16A34A',
-  reviewed: '#1565C0',
-  assigned: '#1565C0',
+};
+
+/* Map internal statuses to display statuses */
+const getDisplayStatus = (status) => {
+  if (status === 'reviewed' || status === 'assigned') return 'pending';
+  return status;
 };
 
 const COORDINATOR_RESPONSE_CONFIG = {
@@ -100,8 +101,8 @@ export default function ClientSubmissions() {
   const [summary, setSummary] = useState({
     total: 0,
     pending: 0,
-    assigned: 0,
     approved: 0,
+    rejected: 0,
   });
 
   /* expandable row */
@@ -116,6 +117,15 @@ export default function ClientSubmissions() {
 
   /* approve */
   const [approveLoading, setApproveLoading] = useState(false);
+
+  /* review mode – tracks which row is showing Accept/Reject */
+  const [reviewingId, setReviewingId] = useState(null);
+
+  /* reject dialog */
+  const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
+  const [rejectSubmission, setRejectSubmission] = useState(null);
+  const [rejectionReason, setRejectionReason] = useState('');
+  const [rejectLoading, setRejectLoading] = useState(false);
 
   /* snackbar */
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
@@ -138,9 +148,9 @@ export default function ClientSubmissions() {
       if (res.data.summary) {
         setSummary({
           total: res.data.summary.total ?? 0,
-          pending: res.data.summary.pending ?? 0,
-          assigned: res.data.summary.assigned ?? 0,
+          pending: (res.data.summary.pending ?? 0) + (res.data.summary.reviewed ?? 0) + (res.data.summary.assigned ?? 0),
           approved: res.data.summary.approved ?? 0,
+          rejected: res.data.summary.rejected ?? 0,
         });
       }
     } catch (err) {
@@ -209,20 +219,71 @@ export default function ClientSubmissions() {
   };
 
   /* ================================================================ */
-  /*  Approve submission                                              */
+  /*  Accept submission (approve directly)                            */
   /* ================================================================ */
 
-  const handleApprove = async (e, sub) => {
+  const handleAcceptReview = async (e, sub) => {
     e.stopPropagation();
     setApproveLoading(true);
     try {
       const res = await axiosClient.post(`/auth/client-submissions/${sub.id}/approve/`);
-      showSnackbar(res.data.message || 'Submission approved. Credentials sent via email.');
+      showSnackbar(res.data.message || 'Submission approved. You can now assign a coordinator.');
+      setReviewingId(null);
       fetchSubmissions();
     } catch (err) {
       showSnackbar(err.response?.data?.error || 'Failed to approve submission', 'error');
     } finally {
       setApproveLoading(false);
+    }
+  };
+
+  /* ================================================================ */
+  /*  Cancel project (for rejected submissions)                       */
+  /* ================================================================ */
+
+  const handleCancelProject = async (e, sub) => {
+    e.stopPropagation();
+    setApproveLoading(true);
+    try {
+      await axiosClient.delete(`/auth/client-submissions/${sub.id}/`);
+      showSnackbar('Submission cancelled and removed.');
+      fetchSubmissions();
+    } catch (err) {
+      showSnackbar(err.response?.data?.error || 'Failed to cancel submission', 'error');
+    } finally {
+      setApproveLoading(false);
+    }
+  };
+
+  /* ================================================================ */
+  /*  Reject submission                                               */
+  /* ================================================================ */
+
+  const handleOpenRejectDialog = (e, sub) => {
+    e.stopPropagation();
+    setRejectSubmission(sub);
+    setRejectionReason('');
+    setRejectDialogOpen(true);
+  };
+
+  const handleReject = async () => {
+    if (!rejectSubmission || !rejectionReason.trim()) return;
+    setRejectLoading(true);
+    try {
+      await axiosClient.patch(`/auth/client-submissions/${rejectSubmission.id}/`, {
+        status: 'rejected',
+        notes: rejectionReason,
+      });
+      showSnackbar('Submission rejected.');
+      setRejectDialogOpen(false);
+      setRejectSubmission(null);
+      setRejectionReason('');
+      setReviewingId(null);
+      fetchSubmissions();
+    } catch (err) {
+      showSnackbar(err.response?.data?.error || 'Failed to reject submission', 'error');
+    } finally {
+      setRejectLoading(false);
     }
   };
 
@@ -269,10 +330,10 @@ export default function ClientSubmissions() {
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
           <StatsCard
-            icon={AssignmentIcon}
-            title="Assigned"
-            value={summary.assigned}
-            color="#1565C0"
+            icon={CancelIcon}
+            title="Rejected"
+            value={summary.rejected}
+            color="#DC2626"
           />
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
@@ -331,18 +392,18 @@ export default function ClientSubmissions() {
       {/* ========================================================== */}
       {/*  Data Table                                                  */}
       {/* ========================================================== */}
-      <TableContainer component={Paper} sx={{ borderRadius: 2, overflow: 'hidden' }}>
-        <Table size="small" sx={{ tableLayout: 'fixed', minWidth: 900 }}>
+      <TableContainer component={Paper} sx={{ borderRadius: 2, overflowX: 'auto' }}>
+        <Table size="small" sx={{ minWidth: 950 }}>
           <TableHead>
             <TableRow sx={{ bgcolor: (t) => t.palette.custom.tableHeader }}>
               <TableCell sx={{ fontWeight: 700, width: 48 }} />
-              <TableCell sx={{ fontWeight: 700, width: 130 }}>Name</TableCell>
-              <TableCell sx={{ fontWeight: 700, width: 130 }}>Company</TableCell>
-              <TableCell sx={{ fontWeight: 700, width: 150 }}>Project Title</TableCell>
-              <TableCell sx={{ fontWeight: 700, width: 100, textAlign: 'center' }}>Status</TableCell>
-              <TableCell sx={{ fontWeight: 700, width: 130 }}>Coordinator</TableCell>
-              <TableCell sx={{ fontWeight: 700, width: 100 }}>Date</TableCell>
-              <TableCell sx={{ fontWeight: 700, width: 110, textAlign: 'center' }}>Actions</TableCell>
+              <TableCell sx={{ fontWeight: 700 }}>Name</TableCell>
+              <TableCell sx={{ fontWeight: 700 }}>Company</TableCell>
+              <TableCell sx={{ fontWeight: 700 }}>Project Title</TableCell>
+              <TableCell sx={{ fontWeight: 700, textAlign: 'center' }}>Status</TableCell>
+              <TableCell sx={{ fontWeight: 700 }}>Coordinator</TableCell>
+              <TableCell sx={{ fontWeight: 700 }}>Date</TableCell>
+              <TableCell sx={{ fontWeight: 700, textAlign: 'center', minWidth: 180 }}>Actions</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
@@ -390,20 +451,25 @@ export default function ClientSubmissions() {
                         </Tooltip>
                       </TableCell>
                       <TableCell sx={{ textAlign: 'center' }}>
-                        <Chip
-                          label={
-                            sub.status
-                              ? sub.status.charAt(0).toUpperCase() + sub.status.slice(1)
-                              : 'Unknown'
-                          }
-                          size="small"
-                          sx={{
-                            fontSize: '0.72rem',
-                            fontWeight: 600,
-                            color: '#fff',
-                            bgcolor: STATUS_CHIP_COLORS[sub.status] || '#757575',
-                          }}
-                        />
+                        {(() => {
+                          const displayStatus = getDisplayStatus(sub.status);
+                          return (
+                            <Chip
+                              label={
+                                displayStatus
+                                  ? displayStatus.charAt(0).toUpperCase() + displayStatus.slice(1)
+                                  : 'Unknown'
+                              }
+                              size="small"
+                              sx={{
+                                fontSize: '0.72rem',
+                                fontWeight: 600,
+                                color: '#fff',
+                                bgcolor: STATUS_CHIP_COLORS[displayStatus] || '#757575',
+                              }}
+                            />
+                          );
+                        })()}
                       </TableCell>
                       <TableCell sx={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         {sub.coordinator_name ? (
@@ -445,56 +511,146 @@ export default function ClientSubmissions() {
                         {formatDate(sub.submitted_at)}
                       </TableCell>
                       <TableCell sx={{ textAlign: 'center' }}>
-                        {sub.coordinator_response === 'rejected' ? (
-                          <Tooltip title="Re-assign a new coordinator">
-                            <Button
-                              size="small"
-                              variant="contained"
-                              color="warning"
-                              startIcon={<ReplayIcon />}
-                              onClick={(e) => handleOpenAssignDialog(e, sub)}
-                              sx={{ textTransform: 'none', fontWeight: 600, fontSize: '0.75rem', whiteSpace: 'nowrap' }}
-                            >
-                              Re-assign
-                            </Button>
-                          </Tooltip>
-                        ) : (
-                          <Box sx={{ display: 'flex', gap: 0.5 }}>
-                          {sub.status === 'approved' ? (
-                            <Chip
-                              label="Approved"
-                              size="small"
-                              sx={{ fontSize: '0.72rem', fontWeight: 600, color: '#fff', bgcolor: '#2e7d32' }}
-                            />
-                          ) : (
-                            <>
-                              <Button
+                        {(() => {
+                          const displayStatus = getDisplayStatus(sub.status);
+
+                          /* ---- Approved: Assign coordinator ---- */
+                          if (displayStatus === 'approved') {
+                            if (hasCoordinator && sub.coordinator_response === 'rejected') {
+                              return (
+                                <Tooltip title="Re-assign a new coordinator">
+                                  <Button
+                                    size="small"
+                                    variant="contained"
+                                    color="warning"
+                                    startIcon={<ReplayIcon />}
+                                    onClick={(e) => handleOpenAssignDialog(e, sub)}
+                                    sx={{ textTransform: 'none', fontWeight: 600, fontSize: '0.75rem', whiteSpace: 'nowrap' }}
+                                  >
+                                    Re-assign
+                                  </Button>
+                                </Tooltip>
+                              );
+                            }
+                            // If a coordinator is assigned (regardless of project creation), show 'Assigned' (disabled)
+                            if (hasCoordinator) {
+                              return (
+                                <Button
                                   size="small"
-                                  variant="outlined"
-                                  startIcon={<PersonAddIcon />}
-                                  disabled={hasCoordinator && sub.coordinator_response !== 'rejected' || assignLoading}
-                                  onClick={(e) => handleOpenAssignDialog(e, sub)}
-                                  sx={{ textTransform: 'none', fontSize: '0.75rem' }}
+                                  variant="contained"
+                                  color="success"
+                                  disabled
+                                  sx={{ textTransform: 'none', fontSize: '0.75rem', fontWeight: 600 }}
                                 >
-                                  {hasCoordinator ? 'Assigned' : 'Assign'}
+                                  Assigned
                                 </Button>
-                        )}
-                              {sub.status !== 'rejected' && (
+                              );
+                            }
+                            return (
+                              <Button
+                                size="small"
+                                variant="outlined"
+                                startIcon={<PersonAddIcon />}
+                                disabled={assignLoading}
+                                onClick={(e) => handleOpenAssignDialog(e, sub)}
+                                sx={{ textTransform: 'none', fontSize: '0.75rem', fontWeight: 600 }}
+                              >
+                                Assign
+                              </Button>
+                            );
+                          }
+
+                          // Prevent assigning coordinator to admin-rejected submissions
+                          if (displayStatus === 'rejected') {
+                            return (
+                              <Button
+                                size="small"
+                                variant="outlined"
+                                color="error"
+                                startIcon={<CancelIcon />}
+                                onClick={(e) => handleCancelProject(e, sub)}
+                                sx={{ textTransform: 'none', fontWeight: 600, fontSize: '0.75rem', whiteSpace: 'nowrap' }}
+                              >
+                                Cancel Project
+                              </Button>
+                            );
+                          }
+
+                          /* ---- Rejected: Cancel Project ---- */
+                          if (displayStatus === 'rejected') {
+                            return (
+                              <Button
+                                size="small"
+                                variant="outlined"
+                                color="error"
+                                startIcon={<CancelIcon />}
+                                onClick={(e) => handleCancelProject(e, sub)}
+                                sx={{ textTransform: 'none', fontWeight: 600, fontSize: '0.75rem', whiteSpace: 'nowrap' }}
+                              >
+                                Cancel Project
+                              </Button>
+                            );
+                          }
+
+                          /* ---- Pending: Review → Accept / Reject ---- */
+                          /* ---- Coordinator Rejected: Show Re-assign ---- */
+                          if (sub.coordinator_response === 'rejected') {
+                            return (
+                              <Tooltip title="Re-assign a new coordinator">
                                 <Button
                                   size="small"
                                   variant="outlined"
+                                  color="warning"
+                                  startIcon={<ReplayIcon />}
+                                  onClick={(e) => handleOpenAssignDialog(e, sub)}
+                                  sx={{ textTransform: 'none', fontWeight: 600, fontSize: '0.75rem', whiteSpace: 'nowrap' }}
+                                >
+                                  Re-assign
+                                </Button>
+                              </Tooltip>
+                            );
+                          }
+
+                          if (reviewingId === sub.id) {
+                            return (
+                              <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', justifyContent: 'center' }}>
+                                <Button
+                                  size="small"
+                                  variant="contained"
                                   color="success"
                                   startIcon={<CheckCircleIcon />}
                                   disabled={approveLoading}
-                                  onClick={(e) => handleApprove(e, sub)}
-                                  sx={{ textTransform: 'none', whiteSpace: 'nowrap' }}
+                                  onClick={(e) => handleAcceptReview(e, sub)}
+                                  sx={{ textTransform: 'none', fontWeight: 600, fontSize: '0.75rem' }}
                                 >
-                                  Approve
+                                  Accept
                                 </Button>
-                              )}
-                            </>
-                          )}
-                        </Box>
+                                <Button
+                                  size="small"
+                                  variant="outlined"
+                                  color="error"
+                                  startIcon={<CancelIcon />}
+                                  onClick={(e) => handleOpenRejectDialog(e, sub)}
+                                  sx={{ textTransform: 'none', fontWeight: 600, fontSize: '0.75rem' }}
+                                >
+                                  Reject
+                                </Button>
+                              </Box>
+                            );
+                          }
+
+                          return (
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              color="primary"
+                              onClick={(e) => { e.stopPropagation(); setReviewingId(sub.id); }}
+                              sx={{ textTransform: 'none', fontWeight: 600, fontSize: '0.75rem' }}
+                            >
+                              Review
+                            </Button>
+                          );
+                        })()}
                       </TableCell>
                     </TableRow>
 
@@ -810,6 +966,68 @@ export default function ClientSubmissions() {
             }
           >
             Assign
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* ========================================================== */}
+      {/*  Reject Dialog                                              */}
+      {/* ========================================================== */}
+      <Dialog
+        open={rejectDialogOpen}
+        onClose={() => {
+          if (!rejectLoading) {
+            setRejectDialogOpen(false);
+            setRejectSubmission(null);
+            setRejectionReason('');
+          }
+        }}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle sx={{ fontWeight: 700, color: 'error.main' }}>Reject Submission</DialogTitle>
+        <DialogContent>
+          {rejectSubmission && (
+            <Box sx={{ mb: 2 }}>
+              <Typography variant="body2" color="text.secondary">
+                You are rejecting the submission from <strong>{[rejectSubmission.first_name, rejectSubmission.last_name].filter(Boolean).join(' ')}</strong> for project <strong>{rejectSubmission.project_title}</strong>.
+              </Typography>
+            </Box>
+          )}
+          <TextField
+            fullWidth
+            multiline
+            rows={3}
+            label="Rejection Reason"
+            placeholder="Please provide a reason for rejection..."
+            value={rejectionReason}
+            onChange={(e) => setRejectionReason(e.target.value)}
+            required
+            error={rejectDialogOpen && !rejectionReason.trim()}
+            helperText={rejectDialogOpen && !rejectionReason.trim() ? 'Rejection reason is required' : ''}
+          />
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button
+            onClick={() => {
+              setRejectDialogOpen(false);
+              setRejectSubmission(null);
+              setRejectionReason('');
+            }}
+            disabled={rejectLoading}
+            sx={{ textTransform: 'none' }}
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            color="error"
+            onClick={handleReject}
+            disabled={rejectLoading || !rejectionReason.trim()}
+            startIcon={<CancelIcon />}
+            sx={{ textTransform: 'none', fontWeight: 600 }}
+          >
+            {rejectLoading ? <CircularProgress size={20} /> : 'Reject'}
           </Button>
         </DialogActions>
       </Dialog>

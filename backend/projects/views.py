@@ -230,7 +230,7 @@ class ProjectListView(generics.ListCreateAPIView):
         except Exception:
             pass
 
-        # If created from a client submission, update submission status to approved
+        # If created from a client submission, update submission status and mark project_created
         submission_id = self.request.data.get('submission_id', None)
         if submission_id:
             try:
@@ -239,9 +239,10 @@ class ProjectListView(generics.ListCreateAPIView):
                 submission = ClientFormSubmission.objects.get(
                     id=submission_id,
                     coordinator=self.request.user,
-                    status='assigned'
+                    status__in=['assigned', 'approved']
                 )
                 submission.status = 'approved'
+                submission.project_created = True
                 submission.reviewed_at = tz.now()
                 submission.save()
 
