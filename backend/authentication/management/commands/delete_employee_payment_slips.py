@@ -3,7 +3,7 @@ from authentication.models import PaymentSlip
 
 
 class Command(BaseCommand):
-    help = 'Delete payment slips for employee roles (Coordinator, Field Officer, Senior Valuer, Assessor, MD/GM, HR Staff, General Employee)'
+    help = 'Delete payment slips for employee roles (Coordinator, Field Officer, Senior Valuer, Assessor, MD/GM, HR Head, General Employee)'
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -21,7 +21,7 @@ class Command(BaseCommand):
             'accessor',
             'assessor',  # In case it's stored as 'assessor' instead of 'accessor'
             'md_gm',
-            'hr_staff',
+            'hr_head',
             'general_employee',
         ]
         

@@ -42,7 +42,7 @@ class _PaymentSlipsScreenState extends State<PaymentSlipsScreen> {
   // Roles that should have admin-style structure (left-aligned, black text, simple)
   final List<String> _leftAlignRoles = [
     'admin',
-    'hr_staff',
+    'hr_head',
   ];
   
   bool get _shouldAlignLeft {
@@ -87,10 +87,10 @@ class _PaymentSlipsScreenState extends State<PaymentSlipsScreen> {
     setState(() => _isLoading = true);
 
     try {
-      // Check if user is admin or HR staff - if so, load all payment slips and separate them
+      // Check if user is admin or HR Head - if so, load all payment slips and separate them
       // UNLESS showOnlyOwn is true (for Profile tab)
       final role = _userRole ?? widget.role;
-      final isAdminOrHR = (role == 'admin' || role == 'hr_staff') && !widget.showOnlyOwn;
+      final isAdminOrHR = (role == 'admin' || role == 'hr_head') && !widget.showOnlyOwn;
       
       if (isAdminOrHR) {
         // Load all payment slips (excluding admin's own)
@@ -194,8 +194,8 @@ class _PaymentSlipsScreenState extends State<PaymentSlipsScreen> {
   Widget build(BuildContext context) {
     final role = _userRole ?? widget.role;
     // If showOnlyOwn is true, treat as regular user (not admin/HR) to show only own slips
-    final isAdminOrHR = !widget.showOnlyOwn && (role == 'admin' || role == 'hr_staff');
-    final isHRStaff = !widget.showOnlyOwn && (role == 'hr_staff');
+    final isAdminOrHR = !widget.showOnlyOwn && (role == 'admin' || role == 'hr_head');
+    final isHRHead = !widget.showOnlyOwn && (role == 'hr_head');
     
     final body = _isLoading
           ? const Center(child: CircularProgressIndicator())
@@ -231,8 +231,8 @@ class _PaymentSlipsScreenState extends State<PaymentSlipsScreen> {
                   onRefresh: _loadPaymentSlips,
                   child: Column(
                     children: [
-                      // Create and Upload buttons for HR staff
-                      if (isHRStaff) _buildHRStaffActionButtons(),
+                      // Create and Upload buttons for HR Head
+                      if (isHRHead) _buildHRHeadActionButtons(),
                       // Payment slips list
                       Expanded(
                         child: isAdminOrHR
@@ -318,8 +318,8 @@ class _PaymentSlipsScreenState extends State<PaymentSlipsScreen> {
     return body;
   }
 
-  /// Build action buttons for HR staff (Create and Upload Payment Slips)
-  Widget _buildHRStaffActionButtons() {
+  /// Build action buttons for HR Head (Create and Upload Payment Slips)
+  Widget _buildHRHeadActionButtons() {
     return Container(
       padding: const EdgeInsets.all(16.0),
       decoration: BoxDecoration(
@@ -745,7 +745,7 @@ class _PaymentSlipsScreenState extends State<PaymentSlipsScreen> {
 
   Widget _buildActionButtons(PaymentSlip slip) {
     final role = _userRole ?? widget.role;
-    final isAdminOrHR = role == 'admin' || role == 'hr_staff';
+    final isAdminOrHR = role == 'admin' || role == 'hr_head';
     final isAdmin = role == 'admin'; // Keep separate for edit/delete permissions
     
     return Column(
@@ -769,7 +769,7 @@ class _PaymentSlipsScreenState extends State<PaymentSlipsScreen> {
         Row(
           children: [
             if (isAdminOrHR) ...[
-              // Edit button - Admin and HR staff can edit
+              // Edit button - Admin and HR Head can edit
               Expanded(
                 child: ElevatedButton.icon(
                   onPressed: () => _editPaymentSlip(slip),
@@ -784,7 +784,7 @@ class _PaymentSlipsScreenState extends State<PaymentSlipsScreen> {
                 ),
               ),
               const SizedBox(width: 12),
-              // Remove/Delete button - Admin and HR staff can delete
+              // Remove/Delete button - Admin and HR Head can delete
               Expanded(
                 child: ElevatedButton.icon(
                   onPressed: () => _removeEmployeePaymentSlip(slip),
@@ -1132,11 +1132,11 @@ class _PaymentSlipsScreenState extends State<PaymentSlipsScreen> {
 
   Future<void> _removeEmployeePaymentSlip(PaymentSlip slip) async {
     final role = _userRole ?? widget.role;
-    final isHRStaff = role == 'hr_staff';
+    final isHRHead = role == 'hr_head';
     final isAdmin = role == 'admin';
-    
-    // For HR staff, create a removal request instead of directly deleting
-    if (isHRStaff) {
+
+    // For HR Head, create a removal request instead of directly deleting
+    if (isHRHead) {
       final reasonController = TextEditingController();
       
       final confirm = await showDialog<bool>(

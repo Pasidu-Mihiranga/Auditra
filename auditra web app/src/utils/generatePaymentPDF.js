@@ -1,0 +1,247 @@
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import JSZip from 'jszip';
+import { saveAs } from 'file-saver';
+
+const MONTH_NAMES = [
+  '', 'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+];
+
+const formatLKR = (amount) => {
+  if (amount == null) return 'LKR 0.00';
+  return `LKR ${Number(amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+};
+
+/**
+ * Generate a professional PDF payment slip for a single employee.
+ */
+export function generatePaymentSlipPDF(slip) {
+  const doc = new jsPDF('p', 'mm', 'a4');
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const margin = 20;
+  let y = 20;
+
+  // --- Header ---
+  doc.setFillColor(30, 58, 138);
+  doc.rect(0, 0, pageWidth, 40, 'F');
+
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(22);
+  doc.setFont('helvetica', 'bold');
+  doc.text('AUDITRA', margin, 18);
+
+  doc.setFontSize(10);
+  doc.setFont('helvetica', 'normal');
+  doc.text('Valuation & Property Consultants', margin, 26);
+
+  doc.setFontSize(12);
+  doc.setFont('helvetica', 'bold');
+  doc.text('PAYMENT SLIP', pageWidth - margin, 18, { align: 'right' });
+
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'normal');
+  const monthName = slip.month_display || MONTH_NAMES[slip.month] || String(slip.month);
+  doc.text(`${monthName} ${slip.year}`, pageWidth - margin, 26, { align: 'right' });
+
+  y = 50;
+
+  // --- Slip Info Bar ---
+  doc.setFillColor(241, 245, 249);
+  doc.rect(margin, y, pageWidth - 2 * margin, 10, 'F');
+  doc.setTextColor(30, 58, 138);
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'bold');
+  doc.text(`Pay Slip No: ${slip.pay_slip_number || '-'}`, margin + 4, y + 7);
+  const genDate = slip.generated_at
+    ? new Date(slip.generated_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
+    : '-';
+  doc.text(`Generated: ${genDate}`, pageWidth - margin - 4, y + 7, { align: 'right' });
+
+  y += 18;
+
+  // --- Employee Details ---
+  doc.setTextColor(50, 50, 50);
+  doc.setFontSize(11);
+  doc.setFont('helvetica', 'bold');
+  doc.text('Employee Details', margin, y);
+  y += 2;
+
+  doc.setDrawColor(30, 58, 138);
+  doc.setLineWidth(0.5);
+  doc.line(margin, y, pageWidth - margin, y);
+  y += 8;
+
+  doc.setFontSize(9);
+  const empName = String(slip.user_full_name || slip.user_username || '-');
+  const empNo = String(slip.employee_number || '-');
+  const empRole = String(slip.role_display || slip.role || '-');
+
+  const colLeft = margin;
+  const colRight = pageWidth / 2 + 10;
+
+  // Row 1
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(120, 120, 120);
+  doc.text('Employee Name', colLeft, y);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(50, 50, 50);
+  doc.text(empName, colLeft + 35, y);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(120, 120, 120);
+  doc.text('Employee No', colRight, y);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(50, 50, 50);
+  doc.text(empNo, colRight + 35, y);
+  y += 8;
+
+  // Row 2
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(120, 120, 120);
+  doc.text('Designation', colLeft, y);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(50, 50, 50);
+  doc.text(empRole, colLeft + 35, y);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(120, 120, 120);
+  doc.text('Pay Period', colRight, y);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(50, 50, 50);
+  doc.text(`${monthName} ${slip.year}`, colRight + 35, y);
+  y += 14;
+
+  // --- Salary Breakdown Table ---
+  doc.setTextColor(50, 50, 50);
+  doc.setFontSize(11);
+  doc.setFont('helvetica', 'bold');
+  doc.text('Salary Breakdown', margin, y);
+  y += 2;
+  doc.setDrawColor(30, 58, 138);
+  doc.line(margin, y, pageWidth - margin, y);
+  y += 4;
+
+  const basicSalary = Number(slip.salary) || 0;
+  const allowances = Number(slip.allowances) || 0;
+  const overtimePay = Number(slip.overtime_pay) || 0;
+  const overtimeHours = Number(slip.overtime_hours) || 0;
+  const epf = Number(slip.epf_contribution) || 0;
+  const netSalary = Number(slip.net_salary) || 0;
+  const totalEarnings = basicSalary + allowances + overtimePay;
+
+  autoTable(doc, {
+    startY: y,
+    margin: { left: margin, right: margin },
+    head: [['Description', 'Amount']],
+    body: [
+      ['Basic Salary', formatLKR(basicSalary)],
+      ['Allowances', formatLKR(allowances)],
+      [`Overtime Pay (${overtimeHours} hrs)`, formatLKR(overtimePay)],
+      [{ content: 'Total Earnings', styles: { fontStyle: 'bold' } },
+       { content: formatLKR(totalEarnings), styles: { fontStyle: 'bold' } }],
+      [{ content: '', colSpan: 2, styles: { fillColor: [255, 255, 255], minCellHeight: 2 } }],
+      [{ content: 'DEDUCTIONS', colSpan: 2, styles: { fontStyle: 'bold', fillColor: [254, 242, 242], textColor: [185, 28, 28] } }],
+      ['EPF Contribution (8%)', formatLKR(epf)],
+      [{ content: 'Total Deductions', styles: { fontStyle: 'bold' } },
+       { content: formatLKR(epf), styles: { fontStyle: 'bold' } }],
+    ],
+    theme: 'grid',
+    headStyles: {
+      fillColor: [30, 58, 138],
+      textColor: [255, 255, 255],
+      fontStyle: 'bold',
+      fontSize: 9,
+    },
+    bodyStyles: { fontSize: 9, textColor: [50, 50, 50] },
+    columnStyles: {
+      0: { cellWidth: 'auto' },
+      1: { cellWidth: 50, halign: 'right' },
+    },
+  });
+
+  y = doc.lastAutoTable.finalY + 6;
+
+  // --- Net Salary Box ---
+  doc.setFillColor(30, 58, 138);
+  doc.rect(margin, y, pageWidth - 2 * margin, 16, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(12);
+  doc.setFont('helvetica', 'bold');
+  doc.text('Net Salary', margin + 8, y + 11);
+  doc.setFontSize(14);
+  doc.text(formatLKR(netSalary), pageWidth - margin - 8, y + 11, { align: 'right' });
+
+  y += 28;
+
+  // --- Footer ---
+  doc.setDrawColor(200, 200, 200);
+  doc.setLineWidth(0.3);
+  doc.line(margin, y, pageWidth - margin, y);
+  y += 8;
+
+  doc.setTextColor(150, 150, 150);
+  doc.setFontSize(8);
+  doc.setFont('helvetica', 'normal');
+  doc.text('This is a system-generated document. No signature is required.', pageWidth / 2, y, { align: 'center' });
+  y += 5;
+  doc.text('Generated by Auditra ERP System', pageWidth / 2, y, { align: 'center' });
+
+  return doc;
+}
+
+/**
+ * Download a payment slip as a PDF file.
+ */
+export function downloadPaymentSlipPDF(slip) {
+  try {
+    const doc = generatePaymentSlipPDF(slip);
+    const monthName = slip.month_display || MONTH_NAMES[slip.month] || String(slip.month);
+    const fileName = `PaySlip_${slip.user_username || slip.employee_number || 'employee'}_${monthName}_${slip.year}.pdf`;
+    doc.save(fileName);
+  } catch (err) {
+    console.error('Failed to download payment slip PDF:', err);
+    alert('Failed to generate PDF. Please try again.');
+  }
+}
+
+/**
+ * Open a payment slip PDF in a new browser tab for viewing.
+ */
+export function viewPaymentSlipPDF(slip) {
+  try {
+    const doc = generatePaymentSlipPDF(slip);
+    const blobUrl = doc.output('bloburl');
+    window.open(blobUrl, '_blank');
+  } catch (err) {
+    console.error('Failed to view payment slip PDF:', err);
+    alert('Failed to generate PDF. Please try again.');
+  }
+}
+
+/**
+ * Download all payment slip PDFs bundled in a single zip file.
+ */
+export async function downloadAllPaymentSlipPDFs(slips) {
+  if (!slips || slips.length === 0) return;
+
+  try {
+    const zip = new JSZip();
+    const firstSlip = slips[0];
+    const monthName = firstSlip.month_display || MONTH_NAMES[firstSlip.month] || String(firstSlip.month);
+
+    slips.forEach((slip) => {
+      const doc = generatePaymentSlipPDF(slip);
+      const pdfBlob = doc.output('blob');
+      const slipMonth = slip.month_display || MONTH_NAMES[slip.month] || String(slip.month);
+      const fileName = `PaySlip_${slip.user_username || slip.employee_number || 'employee'}_${slipMonth}_${slip.year}.pdf`;
+      zip.file(fileName, pdfBlob);
+    });
+
+    const zipBlob = await zip.generateAsync({ type: 'blob' });
+    saveAs(zipBlob, `PaymentSlips_${monthName}_${firstSlip.year}.zip`);
+  } catch (err) {
+    console.error('Failed to generate zip file:', err);
+    alert('Failed to generate zip file. Please try again.');
+  }
+}

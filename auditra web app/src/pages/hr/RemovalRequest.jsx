@@ -21,10 +21,11 @@ export default function RemovalRequest() {
     const load = async () => {
       try {
         const [usersRes, requestsRes] = await Promise.all([
-          authService.getUsers(),
+          authService.getAllUsers(),
           removalService.getRemovalRequests(),
         ]);
-        setUsers(Array.isArray(usersRes.data) ? usersRes.data : usersRes.data?.results || []);
+        const allUsers = Array.isArray(usersRes.data) ? usersRes.data : usersRes.data?.results || [];
+        setUsers(allUsers.filter((u) => u.role && u.role !== 'admin' && u.role !== 'hr_head'));
         setRequests(Array.isArray(requestsRes.data) ? requestsRes.data : requestsRes.data?.results || []);
       } catch (err) {
         setSnackbar({ open: true, message: 'Failed to load data', severity: 'error' });
@@ -94,7 +95,7 @@ export default function RemovalRequest() {
               >
                 {users.map((user) => (
                   <MenuItem key={user.id} value={user.id}>
-                    {user.first_name} {user.last_name} ({user.username})
+                    {user.first_name} {user.last_name} ({user.username}) — {user.role_display || user.role}
                   </MenuItem>
                 ))}
               </TextField>

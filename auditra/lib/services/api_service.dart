@@ -2783,7 +2783,7 @@ class ApiService {
     }
   }
 
-  // Create employee removal request (HR staff only)
+  // Create employee removal request (HR Head only)
   static Future<Map<String, dynamic>> createRemovalRequest({
     required int userId,
     String? reason,

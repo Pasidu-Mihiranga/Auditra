@@ -47,7 +47,7 @@ const ROLE_OPTIONS = [
   { value: 'accessor', label: 'Accessor' },
   { value: 'senior_valuer', label: 'Senior Valuer' },
   { value: 'md_gm', label: 'MD/GM' },
-  { value: 'hr_staff', label: 'HR Staff' },
+  { value: 'hr_head', label: 'HR Head' },
   { value: 'general_employee', label: 'General Employee' },
 ];
 

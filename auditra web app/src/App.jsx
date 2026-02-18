@@ -72,7 +72,7 @@ function RoleDashboard() {
       return <CoordinatorDashboard />;
     case 'field_officer':
       return <FieldOfficerDashboard />;
-    case 'hr_staff':
+    case 'hr_head':
       return <HRDashboard />;
     case 'accessor':
       return <AccessorDashboard />;
@@ -115,24 +115,24 @@ export default function App() {
 
         {/* Admin routes */}
         <Route path="users" element={<ProtectedRoute allowedRoles={['admin']}><UserManagement /></ProtectedRoute>} />
-        <Route path="attendance-summary" element={<ProtectedRoute allowedRoles={['admin']}><AttendanceSummary /></ProtectedRoute>} />
-        <Route path="leave-management" element={<ProtectedRoute allowedRoles={['admin']}><LeaveManagement /></ProtectedRoute>} />
-        <Route path="payments" element={<ProtectedRoute allowedRoles={['admin']}><PaymentManagement /></ProtectedRoute>} />
         <Route path="removal-requests" element={<ProtectedRoute allowedRoles={['admin']}><RemovalRequests /></ProtectedRoute>} />
         <Route path="system-logs" element={<ProtectedRoute allowedRoles={['admin']}><SystemLogs /></ProtectedRoute>} />
         <Route path="client-submissions" element={<ProtectedRoute allowedRoles={['admin']}><ClientSubmissions /></ProtectedRoute>} />
         <Route path="employee-submissions" element={<ProtectedRoute allowedRoles={['admin']}><EmployeeSubmissions /></ProtectedRoute>} />
+
+        {/* HR Head routes */}
+        <Route path="attendance-summary" element={<ProtectedRoute allowedRoles={['hr_head']}><AttendanceSummary /></ProtectedRoute>} />
+        <Route path="leave-management" element={<ProtectedRoute allowedRoles={['hr_head']}><LeaveManagement /></ProtectedRoute>} />
+        <Route path="payments" element={<ProtectedRoute allowedRoles={['hr_head']}><PaymentManagement /></ProtectedRoute>} />
+        <Route path="leave-requests" element={<ProtectedRoute allowedRoles={['hr_head']}><LeaveRequests /></ProtectedRoute>} />
+        <Route path="attendance-view" element={<ProtectedRoute allowedRoles={['hr_head']}><AttendanceView /></ProtectedRoute>} />
+        <Route path="request-removal" element={<ProtectedRoute allowedRoles={['hr_head']}><RemovalRequest /></ProtectedRoute>} />
 
         {/* Coordinator routes */}
         <Route path="assigned-submissions" element={<ProtectedRoute allowedRoles={['coordinator']}><AssignedSubmissions /></ProtectedRoute>} />
         <Route path="projects" element={<ProtectedRoute allowedRoles={['admin', 'coordinator']}><ProjectList /></ProtectedRoute>} />
         <Route path="projects/create" element={<ProtectedRoute allowedRoles={['coordinator']}><CreateProject /></ProtectedRoute>} />
         <Route path="projects/:id" element={<ProjectDetail />} />
-
-        {/* HR routes */}
-        <Route path="leave-requests" element={<ProtectedRoute allowedRoles={['admin', 'hr_staff']}><LeaveRequests /></ProtectedRoute>} />
-        <Route path="attendance-view" element={<ProtectedRoute allowedRoles={['hr_staff']}><AttendanceView /></ProtectedRoute>} />
-        <Route path="request-removal" element={<ProtectedRoute allowedRoles={['hr_staff']}><RemovalRequest /></ProtectedRoute>} />
 
         {/* Accessor routes */}
         <Route path="my-projects" element={<AccessorProjects />} />

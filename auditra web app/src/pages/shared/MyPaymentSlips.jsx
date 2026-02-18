@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react';
 import {
   Box, Typography, Table, TableBody, TableCell, TableContainer,
-  TableHead, TableRow, Paper, Card, CardContent, Grid, Alert,
+  TableHead, TableRow, Paper, Card, CardContent, Button, Alert,
 } from '@mui/material';
+import { Visibility, Download } from '@mui/icons-material';
 import paymentService from '../../services/paymentService';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import { formatDate, formatCurrency } from '../../utils/helpers';
+import { viewPaymentSlipPDF, downloadPaymentSlipPDF } from '../../utils/generatePaymentPDF';
 
 export default function MyPaymentSlips() {
   const [slips, setSlips] = useState([]);
@@ -47,6 +49,7 @@ export default function MyPaymentSlips() {
                 <TableCell>Deductions</TableCell>
                 <TableCell>EPF</TableCell>
                 <TableCell>Net Salary</TableCell>
+                <TableCell>Actions</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -59,6 +62,13 @@ export default function MyPaymentSlips() {
                   <TableCell>{formatCurrency(s.deductions)}</TableCell>
                   <TableCell>{formatCurrency(s.epf_contribution)}</TableCell>
                   <TableCell sx={{ fontWeight: 700, color: 'primary.main' }}>{formatCurrency(s.net_salary)}</TableCell>
+                  <TableCell>
+                    <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                      <Button size="small" color="primary" startIcon={<Visibility />} onClick={() => viewPaymentSlipPDF(s)}>View</Button>
+                      <Box sx={{ width: 40 }} />
+                      <Button size="small" color="error" startIcon={<Download />} onClick={() => downloadPaymentSlipPDF(s)}>Download</Button>
+                    </Box>
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>

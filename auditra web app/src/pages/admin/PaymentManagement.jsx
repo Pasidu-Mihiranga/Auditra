@@ -2,12 +2,13 @@ import { useState, useEffect } from 'react';
 import {
   Box, Typography, Table, TableBody, TableCell, TableContainer,
   TableHead, TableRow, Paper, Button, Alert, TextField, Grid, Card, CardContent,
-  Dialog, DialogTitle, DialogContent, DialogActions, MenuItem
+  Dialog, DialogTitle, DialogContent, DialogActions, MenuItem, InputAdornment
 } from '@mui/material';
-import { Add, Upload } from '@mui/icons-material';
+import { Add, Upload, PictureAsPdf, Visibility, Download, AccessTime, Search } from '@mui/icons-material';
 import paymentService from '../../services/paymentService';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import { formatCurrency } from '../../utils/helpers';
+import { viewPaymentSlipPDF, downloadPaymentSlipPDF, downloadAllPaymentSlipPDFs } from '../../utils/generatePaymentPDF';
 
 export default function PaymentManagement() {
   const [slips, setSlips] = useState([]);
@@ -20,6 +21,7 @@ export default function PaymentManagement() {
   const [genYear, setGenYear] = useState(new Date().getFullYear().toString());
   const [overtimeDialog, setOvertimeDialog] = useState(null);
   const [overtimeHours, setOvertimeHours] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
 
   const fetchSlips = async () => {
     try {
@@ -118,6 +120,33 @@ export default function PaymentManagement() {
         </CardContent>
       </Card>
 
+      {slips.length > 0 && (
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+          <TextField
+            size="small"
+            placeholder="Search by employee name or ID"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            sx={{ width: 320 }}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <Search color="action" />
+                </InputAdornment>
+              ),
+            }}
+          />
+          <Button
+            variant="outlined"
+            color="error"
+            startIcon={<PictureAsPdf />}
+            onClick={() => downloadAllPaymentSlipPDFs(slips)}
+          >
+            Download All PDFs
+          </Button>
+        </Box>
+      )}
+
       <TableContainer component={Paper}>
         <Table size="small">
           <TableHead>
@@ -131,10 +160,19 @@ export default function PaymentManagement() {
             </TableRow>
           </TableHead>
           <TableBody>
-            {slips.length === 0 ? (
-              <TableRow><TableCell colSpan={6} align="center">No payment slips found</TableCell></TableRow>
-            ) : (
-              slips.map((s) => (
+            {(() => {
+              const query = searchQuery.toLowerCase().trim();
+              const filtered = query
+                ? slips.filter((s) => {
+                    const name = (s.user_full_name || s.user_username || s.employee_name || '').toLowerCase();
+                    const empId = String(s.employee_number || s.user || '').toLowerCase();
+                    return name.includes(query) || empId.includes(query);
+                  })
+                : slips;
+              return filtered.length === 0 ? (
+                <TableRow><TableCell colSpan={6} align="center">{query ? 'No matching employees found' : 'No payment slips found'}</TableCell></TableRow>
+              ) : (
+                filtered.map((s) => (
                 <TableRow key={s.id}>
                   <TableCell sx={{ fontWeight: 600 }}>{s.user_username || s.employee_name || '-'}</TableCell>
                   <TableCell>{s.month || '-'}</TableCell>
@@ -142,11 +180,18 @@ export default function PaymentManagement() {
                   <TableCell>{formatCurrency(s.overtime_pay)}</TableCell>
                   <TableCell sx={{ fontWeight: 700, color: 'primary.main' }}>{formatCurrency(s.net_salary)}</TableCell>
                   <TableCell>
-                    <Button size="small" startIcon={<Upload />} onClick={() => setOvertimeDialog(s.id)}>Overtime</Button>
+                    <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center' }}>
+                      <Button size="small" startIcon={<AccessTime />} onClick={() => setOvertimeDialog(s.id)}>Overtime</Button>
+                      <Box sx={{ width: 40 }} />
+                      <Button size="small" color="primary" startIcon={<Visibility />} onClick={() => viewPaymentSlipPDF(s)}>View</Button>
+                      <Box sx={{ width: 40 }} />
+                      <Button size="small" color="error" startIcon={<Download />} onClick={() => downloadPaymentSlipPDF(s)}>Download</Button>
+                    </Box>
                   </TableCell>
                 </TableRow>
               ))
-            )}
+              );
+            })()}
           </TableBody>
         </Table>
       </TableContainer>

@@ -104,10 +104,7 @@ node_modules/
 .vite/
 
 # Claude temp files
-tmpclaude-*
-**/tmpclaude-*
-
-# Backup files
+tmpclaude-* 
 *.bak
 *_new_views.py
 _fix.py

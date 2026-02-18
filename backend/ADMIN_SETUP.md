@@ -93,7 +93,7 @@ Admin can assign these roles to users:
 3. Accessor
 4. Senior Valuer
 5. MD/GM
-6. HR Staff
+6. HR Head
 7. General Employee
 8. Client
 9. Agent

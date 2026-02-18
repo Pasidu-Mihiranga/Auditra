@@ -18,7 +18,7 @@ class UserRole(models.Model):
         ('accessor', 'Accessor'),
         ('senior_valuer', 'Senior Valuer'),
         ('md_gm', 'MD/GM'),
-        ('hr_staff', 'HR Staff'),
+        ('hr_head', 'HR Head'),
         ('general_employee', 'General Employee'),
         ('client', 'Client'),
         ('agent', 'Agent'),
@@ -33,7 +33,7 @@ class UserRole(models.Model):
         'accessor': 110000,
         'senior_valuer': 120000,
         'md_gm': 100000,
-        'hr_staff': 80000,
+        'hr_head': 0,  # HR Head does not receive payment slips
         'general_employee': 50000,
         'agent': 60000,
         'client': 0,  # Clients don't have salaries
@@ -207,7 +207,7 @@ class PaymentSlip(models.Model):
         # Only generate for these roles (exclude client, agent, unassigned)
         allowed_roles = [
             'admin', 'coordinator', 'field_officer', 'accessor', 
-            'senior_valuer', 'md_gm', 'hr_staff', 'general_employee'
+            'senior_valuer', 'md_gm', 'general_employee'
         ]
         users_with_roles = User.objects.filter(role__role__in=allowed_roles)
         
@@ -551,7 +551,7 @@ class LeaveRequest(models.Model):
 
 
 class EmployeeRemovalRequest(models.Model):
-    """Model for HR staff to request employee removal (admin approval required)"""
+    """Model for HR Head to request employee removal (admin approval required)"""
     
     STATUS_CHOICES = [
         ('pending', 'Pending'),
@@ -564,7 +564,7 @@ class EmployeeRemovalRequest(models.Model):
         User, 
         on_delete=models.CASCADE, 
         related_name='removal_requests_made',
-        help_text='HR staff who requested the removal'
+        help_text='HR Head who requested the removal'
     )
     reason = models.TextField(blank=True, null=True, help_text='Reason for removal request')
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')

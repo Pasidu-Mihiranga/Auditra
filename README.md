@@ -27,7 +27,7 @@ Auditra/
 |-------------------|-------------------------|-------------------------|
 | Admin             | Full dashboard          | -                       |
 | Coordinator       | Project management      | -                       |
-| HR Staff          | Leave & attendance mgmt | -                       |
+| HR Head           | Leave & attendance mgmt | -                       |
 | Accessor          | Project review          | -                       |
 | Senior Valuer     | Valuation review        | -                       |
 | MD/GM             | Project approval        | -                       |
