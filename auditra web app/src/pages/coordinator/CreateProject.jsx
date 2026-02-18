@@ -26,6 +26,7 @@ export default function CreateProject() {
     priority: 'medium',
     start_date: '',
     end_date: '',
+    estimated_value: '50000',
     client_name: submissionData
       ? [submissionData.first_name, submissionData.last_name].filter(Boolean).join(' ')
       : '',
@@ -98,7 +99,7 @@ export default function CreateProject() {
 
   const getEmailHelperColor = (status) => {
     if (status === 'found') return '#16A34A';
-    if (status === 'not_found') return '#2563EB';
+    if (status === 'not_found') return '#1565C0';
     if (status === 'mismatch') return '#D97706';
     if (status === 'error') return '#DC2626';
     return undefined;
@@ -109,6 +110,17 @@ export default function CreateProject() {
     setLoading(true);
     setError('');
 
+    // Validate dates
+    if (form.start_date && form.end_date) {
+      const startDate = new Date(form.start_date);
+      const endDate = new Date(form.end_date);
+      if (endDate <= startDate) {
+        setError('End date must be after start date');
+        setLoading(false);
+        return;
+      }
+    }
+
     // Package data: flat project fields + client_info/agent_info as JSON objects
     const payload = {
       title: form.title,
@@ -116,6 +128,7 @@ export default function CreateProject() {
       priority: form.priority,
       start_date: form.start_date || null,
       end_date: form.end_date || null,
+      estimated_value: parseFloat(form.estimated_value) || 50000,
     };
 
     // Include submission_id if creating from an assigned submission
@@ -151,10 +164,29 @@ export default function CreateProject() {
     } catch (err) {
       const data = err.response?.data;
       if (data && typeof data === 'object') {
-        const msgs = Object.entries(data).map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`);
-        setError(msgs.join('\n'));
+        // Handle different error formats
+        if (data.error) {
+          setError(data.error);
+        } else if (data.detail) {
+          setError(data.detail);
+        } else if (data.message) {
+          setError(data.message);
+        } else {
+          const msgs = Object.entries(data).map(([k, v]) => {
+            const fieldName = k.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+            const message = Array.isArray(v) ? v.join(', ') : v;
+            return `${fieldName}: ${message}`;
+          });
+          setError(msgs.join('\n'));
+        }
+      } else if (err.response?.status === 400) {
+        setError('Invalid data provided. Please check all fields.');
+      } else if (err.response?.status === 403) {
+        setError('You do not have permission to create projects.');
+      } else if (err.response?.status === 500) {
+        setError('Server error. Please try again later.');
       } else {
-        setError('Failed to create project');
+        setError(err.message || 'Failed to create project');
       }
     } finally {
       setLoading(false);
@@ -169,8 +201,7 @@ export default function CreateProject() {
           Creating project from client submission by{' '}
           <strong>
             {[submissionData.first_name, submissionData.last_name].filter(Boolean).join(' ') || submissionData.email}
-          </strong>
-          . Client and agent fields have been pre-filled from the submission.
+          </strong>.
         </Alert>
       )}
       {error && <Alert severity="error" sx={{ mb: 2, whiteSpace: 'pre-line' }}>{error}</Alert>}
@@ -189,7 +220,34 @@ export default function CreateProject() {
                 </TextField>
               </Grid>
               <Grid item xs={12} sm={4}><TextField fullWidth label="Start Date" name="start_date" type="date" value={form.start_date} onChange={handleChange} InputLabelProps={{ shrink: true }} /></Grid>
-              <Grid item xs={12} sm={4}><TextField fullWidth label="End Date" name="end_date" type="date" value={form.end_date} onChange={handleChange} InputLabelProps={{ shrink: true }} /></Grid>
+              <Grid item xs={12} sm={4}>
+                <TextField 
+                  fullWidth 
+                  label="End Date" 
+                  name="end_date" 
+                  type="date" 
+                  value={form.end_date} 
+                  onChange={handleChange} 
+                  InputLabelProps={{ shrink: true }}
+                  inputProps={{ min: form.start_date || undefined }}
+                  error={form.start_date && form.end_date && new Date(form.end_date) <= new Date(form.start_date)}
+                  helperText={form.start_date && form.end_date && new Date(form.end_date) <= new Date(form.start_date) ? 'End date must be after start date' : ''}
+                />
+              </Grid>
+              <Grid item xs={12} sm={4}>
+                <TextField 
+                  fullWidth 
+                  label="Estimated Value (LKR)" 
+                  name="estimated_value" 
+                  type="number"
+                  value={form.estimated_value} 
+                  onChange={handleChange} 
+                  required
+                  InputProps={{
+                    startAdornment: <InputAdornment position="start">Rs.</InputAdornment>,
+                  }}
+                  helperText="Client must pay this amount before project starts"
+                /></Grid>
             </Grid>
           </CardContent>
         </Card>

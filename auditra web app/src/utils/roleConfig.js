@@ -12,6 +12,7 @@ import RateReviewIcon from '@mui/icons-material/RateReview';
 import ApprovalIcon from '@mui/icons-material/Approval';
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
 import PersonAddIcon from '@mui/icons-material/PersonAdd';
+import BlockIcon from '@mui/icons-material/Block';
 
 export const roleMenuConfig = {
   admin: [
@@ -19,6 +20,7 @@ export const roleMenuConfig = {
     { label: 'System Logs', path: '/dashboard/system-logs', icon: ReceiptLongIcon },
     { label: 'Client Submissions', path: '/dashboard/client-submissions', icon: AssignmentIcon },
     { label: 'Employee Applications', path: '/dashboard/employee-submissions', icon: PersonAddIcon },
+    { label: 'Cancellation Requests', path: '/dashboard/cancellation-requests', icon: BlockIcon },
     { label: 'User Management', path: '/dashboard/users', icon: PeopleIcon },
     { label: 'Projects', path: '/dashboard/projects', icon: FolderIcon },
     { label: 'Removal Requests', path: '/dashboard/removal-requests', icon: PersonRemoveIcon },
@@ -80,6 +82,7 @@ export const roleMenuConfig = {
   ],
   client: [
     { label: 'My Projects', path: '/dashboard', icon: FolderIcon },
+    { label: 'Payments', path: '/dashboard/client-payments', icon: PaymentIcon },
     { label: 'Profile', path: '/dashboard/profile', icon: PersonIcon },
   ],
   agent: [

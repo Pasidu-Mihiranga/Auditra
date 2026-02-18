@@ -42,7 +42,7 @@ export default function SeniorValuerDashboard() {
 
       <Grid container spacing={3}>
         <Grid item xs={12} sm={6} md={3}>
-          <StatsCard title="Total Valuations" value={stats.total} icon={Assignment} color="#2563EB"
+          <StatsCard title="Total Valuations" value={stats.total} icon={Assignment} color="#1565C0"
             onClick={() => navigate('/dashboard/valuation-review')} />
         </Grid>
         <Grid item xs={12} sm={6} md={3}>

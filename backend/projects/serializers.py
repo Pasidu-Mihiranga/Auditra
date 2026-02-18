@@ -1,6 +1,58 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
-from .models import Project, ProjectDocument, ProjectStatusHistory
+from .models import Project, ProjectDocument, ProjectStatusHistory, ProjectPayment, ProjectCancellationRequest
+
+
+class ProjectPaymentSerializer(serializers.ModelSerializer):
+    """Serializer for project payments"""
+    payment_status_display = serializers.CharField(source='get_payment_status_display', read_only=True)
+    bank_slip_url = serializers.SerializerMethodField()
+    bank_slip_uploaded_by_name = serializers.SerializerMethodField()
+    payment_requested_by_name = serializers.SerializerMethodField()
+    payment_approved_by_name = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = ProjectPayment
+        fields = (
+            'id', 'project', 'estimated_value', 'payment_status', 'payment_status_display',
+            'bank_slip', 'bank_slip_url', 'bank_slip_uploaded_at', 'bank_slip_uploaded_by',
+            'bank_slip_uploaded_by_name', 'payment_requested_at', 'payment_requested_by',
+            'payment_requested_by_name', 'payment_approved_at', 'payment_approved_by',
+            'payment_approved_by_name', 'payment_rejection_reason', 'payment_rejection_count',
+            'last_rejected_at', 'coordinator_notes', 'client_notes', 'payment_instructions',
+            'created_at', 'updated_at'
+        )
+        read_only_fields = (
+            'created_at', 'updated_at', 'bank_slip_uploaded_at', 'bank_slip_uploaded_by',
+            'payment_requested_at', 'payment_requested_by', 'payment_approved_at',
+            'payment_approved_by', 'last_rejected_at'
+        )
+    
+    def get_bank_slip_url(self, obj):
+        if obj.bank_slip:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.bank_slip.url)
+            return obj.bank_slip.url
+        return None
+    
+    def get_bank_slip_uploaded_by_name(self, obj):
+        if obj.bank_slip_uploaded_by:
+            name = f"{obj.bank_slip_uploaded_by.first_name} {obj.bank_slip_uploaded_by.last_name}".strip()
+            return name or obj.bank_slip_uploaded_by.username
+        return None
+    
+    def get_payment_requested_by_name(self, obj):
+        if obj.payment_requested_by:
+            name = f"{obj.payment_requested_by.first_name} {obj.payment_requested_by.last_name}".strip()
+            return name or obj.payment_requested_by.username
+        return None
+    
+    def get_payment_approved_by_name(self, obj):
+        if obj.payment_approved_by:
+            name = f"{obj.payment_approved_by.first_name} {obj.payment_approved_by.last_name}".strip()
+            return name or obj.payment_approved_by.username
+        return None
 
 
 class ProjectStatusHistorySerializer(serializers.ModelSerializer):
@@ -131,6 +183,7 @@ class ProjectSerializer(serializers.ModelSerializer):
     valuations = serializers.SerializerMethodField()
     valuations_count = serializers.SerializerMethodField()
     history = ProjectStatusHistorySerializer(many=True, read_only=True)
+    payment = ProjectPaymentSerializer(read_only=True)
     
     class Meta:
         model = Project
@@ -144,8 +197,8 @@ class ProjectSerializer(serializers.ModelSerializer):
             'assigned_accessor_username', 'assigned_accessor_name', 'assigned_accessor_email',
             'assigned_senior_valuer', 'assigned_senior_valuer_username', 'assigned_senior_valuer_name',
             'assigned_senior_valuer_email', 'has_agent', 'client_info', 'agent_info',
-            'status', 'status_display', 'priority', 'start_date', 'end_date',
-            'documents', 'documents_count', 'valuations', 'valuations_count', 'history',
+            'status', 'status_display', 'priority', 'start_date', 'end_date', 'estimated_value',
+            'documents', 'documents_count', 'valuations', 'valuations_count', 'history', 'payment',
             'created_at', 'updated_at'
         )
         read_only_fields = ('coordinator', 'created_at', 'updated_at')
@@ -208,10 +261,16 @@ class ProjectCreateSerializer(serializers.ModelSerializer):
     client_info = serializers.JSONField(required=False, allow_null=True)
     agent_info = serializers.JSONField(required=False, allow_null=True)
     submission_id = serializers.IntegerField(required=False, allow_null=True, write_only=True)
+    estimated_value = serializers.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        required=False,
+        default=50000.00
+    )
     
     class Meta:
         model = Project
-        fields = ('title', 'description', 'start_date', 'end_date', 'has_agent', 'priority', 'client_info', 'agent_info', 'submission_id')
+        fields = ('title', 'description', 'start_date', 'end_date', 'has_agent', 'priority', 'client_info', 'agent_info', 'submission_id', 'estimated_value')
         extra_kwargs = {
             'title': {'required': True},
             'description': {'required': False, 'allow_blank': True},
@@ -308,3 +367,42 @@ class AssignSeniorValuerSerializer(serializers.Serializer):
         except User.DoesNotExist:
             raise serializers.ValidationError("User not found.")
 
+
+class ProjectCancellationRequestSerializer(serializers.ModelSerializer):
+    """Serializer for project cancellation requests"""
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    requested_by_name = serializers.SerializerMethodField()
+    reviewed_by_name = serializers.SerializerMethodField()
+    project_title = serializers.CharField(source='project.title', read_only=True)
+    project_status = serializers.CharField(source='project.status', read_only=True)
+    coordinator_name = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = ProjectCancellationRequest
+        fields = (
+            'id', 'project', 'project_title', 'project_status', 'coordinator_name',
+            'requested_by', 'requested_by_name', 'reason', 'status', 'status_display',
+            'reviewed_by', 'reviewed_by_name', 'admin_remarks', 'reviewed_at',
+            'created_at', 'updated_at'
+        )
+        read_only_fields = (
+            'requested_by', 'status', 'reviewed_by', 'reviewed_at', 'created_at', 'updated_at'
+        )
+    
+    def get_requested_by_name(self, obj):
+        if obj.requested_by:
+            name = f"{obj.requested_by.first_name} {obj.requested_by.last_name}".strip()
+            return name or obj.requested_by.username
+        return None
+    
+    def get_reviewed_by_name(self, obj):
+        if obj.reviewed_by:
+            name = f"{obj.reviewed_by.first_name} {obj.reviewed_by.last_name}".strip()
+            return name or obj.reviewed_by.username
+        return None
+    
+    def get_coordinator_name(self, obj):
+        if obj.project and obj.project.coordinator:
+            name = f"{obj.project.coordinator.first_name} {obj.project.coordinator.last_name}".strip()
+            return name or obj.project.coordinator.username
+        return None

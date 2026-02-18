@@ -76,6 +76,7 @@ pip install -r requirements.txt
 # Run migrations
 python manage.py migrate
 
+
 # Create admin user
 python manage.py createsuperuser
 

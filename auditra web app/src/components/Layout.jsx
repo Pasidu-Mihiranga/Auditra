@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Outlet, useNavigate, useLocation, Navigate } from 'react-router-dom';
-import logo from '../assets/logo.png';
+import logo from '../assets/logo.webp';
 import {
   Box, Drawer, AppBar, Toolbar, Typography, IconButton, List, ListItem,
   ListItemButton, ListItemIcon, ListItemText, Avatar, Divider, useMediaQuery,

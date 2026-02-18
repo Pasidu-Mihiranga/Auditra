@@ -67,6 +67,53 @@ const projectService = {
 
   checkEmail: (email, roleType) =>
     axiosClient.post('/projects/check-email/', { email, role_type: roleType }),
+
+  // Payment workflow methods
+  sendPaymentRequest: (projectId, data = {}) =>
+    axiosClient.post(`/projects/${projectId}/send-payment-request/`, data),
+
+  uploadBankSlip: (projectId, file, clientNotes = '') => {
+    const formData = new FormData();
+    formData.append('bank_slip', file);
+    if (clientNotes) formData.append('client_notes', clientNotes);
+    return axiosClient.post(`/projects/${projectId}/upload-bank-slip/`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
+
+  approvePayment: (projectId, coordinatorNotes = '') =>
+    axiosClient.post(`/projects/${projectId}/approve-payment/`, { coordinator_notes: coordinatorNotes }),
+
+  rejectPayment: (projectId, rejectionReason, coordinatorNotes = '') =>
+    axiosClient.post(`/projects/${projectId}/reject-payment/`, { 
+      rejection_reason: rejectionReason, 
+      coordinator_notes: coordinatorNotes 
+    }),
+
+  getPaymentDetails: (projectId) =>
+    axiosClient.get(`/projects/${projectId}/payment-details/`),
+
+  startProject: (projectId) =>
+    axiosClient.post(`/projects/${projectId}/start-project/`),
+
+  getClientPayments: () =>
+    axiosClient.get('/projects/client-payments/'),
+
+  // Cancellation request endpoints
+  requestCancellation: (projectId, reason) =>
+    axiosClient.post(`/projects/${projectId}/request-cancellation/`, { reason }),
+
+  getCancellationStatus: (projectId) =>
+    axiosClient.get(`/projects/${projectId}/cancellation-status/`),
+
+  getCancellationRequests: (status = 'pending') =>
+    axiosClient.get('/projects/cancellation-requests/', { params: { status } }),
+
+  approveCancellation: (requestId, adminRemarks = '') =>
+    axiosClient.post(`/projects/cancellation-requests/${requestId}/approve/`, { admin_remarks: adminRemarks }),
+
+  rejectCancellation: (requestId, adminRemarks) =>
+    axiosClient.post(`/projects/cancellation-requests/${requestId}/reject/`, { admin_remarks: adminRemarks }),
 };
 
 export default projectService;

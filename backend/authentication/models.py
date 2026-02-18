@@ -4,8 +4,10 @@ from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.utils import timezone
 from django.db.models import Sum
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal
+import random
+import string
 
 
 class UserRole(models.Model):
@@ -97,6 +99,37 @@ def save_user_role(sender, instance, **kwargs):
     """Save UserRole when User is saved"""
     if hasattr(instance, 'role'):
         instance.role.save()
+
+
+class PasswordResetOTP(models.Model):
+    """OTP tokens for password reset via email"""
+    email = models.EmailField()
+    otp = models.CharField(max_length=6)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    is_verified = models.BooleanField(default=False)
+
+    class Meta:
+        db_table = 'password_reset_otp'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"OTP for {self.email} ({'verified' if self.is_verified else 'pending'})"
+
+    @property
+    def is_expired(self):
+        return timezone.now() > self.expires_at
+
+    @classmethod
+    def generate(cls, email):
+        """Generate a new 6-digit OTP for the given email, invalidating any previous ones."""
+        cls.objects.filter(email=email, is_verified=False).delete()
+        otp = ''.join(random.choices(string.digits, k=6))
+        return cls.objects.create(
+            email=email,
+            otp=otp,
+            expires_at=timezone.now() + timedelta(minutes=10),
+        )
 
 
 class PaymentSlip(models.Model):
@@ -445,6 +478,33 @@ class ClientFormSubmission(models.Model):
     )
     assigned_at = models.DateTimeField(null=True, blank=True)
     
+    # Coordinator response fields
+    COORDINATOR_RESPONSE_CHOICES = [
+        ('pending', 'Pending Response'),
+        ('accepted', 'Accepted'),
+        ('rejected', 'Rejected'),
+    ]
+    coordinator_response = models.CharField(
+        max_length=20,
+        choices=COORDINATOR_RESPONSE_CHOICES,
+        default='pending',
+        help_text='Coordinator response to the assignment'
+    )
+    rejection_reason = models.TextField(
+        blank=True,
+        null=True,
+        help_text='Reason for rejecting the assignment (if rejected)'
+    )
+    responded_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text='When the coordinator responded to the assignment'
+    )
+    project_created = models.BooleanField(
+        default=False,
+        help_text='Whether a project has been created from this submission'
+    )
+    
     class Meta:
         db_table = 'client_form_submissions'
         verbose_name = 'Client Form Submission'
@@ -454,6 +514,50 @@ class ClientFormSubmission(models.Model):
     def __str__(self):
         name = f"{self.first_name} {self.last_name}".strip() or "Unknown"
         return f"{name} - {self.email} - {self.get_status_display()}"
+
+
+class CoordinatorAssignment(models.Model):
+    """Tracks coordinator assignments for client submissions"""
+    
+    STATUS_CHOICES = [
+        ('pending', 'Pending Response'),
+        ('accepted', 'Accepted'),
+        ('rejected', 'Rejected'),
+    ]
+    
+    submission = models.ForeignKey(
+        ClientFormSubmission,
+        on_delete=models.CASCADE,
+        related_name='coordinator_assignments'
+    )
+    coordinator = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='coordinator_assignment_records'
+    )
+    assigned_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='coordinator_assignments_made'
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default='pending'
+    )
+    rejection_reason = models.TextField(blank=True, null=True)
+    assigned_at = models.DateTimeField(auto_now_add=True)
+    responded_at = models.DateTimeField(null=True, blank=True)
+    
+    class Meta:
+        db_table = 'coordinator_assignments'
+        ordering = ['-assigned_at']
+    
+    def __str__(self):
+        coord_name = f"{self.coordinator.first_name} {self.coordinator.last_name}".strip() or self.coordinator.username
+        return f"Assignment #{self.id} - {coord_name} - {self.get_status_display()}"
 
 
 class EmployeeFormSubmission(models.Model):

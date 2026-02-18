@@ -98,6 +98,19 @@ class Project(models.Model):
     )
     md_gm_approved_at = models.DateTimeField(null=True, blank=True)
     md_gm_rejected_at = models.DateTimeField(null=True, blank=True)
+    
+    # Payment related fields
+    estimated_value = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=50000.00,
+        help_text='Estimated value/cost for the project'
+    )
+    payment_completed = models.BooleanField(
+        default=False,
+        help_text='Whether the client has completed payment for this project'
+    )
+    
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     
@@ -174,3 +187,172 @@ class ProjectStatusHistory(models.Model):
     
     def __str__(self):
         return f"{self.project.title} - {self.status} at {self.created_at}"
+
+
+class ProjectPayment(models.Model):
+    """Payment tracking for projects - handles bank slip uploads and payment verification"""
+    
+    PAYMENT_STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('requested', 'Payment Requested'),
+        ('submitted', 'Bank Slip Submitted'),
+        ('under_review', 'Under Review'),
+        ('approved', 'Payment Approved'),
+        ('rejected', 'Payment Rejected'),
+    ]
+    
+    project = models.OneToOneField(
+        Project,
+        on_delete=models.CASCADE,
+        related_name='payment'
+    )
+    estimated_value = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        help_text='Estimated value for this project payment'
+    )
+    payment_status = models.CharField(
+        max_length=20,
+        choices=PAYMENT_STATUS_CHOICES,
+        default='pending'
+    )
+    
+    # Bank slip fields
+    bank_slip = models.FileField(
+        upload_to='project_payments/bank_slips/%Y/%m/',
+        null=True,
+        blank=True,
+        help_text='Bank slip uploaded by client'
+    )
+    bank_slip_uploaded_at = models.DateTimeField(null=True, blank=True)
+    bank_slip_uploaded_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='uploaded_bank_slips'
+    )
+    
+    # Request and approval tracking
+    payment_requested_at = models.DateTimeField(null=True, blank=True)
+    payment_requested_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='requested_payments'
+    )
+    payment_approved_at = models.DateTimeField(null=True, blank=True)
+    payment_approved_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='approved_payments'
+    )
+    
+    # Rejection tracking
+    payment_rejection_reason = models.TextField(
+        blank=True,
+        null=True,
+        help_text='Reason for payment rejection'
+    )
+    payment_rejection_count = models.IntegerField(
+        default=0,
+        help_text='Number of times payment has been rejected'
+    )
+    last_rejected_at = models.DateTimeField(null=True, blank=True)
+    
+    # Notes
+    coordinator_notes = models.TextField(
+        blank=True,
+        null=True,
+        help_text='Notes from coordinator about the payment'
+    )
+    client_notes = models.TextField(
+        blank=True,
+        null=True,
+        help_text='Notes from client about the payment'
+    )
+    
+    # Payment instructions sent to client
+    payment_instructions = models.TextField(
+        blank=True,
+        null=True,
+        help_text='Payment instructions sent to the client'
+    )
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        db_table = 'project_payments'
+        verbose_name = 'Project Payment'
+        verbose_name_plural = 'Project Payments'
+        ordering = ['-created_at']
+    
+    def __str__(self):
+        return f"{self.project.title} - {self.get_payment_status_display()} - {self.estimated_value}"
+
+
+class ProjectCancellationRequest(models.Model):
+    """Cancellation request for projects - coordinators request, admins approve/reject"""
+    
+    REQUEST_STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('approved', 'Approved'),
+        ('rejected', 'Rejected'),
+    ]
+    
+    project = models.ForeignKey(
+        Project,
+        on_delete=models.CASCADE,
+        related_name='cancellation_requests'
+    )
+    requested_by = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='cancellation_requests_made'
+    )
+    reason = models.TextField(
+        help_text='Reason for requesting cancellation'
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=REQUEST_STATUS_CHOICES,
+        default='pending'
+    )
+    
+    # Admin response
+    reviewed_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='cancellation_requests_reviewed'
+    )
+    admin_remarks = models.TextField(
+        blank=True,
+        null=True,
+        help_text='Admin remarks when approving/rejecting'
+    )
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    
+    # Notification tracking
+    notified_users = models.ManyToManyField(
+        User,
+        blank=True,
+        related_name='cancellation_notifications_received'
+    )
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        db_table = 'project_cancellation_requests'
+        verbose_name = 'Project Cancellation Request'
+        verbose_name_plural = 'Project Cancellation Requests'
+        ordering = ['-created_at']
+    
+    def __str__(self):
+        return f"{self.project.title} - Cancellation {self.get_status_display()}"

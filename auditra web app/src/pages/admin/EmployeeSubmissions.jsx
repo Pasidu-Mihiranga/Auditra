@@ -3,7 +3,7 @@ import {
   Box, Typography, Paper, Table, TableBody, TableCell, TableContainer,
   TableHead, TableRow, TablePagination, TextField, MenuItem, Chip, Alert,
   Button, Snackbar, InputAdornment, IconButton, CircularProgress, Collapse,
-  Dialog, DialogTitle, DialogContent, DialogActions, Grid, Tooltip,
+  Dialog, DialogTitle, DialogContent, DialogActions, Grid,
   FormControl, InputLabel, Select,
 } from '@mui/material';
 import {
@@ -13,10 +13,8 @@ import {
   PersonAdd as PersonAddIcon,
   KeyboardArrowDown as ExpandMoreIcon,
   KeyboardArrowUp as ExpandLessIcon,
-  ContentCopy as CopyIcon,
   Download as DownloadIcon,
   RateReview as ReviewIcon,
-  Cancel as CancelIcon,
 } from '@mui/icons-material';
 import PendingIcon from '@mui/icons-material/Pending';
 import axiosClient from '../../api/axiosClient';
@@ -35,10 +33,10 @@ const STATUS_OPTIONS = [
 ];
 
 const STATUS_CHIP_COLORS = {
-  pending: '#ed6c02',
-  rejected: '#d32f2f',
-  approved: '#2e7d32',
-  reviewed: '#1976d2',
+  pending: '#D97706',
+  rejected: '#DC2626',
+  approved: '#16A34A',
+  reviewed: '#1565C0',
 };
 
 const ROLE_OPTIONS = [
@@ -114,9 +112,6 @@ export default function EmployeeSubmissions() {
   const [hireNotes, setHireNotes] = useState('');
   const [roleSalaries, setRoleSalaries] = useState({});
 
-  /* credentials dialog */
-  const [credentialsDialog, setCredentialsDialog] = useState(null);
-
   /* snackbar */
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
 
@@ -180,11 +175,6 @@ export default function EmployeeSubmissions() {
 
   const showSnackbar = (message, severity = 'success') => {
     setSnackbar({ open: true, message, severity });
-  };
-
-  const copyToClipboard = (text) => {
-    navigator.clipboard.writeText(text);
-    showSnackbar('Copied to clipboard');
   };
 
   /* ================================================================ */
@@ -264,8 +254,7 @@ export default function EmployeeSubmissions() {
       const payload = { role: selectedRole };
       if (salary) payload.salary = salary;
       const res = await axiosClient.post(`/auth/employee-submissions/${hireDialog.id}/hire/`, payload);
-      showSnackbar('Employee account created');
-      setCredentialsDialog(res.data.account);
+      showSnackbar(res.data.message || 'Employee account created. Credentials sent via email.');
       closeHireDialog();
       fetchSubmissions();
     } catch (err) {
@@ -321,7 +310,7 @@ export default function EmployeeSubmissions() {
             icon={ReviewIcon}
             title="Reviewed"
             value={summary.reviewed}
-            color="#2563EB"
+            color="#1565C0"
           />
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
@@ -457,7 +446,7 @@ export default function EmployeeSubmissions() {
                             <Chip
                               label="Hired"
                               size="small"
-                              sx={{ fontSize: '0.72rem', fontWeight: 600, color: '#fff', bgcolor: '#2e7d32' }}
+                              sx={{ fontSize: '0.72rem', fontWeight: 600, color: '#fff', bgcolor: '#16A34A' }}
                             />
                           ) : (
                             <>
@@ -668,99 +657,6 @@ export default function EmployeeSubmissions() {
             }
           >
             {actionLoading ? 'Creating...' : 'Create Account'}
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* ========================================================== */}
-      {/*  Credentials Dialog                                          */}
-      {/* ========================================================== */}
-      <Dialog
-        open={!!credentialsDialog}
-        onClose={() => setCredentialsDialog(null)}
-        maxWidth="sm"
-        fullWidth
-      >
-        <DialogTitle sx={{ fontWeight: 700 }}>Account Created</DialogTitle>
-        <DialogContent dividers>
-          {credentialsDialog && (
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-              <Alert severity="success">
-                Login credentials have been sent to the employee's email.
-              </Alert>
-
-              <Box sx={{ bgcolor: 'grey.50', borderRadius: 1, p: 2 }}>
-                <Grid container spacing={1.5}>
-                  <Grid item xs={4}>
-                    <DetailField label="Name" value={credentialsDialog.name} />
-                  </Grid>
-                  <Grid item xs={4}>
-                    <DetailField label="Email" value={credentialsDialog.email} />
-                  </Grid>
-                  <Grid item xs={4}>
-                    <DetailField
-                      label="Role"
-                      value={
-                        ROLE_OPTIONS.find((r) => r.value === credentialsDialog.role)?.label ||
-                        credentialsDialog.role
-                      }
-                    />
-                  </Grid>
-                </Grid>
-              </Box>
-
-              {[
-                { label: 'Username', value: credentialsDialog.username },
-                { label: 'Password', value: credentialsDialog.password },
-              ].map((cred) => (
-                <Box
-                  key={cred.label}
-                  sx={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    border: '1px solid',
-                    borderColor: 'divider',
-                    borderRadius: 1,
-                    px: 2,
-                    py: 1.5,
-                  }}
-                >
-                  <Box>
-                    <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 600 }}>
-                      {cred.label}
-                    </Typography>
-                    <Typography variant="body1" sx={{ fontFamily: 'monospace', fontWeight: 700 }}>
-                      {cred.value}
-                    </Typography>
-                  </Box>
-                  <Tooltip title={`Copy ${cred.label.toLowerCase()}`}>
-                    <IconButton onClick={() => copyToClipboard(cred.value)} size="small">
-                      <CopyIcon fontSize="small" />
-                    </IconButton>
-                  </Tooltip>
-                </Box>
-              ))}
-
-              <Alert severity="info">
-                The employee must change this password on first login.
-              </Alert>
-            </Box>
-          )}
-        </DialogContent>
-        <DialogActions sx={{ px: 3, py: 2 }}>
-          <Button
-            variant="outlined"
-            onClick={() => {
-              const c = credentialsDialog;
-              if (c) copyToClipboard(`Username: ${c.username}\nPassword: ${c.password}`);
-            }}
-            startIcon={<CopyIcon />}
-          >
-            Copy All
-          </Button>
-          <Button variant="contained" onClick={() => setCredentialsDialog(null)}>
-            Done
           </Button>
         </DialogActions>
       </Dialog>

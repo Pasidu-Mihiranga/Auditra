@@ -216,9 +216,38 @@ class PaymentSlipSerializer(serializers.ModelSerializer):
         return None
 
 
+class CoordinatorAssignmentSerializer(serializers.ModelSerializer):
+    """Serializer for Coordinator Assignment history"""
+    coordinator_name = serializers.SerializerMethodField()
+    assigned_by_name = serializers.SerializerMethodField()
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    
+    class Meta:
+        from .models import CoordinatorAssignment
+        model = CoordinatorAssignment
+        fields = (
+            'id', 'coordinator', 'coordinator_name', 'assigned_by', 'assigned_by_name',
+            'status', 'status_display', 'rejection_reason', 'assigned_at', 'responded_at'
+        )
+    
+    def get_coordinator_name(self, obj):
+        if obj.coordinator:
+            name = f"{obj.coordinator.first_name} {obj.coordinator.last_name}".strip()
+            return name if name else obj.coordinator.username
+        return None
+    
+    def get_assigned_by_name(self, obj):
+        if obj.assigned_by:
+            name = f"{obj.assigned_by.first_name} {obj.assigned_by.last_name}".strip()
+            return name if name else obj.assigned_by.username
+        return None
+
+
 class ClientFormSubmissionSerializer(serializers.ModelSerializer):
     """Serializer for Client Form Submission"""
     coordinator_name = serializers.SerializerMethodField()
+    coordinator_response_display = serializers.CharField(source='get_coordinator_response_display', read_only=True)
+    assignment_history = serializers.SerializerMethodField()
 
     class Meta:
         model = ClientFormSubmission
@@ -228,15 +257,21 @@ class ClientFormSubmissionSerializer(serializers.ModelSerializer):
             'project_description', 'agent_name', 'agent_phone',
             'agent_email', 'status', 'submitted_at', 'reviewed_at',
             'notes', 'reviewed_by', 'coordinator', 'coordinator_name',
-            'assigned_at'
+            'assigned_at', 'coordinator_response', 'coordinator_response_display',
+            'rejection_reason', 'responded_at', 'assignment_history', 'project_created'
         )
-        read_only_fields = ('status', 'submitted_at', 'reviewed_at', 'reviewed_by', 'coordinator', 'assigned_at')
+        read_only_fields = ('status', 'submitted_at', 'reviewed_at', 'reviewed_by', 'coordinator', 'assigned_at', 'responded_at')
 
     def get_coordinator_name(self, obj):
         if obj.coordinator:
             name = f"{obj.coordinator.first_name} {obj.coordinator.last_name}".strip()
             return name if name else obj.coordinator.username
         return None
+    
+    def get_assignment_history(self, obj):
+        from .models import CoordinatorAssignment
+        assignments = CoordinatorAssignment.objects.filter(submission=obj).order_by('-assigned_at')
+        return CoordinatorAssignmentSerializer(assignments, many=True).data
 
 
 class EmployeeFormSubmissionSerializer(serializers.ModelSerializer):

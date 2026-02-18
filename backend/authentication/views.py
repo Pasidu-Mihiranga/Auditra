@@ -11,7 +11,7 @@ from django.contrib.auth.models import User
 from django.utils import timezone
 from django.db.models import Q
 from decimal import Decimal, InvalidOperation
-from .models import UserRole, PaymentSlip, ClientFormSubmission, EmployeeFormSubmission, LeaveRequest, EmployeeRemovalRequest
+from .models import UserRole, PaymentSlip, ClientFormSubmission, EmployeeFormSubmission, LeaveRequest, EmployeeRemovalRequest, PasswordResetOTP
 from .serializers import (
     UserRegistrationSerializer, 
     UserSerializer, 
@@ -165,6 +165,88 @@ class ChangePasswordView(APIView):
             {'message': 'Password changed successfully'},
             status=status.HTTP_200_OK,
         )
+
+
+class PasswordResetRequestView(APIView):
+    """Send OTP to user's email for password reset"""
+    permission_classes = (AllowAny,)
+
+    def post(self, request):
+        email = request.data.get('email', '').strip()
+        if not email:
+            return Response({'error': 'Email is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        user = User.objects.filter(email__iexact=email).first()
+        if not user:
+            return Response({'error': 'No account found with this email'}, status=status.HTTP_404_NOT_FOUND)
+
+        otp_obj = PasswordResetOTP.generate(email)
+
+        from .services import EmailService
+        sent = EmailService.send_otp_email(email, otp_obj.otp)
+        if not sent:
+            return Response({'error': 'Failed to send OTP email. Please try again.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        return Response({'message': 'OTP sent to your email'}, status=status.HTTP_200_OK)
+
+
+class PasswordResetVerifyOTPView(APIView):
+    """Verify OTP code"""
+    permission_classes = (AllowAny,)
+
+    def post(self, request):
+        email = request.data.get('email', '').strip()
+        otp = request.data.get('otp', '').strip()
+
+        if not email or not otp:
+            return Response({'error': 'Email and OTP are required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        otp_obj = PasswordResetOTP.objects.filter(email__iexact=email, otp=otp, is_verified=False).first()
+        if not otp_obj:
+            return Response({'error': 'Invalid OTP code'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if otp_obj.is_expired:
+            otp_obj.delete()
+            return Response({'error': 'OTP has expired. Please request a new one.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        otp_obj.is_verified = True
+        otp_obj.save()
+
+        return Response({'message': 'OTP verified successfully'}, status=status.HTTP_200_OK)
+
+
+class PasswordResetConfirmView(APIView):
+    """Reset password after OTP verification"""
+    permission_classes = (AllowAny,)
+
+    def post(self, request):
+        email = request.data.get('email', '').strip()
+        new_password = request.data.get('new_password', '')
+
+        if not email or not new_password:
+            return Response({'error': 'Email and new_password are required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if len(new_password) < 8:
+            return Response({'error': 'Password must be at least 8 characters'}, status=status.HTTP_400_BAD_REQUEST)
+
+        otp_obj = PasswordResetOTP.objects.filter(email__iexact=email, is_verified=True).first()
+        if not otp_obj:
+            return Response({'error': 'No verified OTP found. Please verify your OTP first.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        user = User.objects.filter(email__iexact=email).first()
+        if not user:
+            return Response({'error': 'No account found with this email'}, status=status.HTTP_404_NOT_FOUND)
+
+        user.set_password(new_password)
+        user.save()
+
+        if hasattr(user, 'role') and user.role:
+            user.role.password_changed = True
+            user.role.save()
+
+        PasswordResetOTP.objects.filter(email__iexact=email).delete()
+
+        return Response({'message': 'Password reset successfully'}, status=status.HTTP_200_OK)
 
 
 class AssignRoleView(APIView):
@@ -947,6 +1029,28 @@ class ClientRegistrationView(APIView):
                     )
                 except Exception:
                     pass
+
+                # Send confirmation email to client
+                try:
+                    from .services import EmailService
+                    client_name = f'{submission.first_name or ""} {submission.last_name or ""}'.strip()
+                    EmailService.send_submission_confirmation(
+                        email=submission.email,
+                        name=client_name,
+                        submission_type='client',
+                        project_title=submission.project_title,
+                    )
+                    # Send confirmation to agent if provided
+                    if submission.agent_email:
+                        EmailService.send_submission_confirmation(
+                            email=submission.agent_email,
+                            name=submission.agent_name or 'Agent',
+                            submission_type='agent',
+                            project_title=submission.project_title,
+                        )
+                except Exception:
+                    pass
+
                 return Response({
                     'success': True,
                     'message': 'Client registration submitted successfully. An administrator will review your application.',
@@ -971,6 +1075,15 @@ class EmployeeRegistrationView(APIView):
 
     def post(self, request):
         try:
+            # Check for duplicate email before saving
+            email = request.data.get('email', '').strip().lower()
+            if email and User.objects.filter(email__iexact=email).exists():
+                return Response({
+                    'success': False,
+                    'error': 'An account with this email already exists.',
+                    'field': 'email'
+                }, status=status.HTTP_400_BAD_REQUEST)
+
             serializer = EmployeeFormSubmissionSerializer(data=request.data)
             if serializer.is_valid():
                 submission = serializer.save()
@@ -986,6 +1099,20 @@ class EmployeeRegistrationView(APIView):
                     )
                 except Exception:
                     pass
+
+                # Send confirmation email to employee
+                try:
+                    from .services import EmailService
+                    emp_name = f'{submission.first_name or ""} {submission.last_name or ""}'.strip()
+                    if submission.email:
+                        EmailService.send_submission_confirmation(
+                            email=submission.email,
+                            name=emp_name,
+                            submission_type='employee',
+                        )
+                except Exception:
+                    pass
+
                 return Response({
                     'success': True,
                     'message': 'Employee registration submitted successfully. An administrator will review your application.',
@@ -1555,10 +1682,16 @@ class AllClientSubmissionsView(APIView):
 
         # Filters
         status_filter = request.query_params.get('status', None)
+        coordinator_response_filter = request.query_params.get('coordinator_response', None)
         search = request.query_params.get('search', None)
 
         if status_filter:
-            queryset = queryset.filter(status=status_filter)
+            if status_filter == 'pending':
+                queryset = queryset.filter(status__in=['pending', 'reviewed', 'assigned'])
+            else:
+                queryset = queryset.filter(status=status_filter)
+        if coordinator_response_filter:
+            queryset = queryset.filter(coordinator_response=coordinator_response_filter)
         if search:
             queryset = queryset.filter(
                 Q(first_name__icontains=search) |
@@ -1615,6 +1748,14 @@ class ClientSubmissionDetailView(APIView):
             submission.reviewed_at = timezone.now()
             submission.save()
 
+            # Send status update email to client and agent
+            if new_status:
+                try:
+                    from .services import EmailService
+                    EmailService.send_status_update(submission, new_status)
+                except Exception:
+                    pass
+
             try:
                 from system_logs.utils import log_action, get_client_ip
                 log_action(
@@ -1632,6 +1773,31 @@ class ClientSubmissionDetailView(APIView):
         except ClientFormSubmission.DoesNotExist:
             return Response({'error': 'Submission not found'}, status=status.HTTP_404_NOT_FOUND)
 
+    def delete(self, request, pk):
+        """Delete a rejected submission (cancel project)"""
+        if not hasattr(request.user, 'role') or request.user.role.role != 'admin':
+            return Response({'error': 'Only admins can delete submissions'}, status=status.HTTP_403_FORBIDDEN)
+        try:
+            submission = ClientFormSubmission.objects.get(pk=pk)
+            if submission.status != 'rejected':
+                return Response({'error': 'Only rejected submissions can be cancelled'}, status=status.HTTP_400_BAD_REQUEST)
+
+            try:
+                from system_logs.utils import log_action, get_client_ip
+                log_action(
+                    action='SUBMISSION_CANCELLED',
+                    user=request.user,
+                    description=f'Rejected client submission from {submission.first_name} {submission.last_name} was cancelled and removed',
+                    category='submission',
+                    ip_address=get_client_ip(request),
+                )
+            except Exception:
+                pass
+
+            submission.delete()
+            return Response({'success': True, 'message': 'Submission cancelled and removed.'})
+        except ClientFormSubmission.DoesNotExist:
+            return Response({'error': 'Submission not found'}, status=status.HTTP_404_NOT_FOUND)
 
 
 class AssignCoordinatorView(APIView):
@@ -1658,7 +1824,20 @@ class AssignCoordinatorView(APIView):
         except User.DoesNotExist:
             return Response({'error': 'Coordinator not found'}, status=status.HTTP_404_NOT_FOUND)
 
+        # Create a new CoordinatorAssignment record
+        from .models import CoordinatorAssignment
+        CoordinatorAssignment.objects.create(
+            submission=submission,
+            coordinator=coordinator,
+            assigned_by=request.user,
+            status='pending'
+        )
+
+        # Update submission with new coordinator and reset response fields
         submission.coordinator = coordinator
+        submission.coordinator_response = 'pending'
+        submission.rejection_reason = None
+        submission.responded_at = None
         # Only change status to 'assigned' if not already approved
         if submission.status != 'approved':
             submission.status = 'assigned'
@@ -1728,81 +1907,163 @@ class ApproveClientSubmissionView(APIView):
                 return Response({'error': 'This submission has already been approved'}, status=status.HTTP_400_BAD_REQUEST)
 
             created_accounts = []
+            client_user = None
+            client_username = None
+            client_created = False
 
-            # Create client account
-            client_username = submission.email.split('@')[0] + '_client'
-            if User.objects.filter(username=client_username).exists():
-                client_username = f'{client_username}_{submission.id}'
-            client_password = generate_password()
-            client_user = User.objects.create_user(
-                username=client_username,
-                email=submission.email,
-                password=client_password,
-                first_name=submission.first_name or '',
-                last_name=submission.last_name or '',
-            )
-            client_user.role.role = 'client'
-            client_user.role.assigned_by = request.user
-            client_user.role.password_changed = False
-            client_user.role.save()
-            created_accounts.append({
-                'type': 'client',
-                'username': client_username,
-                'password': client_password,
-                'email': submission.email,
-                'name': f'{submission.first_name} {submission.last_name}'.strip(),
-            })
-
-            # Send email to client
-            try:
-                from .services import EmailService
-                EmailService.send_account_credentials(
-                    email=submission.email,
+            # Check if client account already exists
+            existing_client = User.objects.filter(email__iexact=submission.email).first()
+            if existing_client:
+                if hasattr(existing_client, 'role') and existing_client.role.role == 'client':
+                    # Reuse existing client account
+                    client_user = existing_client
+                    client_username = existing_client.username
+                else:
+                    existing_role = existing_client.role.role if hasattr(existing_client, 'role') else 'unknown'
+                    return Response({
+                        'error': f'A user with email {submission.email} already exists with role "{existing_role}". Cannot create client account.'
+                    }, status=status.HTTP_400_BAD_REQUEST)
+            else:
+                # Create new client account
+                first = (submission.first_name or '').strip().lower().replace(' ', '_')
+                last = (submission.last_name or '').strip().lower().replace(' ', '_')
+                if first and last:
+                    base_client_username = f'{first}_{last}'
+                elif first:
+                    base_client_username = first
+                elif last:
+                    base_client_username = last
+                else:
+                    base_client_username = f'client_{submission.id}'
+                base_client_username = ''.join(c for c in base_client_username if c.isalnum() or c == '_')
+                client_username = base_client_username
+                if User.objects.filter(username=client_username).exists():
+                    client_username = f'{base_client_username}_{submission.id}'
+                counter = 1
+                while User.objects.filter(username=client_username).exists():
+                    client_username = f'{base_client_username}_{counter}'
+                    counter += 1
+                client_password = generate_password()
+                client_user = User.objects.create_user(
                     username=client_username,
+                    email=submission.email,
                     password=client_password,
-                    user_type='client',
-                    name=f'{submission.first_name} {submission.last_name}'.strip(),
+                    first_name=submission.first_name or '',
+                    last_name=submission.last_name or '',
                 )
-            except Exception:
-                pass
 
-            # Create agent account (only if agent email is provided)
-            if submission.agent_email:
-                agent_username = submission.agent_email.split('@')[0] + '_agent'
-                if User.objects.filter(username=agent_username).exists():
-                    agent_username = f'{agent_username}_{submission.id}'
-                agent_password = generate_password()
-                agent_user = User.objects.create_user(
-                    username=agent_username,
-                    email=submission.agent_email,
-                    password=agent_password,
-                    first_name=submission.agent_name.split()[0] if submission.agent_name else '',
-                    last_name=' '.join(submission.agent_name.split()[1:]) if submission.agent_name and len(submission.agent_name.split()) > 1 else '',
-                )
-                agent_user.role.role = 'agent'
-                agent_user.role.assigned_by = request.user
-                agent_user.role.password_changed = False
-                agent_user.role.save()
+                # Explicitly fetch the role created by the post_save signal
+                client_role = UserRole.objects.get(user=client_user)
+                client_role.role = 'client'
+                client_role.assigned_by = request.user
+                client_role.password_changed = False
+                client_role.save()
+
+                # Verify the client account credentials work
+                verified = authenticate(username=client_username, password=client_password)
+                if verified is None:
+                    client_user.set_password(client_password)
+                    client_user.save(update_fields=['password'])
+
+                client_created = True
                 created_accounts.append({
-                    'type': 'agent',
-                    'username': agent_username,
-                    'password': agent_password,
-                    'email': submission.agent_email,
-                    'name': submission.agent_name or '',
+                    'type': 'client',
+                    'email': submission.email,
+                    'name': f'{submission.first_name} {submission.last_name}'.strip(),
                 })
 
-                # Send email to agent
+                # Send credential email to new client
                 try:
                     from .services import EmailService
                     EmailService.send_account_credentials(
-                        email=submission.agent_email,
-                        username=agent_username,
-                        password=agent_password,
-                        user_type='agent',
-                        name=submission.agent_name or '',
+                        email=submission.email,
+                        username=client_username,
+                        password=client_password,
+                        user_type='client',
+                        name=f'{submission.first_name} {submission.last_name}'.strip(),
+                        role='Client',
+                        salary=UserRole.ROLE_SALARIES.get('client', 0),
                     )
                 except Exception:
                     pass
+
+            # Handle agent account (only if agent email is provided)
+            agent_user = None
+            agent_username = None
+            agent_created = False
+
+            if submission.agent_email:
+                existing_agent = User.objects.filter(email__iexact=submission.agent_email).first()
+                if existing_agent:
+                    if hasattr(existing_agent, 'role') and existing_agent.role.role == 'agent':
+                        # Reuse existing agent account
+                        agent_user = existing_agent
+                        agent_username = existing_agent.username
+                    else:
+                        existing_role = existing_agent.role.role if hasattr(existing_agent, 'role') else 'unknown'
+                        return Response({
+                            'error': f'A user with email {submission.agent_email} already exists with role "{existing_role}". Cannot create agent account.'
+                        }, status=status.HTTP_400_BAD_REQUEST)
+                else:
+                    # Create new agent account
+                    agent_parts = (submission.agent_name or '').strip().lower().split()
+                    if len(agent_parts) >= 2:
+                        base_agent_username = f'{agent_parts[0]}_{agent_parts[-1]}'
+                    elif len(agent_parts) == 1:
+                        base_agent_username = agent_parts[0]
+                    else:
+                        base_agent_username = f'agent_{submission.id}'
+                    base_agent_username = ''.join(c for c in base_agent_username if c.isalnum() or c == '_')
+                    agent_username = base_agent_username
+                    if User.objects.filter(username=agent_username).exists():
+                        agent_username = f'{base_agent_username}_{submission.id}'
+                    counter = 1
+                    while User.objects.filter(username=agent_username).exists():
+                        agent_username = f'{base_agent_username}_{counter}'
+                        counter += 1
+                    agent_password = generate_password()
+                    agent_user = User.objects.create_user(
+                        username=agent_username,
+                        email=submission.agent_email,
+                        password=agent_password,
+                        first_name=submission.agent_name.split()[0] if submission.agent_name else '',
+                        last_name=' '.join(submission.agent_name.split()[1:]) if submission.agent_name and len(submission.agent_name.split()) > 1 else '',
+                    )
+
+                    # Explicitly fetch the role created by the post_save signal
+                    agent_role = UserRole.objects.get(user=agent_user)
+                    agent_role.role = 'agent'
+                    agent_role.assigned_by = request.user
+                    agent_role.password_changed = False
+                    agent_role.save()
+
+                    # Verify the agent account credentials work
+                    verified = authenticate(username=agent_username, password=agent_password)
+                    if verified is None:
+                        agent_user.set_password(agent_password)
+                        agent_user.save(update_fields=['password'])
+
+                    agent_created = True
+                    created_accounts.append({
+                        'type': 'agent',
+                        'email': submission.agent_email,
+                        'name': submission.agent_name or '',
+                    })
+
+                    # Send credential email to new agent
+                    try:
+                        from .services import EmailService
+                        EmailService.send_account_credentials(
+                            email=submission.agent_email,
+                            username=agent_username,
+                            password=agent_password,
+                            user_type='agent',
+                            name=submission.agent_name or '',
+                            role='Agent',
+                            salary=UserRole.ROLE_SALARIES.get('agent', 0),
+                        )
+                    except Exception:
+                        pass
 
             # Update submission status
             submission.status = 'approved'
@@ -1810,22 +2071,46 @@ class ApproveClientSubmissionView(APIView):
             submission.reviewed_at = timezone.now()
             submission.save()
 
+            # Send status update email
+            try:
+                from .services import EmailService
+                EmailService.send_status_update(submission, 'approved')
+            except Exception:
+                pass
+
             try:
                 from system_logs.utils import log_action, get_client_ip
+                desc = f'Approved client submission from {submission.first_name} {submission.last_name}.'
+                if client_created:
+                    desc += f' Created client ({client_username}) account.'
+                else:
+                    desc += f' Used existing client ({client_username}) account.'
+                if submission.agent_email:
+                    if agent_created:
+                        desc += f' Created agent ({agent_username}) account.'
+                    else:
+                        desc += f' Used existing agent ({agent_username}) account.'
                 log_action(
-                    action='CLIENT_FORM_SUBMITTED',
+                    action='CLIENT_SUBMISSION_APPROVED',
                     user=request.user,
-                    description=f'Approved client submission from {submission.first_name} {submission.last_name}. Created client ({client_username}) and agent ({agent_username}) accounts.',
+                    description=desc,
                     category='submission',
                     ip_address=get_client_ip(request),
                 )
             except Exception:
                 pass
 
+            msg = 'Submission approved.'
+            if client_created or agent_created:
+                msg += ' Login credentials have been sent via email.'
+            if not client_created:
+                msg += ' Existing client account was used.'
+            if submission.agent_email and not agent_created:
+                msg += ' Existing agent account was used.'
+
             return Response({
                 'success': True,
-                'message': 'Submission approved. Client and agent accounts created.',
-                'created_accounts': created_accounts,
+                'message': msg,
             }, status=status.HTTP_200_OK)
 
         except ClientFormSubmission.DoesNotExist:
@@ -1905,6 +2190,14 @@ class EmployeeSubmissionDetailView(APIView):
             submission.reviewed_at = timezone.now()
             submission.save()
 
+            # Send status update email to employee applicant
+            if new_status:
+                try:
+                    from .services import EmailService
+                    EmailService.send_employee_status_update(submission, new_status)
+                except Exception:
+                    pass
+
             try:
                 from system_logs.utils import log_action, get_client_ip
                 log_action(
@@ -1967,11 +2260,27 @@ class HireEmployeeSubmissionView(APIView):
             # Generate username from email or name
             if submission.email:
                 base_username = submission.email.split('@')[0]
+            # Generate username from name
+            first = (submission.first_name or '').strip().lower().replace(' ', '_')
+            last = (submission.last_name or '').strip().lower().replace(' ', '_')
+            if first and last:
+                base_username = f'{first}_{last}'
+            elif first:
+                base_username = first
+            elif last:
+                base_username = last
             else:
-                base_username = f'{submission.first_name}_{submission.last_name}'.lower().replace(' ', '_')
+                base_username = f'employee_{submission.id}'
+            # Remove any non-alphanumeric characters except underscores
+            base_username = ''.join(c for c in base_username if c.isalnum() or c == '_')
             username = base_username
             if User.objects.filter(username=username).exists():
                 username = f'{base_username}_{submission.id}'
+            # If still exists, add a counter
+            counter = 1
+            while User.objects.filter(username=username).exists():
+                username = f'{base_username}_{counter}'
+                counter += 1
 
             password = generate_password()
             user = User.objects.create_user(
@@ -1981,9 +2290,13 @@ class HireEmployeeSubmissionView(APIView):
                 first_name=submission.first_name or '',
                 last_name=submission.last_name or '',
             )
-            user.role.role = role
-            user.role.assigned_by = request.user
-            user.role.password_changed = False
+
+            # Explicitly fetch the role created by the post_save signal
+            # to avoid Django OneToOneField reverse-cache issues
+            user_role = UserRole.objects.get(user=user)
+            user_role.role = role
+            user_role.assigned_by = request.user
+            user_role.password_changed = False
 
             # Set custom salary if provided
             salary = request.data.get('salary')
@@ -1993,22 +2306,34 @@ class HireEmployeeSubmissionView(APIView):
                     custom_salary = Decimal(str(salary))
                     default_salary = Decimal(str(UserRole.ROLE_SALARIES.get(role, 0)))
                     if custom_salary != default_salary:
-                        user.role.custom_salary = custom_salary
+                        user_role.custom_salary = custom_salary
                 except (InvalidOperation, ValueError):
                     pass
 
-            user.role.save()
+            user_role.save()
+
+            # Verify the account credentials work
+            verified = authenticate(username=username, password=password)
+            if verified is None:
+                # Re-set the password to ensure it's correctly hashed
+                user.set_password(password)
+                user.save(update_fields=['password'])
 
             # Send email if available
             if submission.email:
                 try:
                     from .services import EmailService
+                    # Get the role display name and salary for the email
+                    role_display = dict(UserRole.ROLE_CHOICES).get(role, role)
+                    actual_salary = float(user_role.salary)
                     EmailService.send_account_credentials(
                         email=submission.email,
                         username=username,
                         password=password,
                         user_type='employee',
                         name=f'{submission.first_name} {submission.last_name}'.strip(),
+                        role=role_display,
+                        salary=actual_salary,
                     )
                 except Exception:
                     pass
@@ -2018,6 +2343,13 @@ class HireEmployeeSubmissionView(APIView):
             submission.reviewed_by = request.user
             submission.reviewed_at = timezone.now()
             submission.save()
+
+            # Send status update email to employee
+            try:
+                from .services import EmailService
+                EmailService.send_employee_status_update(submission, 'approved')
+            except Exception:
+                pass
 
             try:
                 from system_logs.utils import log_action, get_client_ip
@@ -2034,17 +2366,150 @@ class HireEmployeeSubmissionView(APIView):
 
             return Response({
                 'success': True,
-                'message': 'Employee account created successfully.',
-                'account': {
-                    'username': username,
-                    'password': password,
-                    'email': submission.email or '',
-                    'role': role,
-                    'name': f'{submission.first_name} {submission.last_name}'.strip(),
-                },
+                'message': 'Employee account created successfully. Login credentials have been sent to the employee\'s email.',
             }, status=status.HTTP_201_CREATED)
 
         except EmployeeFormSubmission.DoesNotExist:
             return Response({'error': 'Submission not found'}, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
             return Response({'error': f'Error hiring employee: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class AcceptAssignmentView(APIView):
+    """Coordinator endpoint to accept an assigned submission"""
+    permission_classes = (IsAuthenticated,)
+
+    def post(self, request, pk):
+        if not hasattr(request.user, 'role') or request.user.role.role != 'coordinator':
+            return Response({'error': 'Only coordinators can accept assignments'}, status=status.HTTP_403_FORBIDDEN)
+
+        try:
+            submission = ClientFormSubmission.objects.get(pk=pk)
+            
+            # Check if this submission is assigned to the current coordinator
+            if submission.coordinator != request.user:
+                return Response({'error': 'This submission is not assigned to you'}, status=status.HTTP_403_FORBIDDEN)
+            
+            # Check if already responded
+            if submission.coordinator_response != 'pending':
+                return Response({'error': f'Already responded to this assignment ({submission.coordinator_response})'}, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Accept the assignment
+            submission.coordinator_response = 'accepted'
+            submission.responded_at = timezone.now()
+            submission.save()
+            
+            # Update the CoordinatorAssignment record
+            from .models import CoordinatorAssignment
+            assignment = CoordinatorAssignment.objects.filter(
+                submission=submission,
+                coordinator=request.user,
+                status='pending'
+            ).order_by('-assigned_at').first()
+            if assignment:
+                assignment.status = 'accepted'
+                assignment.responded_at = timezone.now()
+                assignment.save()
+            
+            try:
+                from system_logs.utils import log_action, get_client_ip
+                log_action(
+                    action='ASSIGNMENT_ACCEPTED',
+                    user=request.user,
+                    description=f'Coordinator {request.user.username} accepted assignment for submission from {submission.first_name} {submission.last_name}',
+                    category='submission',
+                    ip_address=get_client_ip(request),
+                )
+            except Exception:
+                pass
+            
+            serializer = ClientFormSubmissionSerializer(submission)
+            return Response({
+                'success': True,
+                'message': 'Assignment accepted successfully. You can now create a project.',
+                'data': serializer.data
+            }, status=status.HTTP_200_OK)
+            
+        except ClientFormSubmission.DoesNotExist:
+            return Response({'error': 'Submission not found'}, status=status.HTTP_404_NOT_FOUND)
+
+
+class RejectAssignmentView(APIView):
+    """Coordinator endpoint to reject an assigned submission"""
+    permission_classes = (IsAuthenticated,)
+
+    def post(self, request, pk):
+        if not hasattr(request.user, 'role') or request.user.role.role != 'coordinator':
+            return Response({'error': 'Only coordinators can reject assignments'}, status=status.HTTP_403_FORBIDDEN)
+
+        rejection_reason = request.data.get('rejection_reason', '').strip()
+        if not rejection_reason:
+            return Response({'error': 'Rejection reason is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            submission = ClientFormSubmission.objects.get(pk=pk)
+            
+            # Check if this submission is assigned to the current coordinator
+            if submission.coordinator != request.user:
+                return Response({'error': 'This submission is not assigned to you'}, status=status.HTTP_403_FORBIDDEN)
+            
+            # Check if already responded
+            if submission.coordinator_response != 'pending':
+                return Response({'error': f'Already responded to this assignment ({submission.coordinator_response})'}, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Update the CoordinatorAssignment record first
+            from .models import CoordinatorAssignment
+            assignment = CoordinatorAssignment.objects.filter(
+                submission=submission,
+                coordinator=request.user,
+                status='pending'
+            ).order_by('-assigned_at').first()
+            if assignment:
+                assignment.status = 'rejected'
+                assignment.rejection_reason = rejection_reason
+                assignment.responded_at = timezone.now()
+                assignment.save()
+            
+            # Reject the assignment on submission
+            submission.coordinator_response = 'rejected'
+            submission.rejection_reason = rejection_reason
+            submission.responded_at = timezone.now()
+            # Reset coordinator and status so admin can reassign
+            old_coordinator = submission.coordinator
+            submission.coordinator = None
+            submission.status = 'pending'  # Reset to pending for reassignment
+            submission.save()
+            
+            # Send email notification to admin(s) about the rejection
+            try:
+                from .services import EmailService
+                EmailService.send_assignment_rejection_to_admin(
+                    submission=submission,
+                    coordinator=old_coordinator,
+                    rejection_reason=rejection_reason
+                )
+            except Exception:
+                pass
+            
+            try:
+                from system_logs.utils import log_action, get_client_ip
+                log_action(
+                    action='ASSIGNMENT_REJECTED',
+                    user=request.user,
+                    description=f'Coordinator {request.user.username} rejected assignment for submission from {submission.first_name} {submission.last_name}. Reason: {rejection_reason}',
+                    category='submission',
+                    ip_address=get_client_ip(request),
+                )
+            except Exception:
+                pass
+            
+            serializer = ClientFormSubmissionSerializer(submission)
+            return Response({
+                'success': True,
+                'message': 'Assignment rejected. Admin has been notified for reassignment.',
+                'data': serializer.data
+            }, status=status.HTTP_200_OK)
+            
+        except ClientFormSubmission.DoesNotExist:
+            return Response({'error': 'Submission not found'}, status=status.HTTP_404_NOT_FOUND)
+

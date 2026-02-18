@@ -188,7 +188,7 @@ SIMPLE_JWT = {
 
 # Email Configuration
 # Using SendGrid API (works even when SMTP ports are blocked)
-EMAIL_BACKEND = 'sgbackend.SendGridBackend'
+EMAIL_BACKEND = 'sendgrid_backend.SendgridBackend'
 SENDGRID_API_KEY = config('SENDGRID_API_KEY', default='')
 DEFAULT_FROM_EMAIL = config('DEFAULT_FROM_EMAIL', default='auditra.auditing.erp@gmail.com')
 
@@ -197,3 +197,6 @@ SENDGRID_SANDBOX_MODE_IN_DEBUG = False  # Set to True for testing without sendin
 
 # Email timeout settings (for SendGrid API calls)
 EMAIL_TIMEOUT = 30  # seconds
+
+# Frontend URL (used for login links in emails)
+FRONTEND_URL = config('FRONTEND_URL', default='http://localhost:5173')
