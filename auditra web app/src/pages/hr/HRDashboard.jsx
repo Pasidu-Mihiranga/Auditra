@@ -101,7 +101,7 @@ export default function HRDashboard() {
             title="Pending Leave Requests"
             value={stats.pendingLeaves}
             icon={BeachAccessIcon}
-            color="#D97706"
+            color="#1E88E5"
             onClick={() => navigate('/dashboard/leave-management')}
           />
         </Grid>
@@ -110,7 +110,7 @@ export default function HRDashboard() {
             title="Payment Slips"
             value={stats.payments}
             icon={PaymentIcon}
-            color="#16A34A"
+            color="#1565C0"
             onClick={() => navigate('/dashboard/payments')}
           />
         </Grid>
@@ -176,7 +176,7 @@ export default function HRDashboard() {
                         <Button
                           size="small"
                           variant="contained"
-                          color="success"
+                          color="primary"
                           startIcon={<Check />}
                           onClick={() => handleLeaveAction(leave.id, 'approved')}
                           sx={{ minWidth: 100 }}
@@ -230,7 +230,7 @@ export default function HRDashboard() {
             },
           }} onClick={() => navigate('/dashboard/leave-management')}>
             <CardContent>
-              <BeachAccessIcon sx={{ fontSize: 40, mb: 1, color: '#D97706' }} />
+              <BeachAccessIcon sx={{ fontSize: 40, mb: 1, color: '#1E88E5' }} />
               <Typography variant="subtitle1" fontWeight={600}>Leave Management</Typography>
               <Typography variant="body2" color="text.secondary">
                 Approve or reject employee leave requests
@@ -254,7 +254,7 @@ export default function HRDashboard() {
             },
           }} onClick={() => navigate('/dashboard/payments')}>
             <CardContent>
-              <PaymentIcon sx={{ fontSize: 40, mb: 1, color: '#16A34A' }} />
+              <PaymentIcon sx={{ fontSize: 40, mb: 1, color: '#1565C0' }} />
               <Typography variant="subtitle1" fontWeight={600}>Payments</Typography>
               <Typography variant="body2" color="text.secondary">
                 Generate and manage employee payment slips

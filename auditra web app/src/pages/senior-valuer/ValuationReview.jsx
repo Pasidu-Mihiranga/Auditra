@@ -192,7 +192,7 @@ export default function ValuationReview() {
                 onClick={() => handleAction(detailDialog.valuation.id, 'rejected')}>
                 Reject
               </Button>
-              <Button color="success" variant="contained" startIcon={<CheckCircle />}
+              <Button color="primary" variant="contained" startIcon={<CheckCircle />}
                 onClick={() => handleAction(detailDialog.valuation.id, 'approved')}>
                 Approve
               </Button>

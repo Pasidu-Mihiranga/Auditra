@@ -20,10 +20,10 @@ const lightPalette = {
   },
   divider: '#E2E8F0',
   success: {
-    main: '#16A34A',
+    main: '#1565C0',
   },
   warning: {
-    main: '#D97706',
+    main: '#1E88E5',
   },
   error: {
     main: '#DC2626',
@@ -74,10 +74,10 @@ const darkPalette = {
   },
   divider: '#334155',
   success: {
-    main: '#22C55E',
+    main: '#42A5F5',
   },
   warning: {
-    main: '#F59E0B',
+    main: '#64B5F6',
   },
   error: {
     main: '#EF4444',

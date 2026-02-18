@@ -14,11 +14,11 @@ import { formatDate, getPriorityColor } from '../../utils/helpers';
 const STATUS_TAB_MAP = { pending: 1, in_progress: 2, completed: 3 };
 
 const PAYMENT_STATUS_CONFIG = {
-  pending: { label: 'Not Requested', color: '#6B7280', bg: '#6B728020' },
-  requested: { label: 'Awaiting Payment', color: '#D97706', bg: '#D9770620' },
+  pending: { label: 'Not Requested', color: '#90CAF9', bg: '#90CAF920' },
+  requested: { label: 'Awaiting Payment', color: '#1E88E5', bg: '#1E88E520' },
   submitted: { label: 'Slip Uploaded', color: '#1565C0', bg: '#1565C020' },
   under_review: { label: 'Under Review', color: '#1565C0', bg: '#1565C020' },
-  approved: { label: 'Completed', color: '#16A34A', bg: '#16A34A20' },
+  approved: { label: 'Completed', color: '#1565C0', bg: '#1565C020' },
   rejected: { label: 'Payment Rejected', color: '#DC2626', bg: '#DC262620' },
 };
 
@@ -100,19 +100,20 @@ export default function ProjectList() {
                   <TableRow key={p.id} hover sx={{ cursor: 'pointer' }} onClick={() => navigate(`/dashboard/projects/${p.id}`)}>
                     <TableCell sx={{ fontWeight: 600 }}>{p.title}</TableCell>
                     <TableCell>
-                      <Chip label={p.priority} size="small" sx={{ bgcolor: `${getPriorityColor(p.priority)}20`, color: getPriorityColor(p.priority), fontWeight: 600, fontSize: 12 }} />
+                      <Chip label={p.priority} size="small" sx={{ bgcolor: `${getPriorityColor(p.priority)}20`, color: getPriorityColor(p.priority), fontWeight: 600, fontSize: 12, border: `1px solid ${getPriorityColor(p.priority)}50` }} />
                     </TableCell>
                     <TableCell><StatusChip status={p.status} label={p.status_display || p.status} /></TableCell>
                     <TableCell>
-                      <Chip 
-                        label={paymentConfig.label} 
-                        size="small" 
-                        sx={{ 
-                          bgcolor: paymentConfig.bg, 
-                          color: paymentConfig.color, 
-                          fontWeight: 600, 
-                          fontSize: 12
-                        }} 
+                      <Chip
+                        label={paymentConfig.label}
+                        size="small"
+                        sx={{
+                          bgcolor: paymentConfig.bg,
+                          color: paymentConfig.color,
+                          fontWeight: 600,
+                          fontSize: 12,
+                          border: `1px solid ${paymentConfig.color}50`,
+                        }}
                       />
                     </TableCell>
                     <TableCell>

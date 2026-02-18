@@ -98,9 +98,9 @@ export default function CreateProject() {
   };
 
   const getEmailHelperColor = (status) => {
-    if (status === 'found') return '#16A34A';
+    if (status === 'found') return '#1565C0';
     if (status === 'not_found') return '#1565C0';
-    if (status === 'mismatch') return '#D97706';
+    if (status === 'mismatch') return '#1E88E5';
     if (status === 'error') return '#DC2626';
     return undefined;
   };

@@ -78,7 +78,7 @@ export default function FieldOfficerDashboard() {
               <Typography variant="h6" fontWeight={600}>Today's Attendance</Typography>
             </Box>
             {isCheckedIn ? (
-              <Chip label="Checked In" color="success" icon={<CheckCircleIcon />} />
+              <Chip label="Checked In" color="primary" icon={<CheckCircleIcon />} />
             ) : (
               <Chip label="Not Checked In" color="default" />
             )}

@@ -211,7 +211,7 @@ export default function AccessorProjects() {
                                       <Button
                                         size="small"
                                         variant="contained"
-                                        color="success"
+                                        color="primary"
                                         onClick={() => handleAcceptValuation(v.id)}
                                         sx={{ minWidth: 80 }}
                                       >
@@ -430,7 +430,7 @@ export default function AccessorProjects() {
             <>
               <Button
                 variant="contained"
-                color="success"
+                color="primary"
                 onClick={() => {
                   handleAcceptValuation(valuationDetailDialog.valuation.id);
                   setValuationDetailDialog({ open: false, valuation: null });

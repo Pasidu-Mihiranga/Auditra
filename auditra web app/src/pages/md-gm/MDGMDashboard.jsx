@@ -46,11 +46,11 @@ export default function MDGMDashboard() {
             onClick={() => navigate('/dashboard/project-approval')} />
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
-          <StatsCard title="Pending Approval" value={stats.pending} icon={PendingActions} color="#D97706"
+          <StatsCard title="Pending Approval" value={stats.pending} icon={PendingActions} color="#1E88E5"
             onClick={() => navigate('/dashboard/project-approval', { state: { filter: 'pending' } })} />
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
-          <StatsCard title="Approved" value={stats.approved} icon={CheckCircle} color="#16A34A"
+          <StatsCard title="Approved" value={stats.approved} icon={CheckCircle} color="#1565C0"
             onClick={() => navigate('/dashboard/project-approval', { state: { filter: 'approved' } })} />
         </Grid>
         <Grid item xs={12} sm={6} md={3}>

@@ -190,12 +190,12 @@ export default function CancellationRequests() {
                       </TableCell>
                       <TableCell><StatusChip status={request.status} /></TableCell>
                       <TableCell sx={{ textAlign: 'center' }}>
-                        {request.status === 'pending' && (
+                        {request.status === 'pending' ? (
                           <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'center' }}>
                             <Button
                               size="small"
                               variant="contained"
-                              color="success"
+                              color="primary"
                               startIcon={<Check />}
                               onClick={() => { setAdminRemarks(''); setApproveDialog(request); }}
                               sx={{ textTransform: 'none', fontWeight: 600, fontSize: '0.75rem' }}
@@ -213,6 +213,8 @@ export default function CancellationRequests() {
                               Reject
                             </Button>
                           </Box>
+                        ) : (
+                          <Typography variant="body2" color="text.secondary">-</Typography>
                         )}
                       </TableCell>
                     </TableRow>
@@ -358,7 +360,7 @@ export default function CancellationRequests() {
 
       {/* Approve Dialog */}
       <Dialog open={!!approveDialog} onClose={() => !processing && setApproveDialog(null)} maxWidth="sm" fullWidth>
-        <DialogTitle sx={{ fontWeight: 700, color: 'success.main' }}>Approve Cancellation</DialogTitle>
+        <DialogTitle sx={{ fontWeight: 700, color: 'primary.main' }}>Approve Cancellation</DialogTitle>
         {approveDialog && (
           <DialogContent>
             <Alert severity="warning" sx={{ mb: 2 }}>
@@ -380,7 +382,7 @@ export default function CancellationRequests() {
         )}
         <DialogActions sx={{ px: 3, pb: 2 }}>
           <Button onClick={() => setApproveDialog(null)} disabled={processing}>Cancel</Button>
-          <Button variant="contained" color="success" onClick={handleApprove} disabled={processing} startIcon={<Check />}>
+          <Button variant="contained" color="primary" onClick={handleApprove} disabled={processing} startIcon={<Check />}>
             {processing ? 'Processing...' : 'Approve'}
           </Button>
         </DialogActions>

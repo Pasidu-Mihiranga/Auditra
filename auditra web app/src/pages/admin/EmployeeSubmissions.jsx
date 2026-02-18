@@ -33,9 +33,9 @@ const STATUS_OPTIONS = [
 ];
 
 const STATUS_CHIP_COLORS = {
-  pending: '#D97706',
+  pending: '#1E88E5',
   rejected: '#DC2626',
-  approved: '#16A34A',
+  approved: '#1565C0',
   reviewed: '#1565C0',
 };
 
@@ -302,7 +302,7 @@ export default function EmployeeSubmissions() {
             icon={PendingIcon}
             title="Pending"
             value={summary.pending}
-            color="#D97706"
+            color="#1E88E5"
           />
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
@@ -318,7 +318,7 @@ export default function EmployeeSubmissions() {
             icon={CheckCircleIcon}
             title="Approved"
             value={summary.approved}
-            color="#16A34A"
+            color="#1565C0"
           />
         </Grid>
       </Grid>
@@ -432,8 +432,9 @@ export default function EmployeeSubmissions() {
                           sx={{
                             fontSize: '0.72rem',
                             fontWeight: 600,
-                            color: '#fff',
-                            bgcolor: STATUS_CHIP_COLORS[sub.status] || '#757575',
+                            color: STATUS_CHIP_COLORS[sub.status] || '#90CAF9',
+                            bgcolor: `${STATUS_CHIP_COLORS[sub.status] || '#90CAF9'}15`,
+                            border: `1px solid ${STATUS_CHIP_COLORS[sub.status] || '#90CAF9'}50`,
                           }}
                         />
                       </TableCell>
@@ -446,7 +447,7 @@ export default function EmployeeSubmissions() {
                             <Chip
                               label="Hired"
                               size="small"
-                              sx={{ fontSize: '0.72rem', fontWeight: 600, color: '#fff', bgcolor: '#16A34A' }}
+                              sx={{ fontSize: '0.72rem', fontWeight: 600, color: '#1565C0', bgcolor: '#1565C015', border: '1px solid #1565C050' }}
                             />
                           ) : (
                             <>

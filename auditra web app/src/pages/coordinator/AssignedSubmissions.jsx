@@ -29,9 +29,9 @@ import authService from '../../services/authService';
 /*  Constants                                                         */
 /* ------------------------------------------------------------------ */
 const RESPONSE_CHIP_COLORS = {
-  pending: { bg: '#FEF3C7', color: '#D97706', label: 'Pending Response' },
-  accepted: { bg: '#D1FAE5', color: '#16A34A', label: 'Accepted' },
-  rejected: { bg: '#FEE2E2', color: '#DC2626', label: 'Rejected' },
+  pending: { bg: '#1E88E515', color: '#1E88E5', label: 'Pending Response' },
+  accepted: { bg: '#1565C015', color: '#1565C0', label: 'Accepted' },
+  rejected: { bg: '#DC262615', color: '#DC2626', label: 'Rejected' },
 };
 
 const formatDate = (dateStr) => {
@@ -288,11 +288,12 @@ export default function AssignedSubmissions() {
                 <Chip 
                   label={pendingCount} 
                   size="small" 
-                  sx={{ 
-                    bgcolor: '#FEF3C7', 
-                    color: '#D97706',
+                  sx={{
+                    bgcolor: '#1E88E515',
+                    color: '#1E88E5',
                     fontWeight: 700,
                     height: 20,
+                    border: '1px solid #1E88E550',
                     '& .MuiChip-label': { px: 1 }
                   }} 
                 />
@@ -422,6 +423,7 @@ export default function AssignedSubmissions() {
                             fontWeight: 600,
                             bgcolor: responseChip.bg,
                             color: responseChip.color,
+                            border: `1px solid ${responseChip.color}50`,
                           }}
                         />
                       </TableCell>
@@ -436,7 +438,7 @@ export default function AssignedSubmissions() {
                             <>
                               <Button
                                 variant="outlined"
-                                color="success"
+                                color="primary"
                                 size="small"
                                 startIcon={<CheckCircleIcon />}
                                 onClick={() => handleAccept(sub)}
@@ -484,16 +486,16 @@ export default function AssignedSubmissions() {
                           )}
                           {projectCreated && (
                             <Chip
-                              icon={<CheckCircleIcon sx={{ color: '#16A34A !important', fontSize: 16 }} />}
+                              icon={<CheckCircleIcon sx={{ color: '#1565C0 !important', fontSize: 16 }} />}
                               label="Project Created"
                               size="small"
                               sx={{
                                 fontSize: '0.72rem',
                                 fontWeight: 600,
                                 bgcolor: 'transparent',
-                                color: '#16A34A',
-                                border: '1px solid #16A34A',
-                                '& .MuiChip-icon': { color: '#16A34A' },
+                                color: '#1565C0',
+                                border: '1px solid #1565C0',
+                                '& .MuiChip-icon': { color: '#1565C0' },
                               }}
                             />
                           )}
@@ -509,9 +511,9 @@ export default function AssignedSubmissions() {
                       >
                         <Collapse in={isExpanded} timeout="auto" unmountOnExit>
                           <Box sx={{ py: 3, px: 3 }}>
-                            <Grid container spacing={4}>
+                            <Box sx={{ display: 'flex', gap: 4, flexWrap: 'nowrap', overflowX: 'auto' }}>
                               {/* Client Information */}
-                              <Grid item xs={12} md={3}>
+                              <Box sx={{ minWidth: 180, flex: '1 1 auto' }}>
                                 <Typography variant="subtitle2" sx={{ fontWeight: 700, color: 'primary.main', mb: 2 }}>
                                   Client Information
                                 </Typography>
@@ -519,19 +521,19 @@ export default function AssignedSubmissions() {
                                 <DetailField label="Email" value={sub.email} />
                                 <DetailField label="Phone" value={sub.phone} />
                                 <DetailField label="NIC" value={sub.nic} />
-                              </Grid>
+                              </Box>
 
                               {/* Company Details */}
-                              <Grid item xs={12} md={3}>
+                              <Box sx={{ minWidth: 150, flex: '1 1 auto' }}>
                                 <Typography variant="subtitle2" sx={{ fontWeight: 700, color: 'primary.main', mb: 2 }}>
                                   Company Details
                                 </Typography>
                                 <DetailField label="Company" value={sub.company_name} />
                                 <DetailField label="Address" value={sub.address} />
-                              </Grid>
+                              </Box>
 
                               {/* Project Details */}
-                              <Grid item xs={12} md={3}>
+                              <Box sx={{ minWidth: 180, flex: '1 1 auto' }}>
                                 <Typography variant="subtitle2" sx={{ fontWeight: 700, color: 'primary.main', mb: 2 }}>
                                   Project Details
                                 </Typography>
@@ -566,52 +568,26 @@ export default function AssignedSubmissions() {
                                     {sub.project_description || '-'}
                                   </Typography>
                                 </Box>
-                              </Grid>
+                              </Box>
 
                               {/* Agent Information */}
-                              <Grid item xs={12} md={3}>
+                              <Box sx={{ minWidth: 180, flex: '1 1 auto' }}>
                                 <Typography variant="subtitle2" sx={{ fontWeight: 700, color: 'primary.main', mb: 2 }}>
                                   Agent Information
                                 </Typography>
-                                <DetailField label="Agent Name" value={sub.agent_name || 'Not provided'} />
-                                <DetailField label="Agent Email" value={sub.agent_email || 'Not provided'} />
-                                <DetailField label="Agent Phone" value={sub.agent_phone || 'Not provided'} />
-                              </Grid>
-                            </Grid>
-
-                            {canRespond && (
-                              <Box sx={{ mt: 3, pt: 3, borderTop: '1px solid', borderColor: 'divider' }}>
-                                <Stack direction="row" spacing={2} justifyContent="center">
-                                  <Button
-                                    variant="contained"
-                                    color="success"
-                                    size="large"
-                                    startIcon={<CheckCircleIcon />}
-                                    onClick={() => handleAccept(sub)}
-                                    disabled={actionLoading}
-                                    sx={{ 
-                                      textTransform: 'none',
-                                      fontWeight: 600,
-                                      px: 4,
-                                      py: 1.5,
-                                    }}
-                                  >
-                                    Accept Assignment & Create Project
-                                  </Button>
-                                  <Button
-                                    variant="outlined"
-                                    color="error"
-                                    size="large"
-                                    startIcon={<CancelIcon />}
-                                    onClick={() => handleOpenRejectDialog(sub)}
-                                    disabled={actionLoading}
-                                    sx={{ textTransform: 'none', fontWeight: 600, px: 4, py: 1.5 }}
-                                  >
-                                    Reject Assignment
-                                  </Button>
-                                </Stack>
+                                {sub.agent_name || sub.agent_email || sub.agent_phone ? (
+                                  <>
+                                    <DetailField label="Agent Name" value={sub.agent_name || 'Not provided'} />
+                                    <DetailField label="Agent Email" value={sub.agent_email || 'Not provided'} />
+                                    <DetailField label="Agent Phone" value={sub.agent_phone || 'Not provided'} />
+                                  </>
+                                ) : (
+                                  <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                                    No agent is assigned to this project
+                                  </Typography>
+                                )}
                               </Box>
-                            )}
+                            </Box>
                           </Box>
                         </Collapse>
                       </TableCell>

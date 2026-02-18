@@ -89,10 +89,10 @@ export default function MyLeaveRequests() {
             <StatsCard title="Total Leave Days" value={stats.total_leave_days || 0} icon={EventNoteIcon} color="#1565C0" />
           </Grid>
           <Grid item xs={12} sm={4}>
-            <StatsCard title="Approved" value={stats.approved_days || 0} icon={CheckCircleIcon} color="#16A34A" />
+            <StatsCard title="Approved" value={stats.approved_days || 0} icon={CheckCircleIcon} color="#1565C0" />
           </Grid>
           <Grid item xs={12} sm={4}>
-            <StatsCard title="Pending" value={stats.pending_days || 0} icon={PendingIcon} color="#D97706" />
+            <StatsCard title="Pending" value={stats.pending_days || 0} icon={PendingIcon} color="#1E88E5" />
           </Grid>
         </Grid>
       )}

@@ -196,7 +196,7 @@ export default function ProjectApproval() {
                 onClick={() => handleAction(detailDialog.project.id, 'rejected')}>
                 Reject
               </Button>
-              <Button color="success" variant="contained" startIcon={<CheckCircle />}
+              <Button color="primary" variant="contained" startIcon={<CheckCircle />}
                 onClick={() => handleAction(detailDialog.project.id, 'approved')}>
                 Approve
               </Button>

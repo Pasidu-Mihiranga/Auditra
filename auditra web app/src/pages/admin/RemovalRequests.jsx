@@ -74,7 +74,7 @@ export default function RemovalRequests() {
                   <TableCell>
                     {r.status === 'pending' && (
                       <Box sx={{ display: 'flex', gap: 0.5 }}>
-                        <Button size="small" variant="contained" color="success" onClick={() => handleAction(r.id, 'approve')}>Approve</Button>
+                        <Button size="small" variant="contained" color="primary" onClick={() => handleAction(r.id, 'approve')}>Approve</Button>
                         <Button size="small" variant="outlined" color="error" onClick={() => handleAction(r.id, 'reject')}>Reject</Button>
                       </Box>
                     )}

@@ -16,15 +16,15 @@ import projectService from '../../services/projectService';
 const PAYMENT_STATUS_CONFIG = {
   pending: { 
     label: 'Not Requested', 
-    color: '#6B7280', 
-    bg: '#6B728020', 
+    color: '#90CAF9',
+    bg: '#90CAF920', 
     icon: HourglassEmpty,
     description: 'Payment has not been requested yet'
   },
-  requested: { 
-    label: 'Payment Requested', 
-    color: '#D97706', 
-    bg: '#D9770620', 
+  requested: {
+    label: 'Payment Requested',
+    color: '#1E88E5',
+    bg: '#1E88E520',
     icon: Warning,
     description: 'Please upload your bank slip to proceed'
   },
@@ -42,10 +42,10 @@ const PAYMENT_STATUS_CONFIG = {
     icon: Visibility,
     description: 'Your payment is being verified'
   },
-  approved: { 
-    label: 'Completed', 
-    color: '#16A34A', 
-    bg: '#16A34A20', 
+  approved: {
+    label: 'Completed',
+    color: '#1565C0',
+    bg: '#1565C020',
     icon: CheckCircle,
     description: 'Payment verified successfully'
   },
@@ -251,6 +251,7 @@ export default function ClientPayments() {
                                   bgcolor: config.bg,
                                   color: config.color,
                                   fontWeight: 600,
+                                  border: `1px solid ${config.color}50`,
                                   '& .MuiChip-icon': { color: config.color }
                                 }}
                               />
@@ -313,6 +314,7 @@ export default function ClientPayments() {
                                   bgcolor: config.bg,
                                   color: config.color,
                                   fontWeight: 600,
+                                  border: `1px solid ${config.color}50`,
                                   '& .MuiChip-icon': { color: config.color }
                                 }}
                               />
@@ -378,6 +380,7 @@ export default function ClientPayments() {
                                   bgcolor: config.bg,
                                   color: config.color,
                                   fontWeight: 600,
+                                  border: `1px solid ${config.color}50`,
                                   '& .MuiChip-icon': { color: config.color }
                                 }}
                               />

@@ -128,7 +128,7 @@ export default function LeaveRequests() {
                     </IconButton>
                     {req.status === 'pending' && (
                       <>
-                        <IconButton size="small" color="success" onClick={() => handleAction(req.id, 'approved')}>
+                        <IconButton size="small" color="primary" onClick={() => handleAction(req.id, 'approved')}>
                           <CheckCircle fontSize="small" />
                         </IconButton>
                         <IconButton size="small" color="error" onClick={() => handleAction(req.id, 'rejected')}>
@@ -164,7 +164,7 @@ export default function LeaveRequests() {
           {detailDialog.request?.status === 'pending' && (
             <>
               <Button color="error" onClick={() => { handleAction(detailDialog.request.id, 'rejected'); setDetailDialog({ open: false, request: null }); }}>Reject</Button>
-              <Button color="success" variant="contained" onClick={() => { handleAction(detailDialog.request.id, 'approved'); setDetailDialog({ open: false, request: null }); }}>Approve</Button>
+              <Button color="primary" variant="contained" onClick={() => { handleAction(detailDialog.request.id, 'approved'); setDetailDialog({ open: false, request: null }); }}>Approve</Button>
             </>
           )}
           <Button onClick={() => setDetailDialog({ open: false, request: null })}>Close</Button>

@@ -9,12 +9,12 @@ export default function StatusChip({ status, label }) {
       label={label || status?.replace(/_/g, ' ')}
       size="small"
       sx={{
-        bgcolor: `${color}20`,
+        bgcolor: `${color}15`,
         color: color,
         fontWeight: 600,
         textTransform: 'capitalize',
         fontSize: 12,
-        border: theme.palette.mode === 'dark' ? `1px solid ${color}40` : 'none',
+        border: `1px solid ${color}50`,
       }}
     />
   );

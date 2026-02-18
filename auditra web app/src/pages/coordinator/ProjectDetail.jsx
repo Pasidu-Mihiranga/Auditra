@@ -287,7 +287,7 @@ export default function ProjectDetail() {
               <Typography variant="h5" sx={{ fontWeight: 700, mb: 1 }}>{project.title}</Typography>
               <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
                 <StatusChip status={project.status} label={project.status_display || project.status} />
-                <Chip label={project.priority} size="small" sx={{ bgcolor: `${getPriorityColor(project.priority)}20`, color: getPriorityColor(project.priority), fontWeight: 600, textTransform: 'capitalize' }} />
+                <Chip label={project.priority} size="small" sx={{ bgcolor: `${getPriorityColor(project.priority)}20`, color: getPriorityColor(project.priority), fontWeight: 600, textTransform: 'capitalize', border: `1px solid ${getPriorityColor(project.priority)}50` }} />
               </Box>
             </Box>
             {isCoordinator && (
@@ -297,7 +297,7 @@ export default function ProjectDetail() {
                     <span>
                       <Button
                         variant="contained"
-                        color="success"
+                        color="primary"
                         startIcon={<PlayArrow />}
                         onClick={handleStartProject}
                         disabled={starting || !canStartProject}
@@ -532,7 +532,7 @@ export default function ProjectDetail() {
                   )}
                   <Button
                     variant="contained"
-                    color="success"
+                    color="primary"
                     startIcon={<CheckCircle />}
                     onClick={handleApprovePayment}
                     disabled={paymentLoading}
@@ -631,24 +631,24 @@ export default function ProjectDetail() {
             <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
               Contact details of the client associated with this project
             </Typography>
-            <Grid container spacing={3}>
-              <Grid item xs={6} sm={3}>
+            <Box sx={{ display: 'flex', gap: 4, flexWrap: 'nowrap', overflowX: 'auto' }}>
+              <Box sx={{ minWidth: 150, flex: '1 1 auto' }}>
                 <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500, mb: 0.5 }}>Full Name</Typography>
                 <Typography sx={{ fontWeight: 600 }}>{project.client_info.name || '-'}</Typography>
-              </Grid>
-              <Grid item xs={6} sm={3}>
+              </Box>
+              <Box sx={{ minWidth: 200, flex: '1 1 auto' }}>
                 <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500, mb: 0.5 }}>Email Address</Typography>
                 <Typography sx={{ fontWeight: 600 }}>{project.client_info.email || '-'}</Typography>
-              </Grid>
-              <Grid item xs={6} sm={3}>
+              </Box>
+              <Box sx={{ minWidth: 120, flex: '1 1 auto' }}>
                 <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500, mb: 0.5 }}>Phone Number</Typography>
                 <Typography sx={{ fontWeight: 600 }}>{project.client_info.phone || '-'}</Typography>
-              </Grid>
-              <Grid item xs={6} sm={3}>
+              </Box>
+              <Box sx={{ minWidth: 150, flex: '1 1 auto' }}>
                 <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500, mb: 0.5 }}>Company</Typography>
                 <Typography sx={{ fontWeight: 600 }}>{project.client_info.company || '-'}</Typography>
-              </Grid>
-            </Grid>
+              </Box>
+            </Box>
           </CardContent>
         </Card>
       )}

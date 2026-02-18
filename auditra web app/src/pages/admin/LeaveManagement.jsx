@@ -89,7 +89,7 @@ export default function LeaveManagement() {
                   <TableCell>
                     {r.status === 'pending' && (
                       <Box sx={{ display: 'flex', gap: 0.5 }}>
-                        <Button size="small" variant="contained" color="success" startIcon={<Check />}
+                        <Button size="small" variant="contained" color="primary" startIcon={<Check />}
                           sx={{ minWidth: 100 }}
                           onClick={() => handleAction(r.id, 'approved')}>Approve</Button>
                         <Button size="small" variant="outlined" color="error" startIcon={<Close />}

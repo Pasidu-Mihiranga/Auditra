@@ -1893,7 +1893,7 @@ class AvailableCoordinatorsView(APIView):
 
 
 class ApproveClientSubmissionView(APIView):
-    """Admin endpoint to approve a client submission and create client + agent accounts"""
+    """Admin endpoint to approve a client submission"""
     permission_classes = (IsAuthenticated,)
 
     def post(self, request, pk):
@@ -1906,164 +1906,24 @@ class ApproveClientSubmissionView(APIView):
             if submission.status == 'approved':
                 return Response({'error': 'This submission has already been approved'}, status=status.HTTP_400_BAD_REQUEST)
 
-            created_accounts = []
-            client_user = None
-            client_username = None
-            client_created = False
-
-            # Check if client account already exists
+            # Validate client email doesn't conflict with existing non-client users
             existing_client = User.objects.filter(email__iexact=submission.email).first()
             if existing_client:
-                if hasattr(existing_client, 'role') and existing_client.role.role == 'client':
-                    # Reuse existing client account
-                    client_user = existing_client
-                    client_username = existing_client.username
-                else:
+                if not (hasattr(existing_client, 'role') and existing_client.role.role == 'client'):
                     existing_role = existing_client.role.role if hasattr(existing_client, 'role') else 'unknown'
                     return Response({
                         'error': f'A user with email {submission.email} already exists with role "{existing_role}". Cannot create client account.'
                     }, status=status.HTTP_400_BAD_REQUEST)
-            else:
-                # Create new client account
-                first = (submission.first_name or '').strip().lower().replace(' ', '_')
-                last = (submission.last_name or '').strip().lower().replace(' ', '_')
-                if first and last:
-                    base_client_username = f'{first}_{last}'
-                elif first:
-                    base_client_username = first
-                elif last:
-                    base_client_username = last
-                else:
-                    base_client_username = f'client_{submission.id}'
-                base_client_username = ''.join(c for c in base_client_username if c.isalnum() or c == '_')
-                client_username = base_client_username
-                if User.objects.filter(username=client_username).exists():
-                    client_username = f'{base_client_username}_{submission.id}'
-                counter = 1
-                while User.objects.filter(username=client_username).exists():
-                    client_username = f'{base_client_username}_{counter}'
-                    counter += 1
-                client_password = generate_password()
-                client_user = User.objects.create_user(
-                    username=client_username,
-                    email=submission.email,
-                    password=client_password,
-                    first_name=submission.first_name or '',
-                    last_name=submission.last_name or '',
-                )
 
-                # Explicitly fetch the role created by the post_save signal
-                client_role = UserRole.objects.get(user=client_user)
-                client_role.role = 'client'
-                client_role.assigned_by = request.user
-                client_role.password_changed = False
-                client_role.save()
-
-                # Verify the client account credentials work
-                verified = authenticate(username=client_username, password=client_password)
-                if verified is None:
-                    client_user.set_password(client_password)
-                    client_user.save(update_fields=['password'])
-
-                client_created = True
-                created_accounts.append({
-                    'type': 'client',
-                    'email': submission.email,
-                    'name': f'{submission.first_name} {submission.last_name}'.strip(),
-                })
-
-                # Send credential email to new client
-                try:
-                    from .services import EmailService
-                    EmailService.send_account_credentials(
-                        email=submission.email,
-                        username=client_username,
-                        password=client_password,
-                        user_type='client',
-                        name=f'{submission.first_name} {submission.last_name}'.strip(),
-                        role='Client',
-                        salary=UserRole.ROLE_SALARIES.get('client', 0),
-                    )
-                except Exception:
-                    pass
-
-            # Handle agent account (only if agent email is provided)
-            agent_user = None
-            agent_username = None
-            agent_created = False
-
+            # Validate agent email doesn't conflict with existing non-agent users
             if submission.agent_email:
                 existing_agent = User.objects.filter(email__iexact=submission.agent_email).first()
                 if existing_agent:
-                    if hasattr(existing_agent, 'role') and existing_agent.role.role == 'agent':
-                        # Reuse existing agent account
-                        agent_user = existing_agent
-                        agent_username = existing_agent.username
-                    else:
+                    if not (hasattr(existing_agent, 'role') and existing_agent.role.role == 'agent'):
                         existing_role = existing_agent.role.role if hasattr(existing_agent, 'role') else 'unknown'
                         return Response({
                             'error': f'A user with email {submission.agent_email} already exists with role "{existing_role}". Cannot create agent account.'
                         }, status=status.HTTP_400_BAD_REQUEST)
-                else:
-                    # Create new agent account
-                    agent_parts = (submission.agent_name or '').strip().lower().split()
-                    if len(agent_parts) >= 2:
-                        base_agent_username = f'{agent_parts[0]}_{agent_parts[-1]}'
-                    elif len(agent_parts) == 1:
-                        base_agent_username = agent_parts[0]
-                    else:
-                        base_agent_username = f'agent_{submission.id}'
-                    base_agent_username = ''.join(c for c in base_agent_username if c.isalnum() or c == '_')
-                    agent_username = base_agent_username
-                    if User.objects.filter(username=agent_username).exists():
-                        agent_username = f'{base_agent_username}_{submission.id}'
-                    counter = 1
-                    while User.objects.filter(username=agent_username).exists():
-                        agent_username = f'{base_agent_username}_{counter}'
-                        counter += 1
-                    agent_password = generate_password()
-                    agent_user = User.objects.create_user(
-                        username=agent_username,
-                        email=submission.agent_email,
-                        password=agent_password,
-                        first_name=submission.agent_name.split()[0] if submission.agent_name else '',
-                        last_name=' '.join(submission.agent_name.split()[1:]) if submission.agent_name and len(submission.agent_name.split()) > 1 else '',
-                    )
-
-                    # Explicitly fetch the role created by the post_save signal
-                    agent_role = UserRole.objects.get(user=agent_user)
-                    agent_role.role = 'agent'
-                    agent_role.assigned_by = request.user
-                    agent_role.password_changed = False
-                    agent_role.save()
-
-                    # Verify the agent account credentials work
-                    verified = authenticate(username=agent_username, password=agent_password)
-                    if verified is None:
-                        agent_user.set_password(agent_password)
-                        agent_user.save(update_fields=['password'])
-
-                    agent_created = True
-                    created_accounts.append({
-                        'type': 'agent',
-                        'email': submission.agent_email,
-                        'name': submission.agent_name or '',
-                    })
-
-                    # Send credential email to new agent
-                    try:
-                        from .services import EmailService
-                        EmailService.send_account_credentials(
-                            email=submission.agent_email,
-                            username=agent_username,
-                            password=agent_password,
-                            user_type='agent',
-                            name=submission.agent_name or '',
-                            role='Agent',
-                            salary=UserRole.ROLE_SALARIES.get('agent', 0),
-                        )
-                    except Exception:
-                        pass
 
             # Update submission status
             submission.status = 'approved'
@@ -2081,15 +1941,7 @@ class ApproveClientSubmissionView(APIView):
             try:
                 from system_logs.utils import log_action, get_client_ip
                 desc = f'Approved client submission from {submission.first_name} {submission.last_name}.'
-                if client_created:
-                    desc += f' Created client ({client_username}) account.'
-                else:
-                    desc += f' Used existing client ({client_username}) account.'
-                if submission.agent_email:
-                    if agent_created:
-                        desc += f' Created agent ({agent_username}) account.'
-                    else:
-                        desc += f' Used existing agent ({agent_username}) account.'
+                desc += ' Client and agent accounts will be created upon project creation.'
                 log_action(
                     action='CLIENT_SUBMISSION_APPROVED',
                     user=request.user,
@@ -2100,17 +1952,9 @@ class ApproveClientSubmissionView(APIView):
             except Exception:
                 pass
 
-            msg = 'Submission approved.'
-            if client_created or agent_created:
-                msg += ' Login credentials have been sent via email.'
-            if not client_created:
-                msg += ' Existing client account was used.'
-            if submission.agent_email and not agent_created:
-                msg += ' Existing agent account was used.'
-
             return Response({
                 'success': True,
-                'message': msg,
+                'message': 'Submission approved successfully. Client and agent accounts will be created when the project is set up.',
             }, status=status.HTTP_200_OK)
 
         except ClientFormSubmission.DoesNotExist:

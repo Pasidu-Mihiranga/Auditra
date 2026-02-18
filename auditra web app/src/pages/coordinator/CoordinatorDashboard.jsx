@@ -51,7 +51,7 @@ export default function CoordinatorDashboard() {
             onClick={() => navigate('/dashboard/projects')} />
         </Grid>
         <Grid item xs={6} sm={3}>
-          <StatsCard title="Pending" value={pending} icon={PendingIcon} color="#D97706"
+          <StatsCard title="Pending" value={pending} icon={PendingIcon} color="#1E88E5"
             onClick={() => navigate('/dashboard/projects', { state: { filter: 'pending' } })} />
         </Grid>
         <Grid item xs={6} sm={3}>
@@ -59,7 +59,7 @@ export default function CoordinatorDashboard() {
             onClick={() => navigate('/dashboard/projects', { state: { filter: 'in_progress' } })} />
         </Grid>
         <Grid item xs={6} sm={3}>
-          <StatsCard title="Completed" value={completed} icon={CheckCircleIcon} color="#16A34A"
+          <StatsCard title="Completed" value={completed} icon={CheckCircleIcon} color="#1565C0"
             onClick={() => navigate('/dashboard/projects', { state: { filter: 'completed' } })} />
         </Grid>
       </Grid>
@@ -75,7 +75,7 @@ export default function CoordinatorDashboard() {
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 1, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
                   {p.description}
                 </Typography>
-                <Typography variant="caption" sx={{ color: p.status === 'completed' ? '#16A34A' : p.status === 'in_progress' ? '#1565C0' : '#D97706', fontWeight: 600, textTransform: 'uppercase' }}>
+                <Typography variant="caption" sx={{ color: p.status === 'completed' ? '#1565C0' : p.status === 'in_progress' ? '#1565C0' : '#1E88E5', fontWeight: 600, textTransform: 'uppercase' }}>
                   {p.status_display || p.status?.replace(/_/g, ' ')}
                 </Typography>
               </CardContent>

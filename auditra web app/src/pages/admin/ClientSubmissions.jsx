@@ -33,21 +33,22 @@ const STATUS_OPTIONS = [
 ];
 
 const STATUS_CHIP_COLORS = {
-  pending: '#D97706',
+  pending: '#1E88E5',
+  reviewed: '#0D47A1',
   rejected: '#DC2626',
-  approved: '#16A34A',
+  approved: '#1565C0',
+  assigned: '#1565C0',
 };
 
 /* Map internal statuses to display statuses */
 const getDisplayStatus = (status) => {
-  if (status === 'reviewed' || status === 'assigned') return 'pending';
   return status;
 };
 
 const COORDINATOR_RESPONSE_CONFIG = {
-  pending: { label: 'Awaiting', color: '#D97706', bg: '#FEF3C7', icon: HourglassIcon },
-  accepted: { label: 'Accepted', color: '#16A34A', bg: '#D1FAE5', icon: CheckCircleIcon },
-  rejected: { label: 'Rejected', color: '#DC2626', bg: '#FEE2E2', icon: CancelIcon },
+  pending: { label: 'Awaiting', color: '#1E88E5', bg: '#1E88E515', icon: HourglassIcon },
+  accepted: { label: 'Accepted', color: '#1565C0', bg: '#1565C015', icon: CheckCircleIcon },
+  rejected: { label: 'Rejected', color: '#DC2626', bg: '#DC262615', icon: CancelIcon },
 };
 
 const formatDate = (dateStr) => {
@@ -219,6 +220,23 @@ export default function ClientSubmissions() {
   };
 
   /* ================================================================ */
+  /*  Review submission (mark as reviewed)                            */
+  /* ================================================================ */
+
+  const handleReviewSubmission = async (e, sub) => {
+    e.stopPropagation();
+    try {
+      await axiosClient.patch(`/auth/client-submissions/${sub.id}/`, {
+        status: 'reviewed',
+      });
+      showSnackbar('Submission marked as reviewed.');
+      fetchSubmissions();
+    } catch (err) {
+      showSnackbar(err.response?.data?.error || 'Failed to review submission', 'error');
+    }
+  };
+
+  /* ================================================================ */
   /*  Accept submission (approve directly)                            */
   /* ================================================================ */
 
@@ -325,7 +343,7 @@ export default function ClientSubmissions() {
             icon={PendingIcon}
             title="Pending"
             value={summary.pending}
-            color="#D97706"
+            color="#1E88E5"
           />
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
@@ -341,7 +359,7 @@ export default function ClientSubmissions() {
             icon={CheckCircleIcon}
             title="Approved"
             value={summary.approved}
-            color="#16A34A"
+            color="#1565C0"
           />
         </Grid>
       </Grid>
@@ -464,8 +482,9 @@ export default function ClientSubmissions() {
                               sx={{
                                 fontSize: '0.72rem',
                                 fontWeight: 600,
-                                color: '#fff',
-                                bgcolor: STATUS_CHIP_COLORS[displayStatus] || '#757575',
+                                color: STATUS_CHIP_COLORS[displayStatus] || '#90CAF9',
+                                bgcolor: `${STATUS_CHIP_COLORS[displayStatus] || '#90CAF9'}15`,
+                                border: `1px solid ${STATUS_CHIP_COLORS[displayStatus] || '#90CAF9'}50`,
                               }}
                             />
                           );
@@ -486,8 +505,9 @@ export default function ClientSubmissions() {
                                   fontSize: '0.65rem',
                                   fontWeight: 600,
                                   height: 20,
-                                  bgcolor: COORDINATOR_RESPONSE_CONFIG[sub.coordinator_response]?.bg || '#F3F4F6',
-                                  color: COORDINATOR_RESPONSE_CONFIG[sub.coordinator_response]?.color || '#6B7280',
+                                  bgcolor: COORDINATOR_RESPONSE_CONFIG[sub.coordinator_response]?.bg || '#90CAF915',
+                                  color: COORDINATOR_RESPONSE_CONFIG[sub.coordinator_response]?.color || '#90CAF9',
+                                  border: `1px solid ${COORDINATOR_RESPONSE_CONFIG[sub.coordinator_response]?.color || '#90CAF9'}50`,
                                 }}
                               />
                             )}
@@ -499,8 +519,9 @@ export default function ClientSubmissions() {
                             sx={{
                               fontSize: '0.7rem',
                               fontWeight: 600,
-                              bgcolor: COORDINATOR_RESPONSE_CONFIG.rejected?.bg || '#FEE2E2',
+                              bgcolor: COORDINATOR_RESPONSE_CONFIG.rejected?.bg || 'transparent',
                               color: COORDINATOR_RESPONSE_CONFIG.rejected?.color || '#DC2626',
+                              border: `1px solid ${COORDINATOR_RESPONSE_CONFIG.rejected?.color || '#DC2626'}50`,
                             }}
                           />
                         ) : (
@@ -522,7 +543,7 @@ export default function ClientSubmissions() {
                                   <Button
                                     size="small"
                                     variant="contained"
-                                    color="warning"
+                                    color="primary"
                                     startIcon={<ReplayIcon />}
                                     onClick={(e) => handleOpenAssignDialog(e, sub)}
                                     sx={{ textTransform: 'none', fontWeight: 600, fontSize: '0.75rem', whiteSpace: 'nowrap' }}
@@ -538,7 +559,7 @@ export default function ClientSubmissions() {
                                 <Button
                                   size="small"
                                   variant="contained"
-                                  color="success"
+                                  color="primary"
                                   disabled
                                   sx={{ textTransform: 'none', fontSize: '0.75rem', fontWeight: 600 }}
                                 >
@@ -560,64 +581,41 @@ export default function ClientSubmissions() {
                             );
                           }
 
-                          // Prevent assigning coordinator to admin-rejected submissions
+                          /* ---- Rejected: Show Rejected label ---- */
                           if (displayStatus === 'rejected') {
+                            return (
+                              <Typography
+                                variant="body2"
+                                sx={{ fontWeight: 600, color: '#DC2626', fontSize: '0.8rem' }}
+                              >
+                                Rejected
+                              </Typography>
+                            );
+                          }
+
+                          /* ---- Assigned: Show Assigned (disabled) ---- */
+                          if (displayStatus === 'assigned') {
                             return (
                               <Button
                                 size="small"
-                                variant="outlined"
-                                color="error"
-                                startIcon={<CancelIcon />}
-                                onClick={(e) => handleCancelProject(e, sub)}
-                                sx={{ textTransform: 'none', fontWeight: 600, fontSize: '0.75rem', whiteSpace: 'nowrap' }}
+                                variant="contained"
+                                color="primary"
+                                disabled
+                                sx={{ textTransform: 'none', fontSize: '0.75rem', fontWeight: 600 }}
                               >
-                                Cancel Project
+                                Assigned
                               </Button>
                             );
                           }
 
-                          /* ---- Rejected: Cancel Project ---- */
-                          if (displayStatus === 'rejected') {
-                            return (
-                              <Button
-                                size="small"
-                                variant="outlined"
-                                color="error"
-                                startIcon={<CancelIcon />}
-                                onClick={(e) => handleCancelProject(e, sub)}
-                                sx={{ textTransform: 'none', fontWeight: 600, fontSize: '0.75rem', whiteSpace: 'nowrap' }}
-                              >
-                                Cancel Project
-                              </Button>
-                            );
-                          }
-
-                          /* ---- Pending: Review → Accept / Reject ---- */
-                          /* ---- Coordinator Rejected: Show Re-assign ---- */
-                          if (sub.coordinator_response === 'rejected') {
-                            return (
-                              <Tooltip title="Re-assign a new coordinator">
-                                <Button
-                                  size="small"
-                                  variant="outlined"
-                                  color="warning"
-                                  startIcon={<ReplayIcon />}
-                                  onClick={(e) => handleOpenAssignDialog(e, sub)}
-                                  sx={{ textTransform: 'none', fontWeight: 600, fontSize: '0.75rem', whiteSpace: 'nowrap' }}
-                                >
-                                  Re-assign
-                                </Button>
-                              </Tooltip>
-                            );
-                          }
-
-                          if (reviewingId === sub.id) {
+                          /* ---- Reviewed: Show Accept / Reject ---- */
+                          if (displayStatus === 'reviewed') {
                             return (
                               <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', justifyContent: 'center' }}>
                                 <Button
                                   size="small"
                                   variant="contained"
-                                  color="success"
+                                  color="primary"
                                   startIcon={<CheckCircleIcon />}
                                   disabled={approveLoading}
                                   onClick={(e) => handleAcceptReview(e, sub)}
@@ -639,12 +637,31 @@ export default function ClientSubmissions() {
                             );
                           }
 
+                          /* ---- Coordinator Rejected: Show Re-assign ---- */
+                          if (sub.coordinator_response === 'rejected') {
+                            return (
+                              <Tooltip title="Re-assign a new coordinator">
+                                <Button
+                                  size="small"
+                                  variant="outlined"
+                                  color="primary"
+                                  startIcon={<ReplayIcon />}
+                                  onClick={(e) => handleOpenAssignDialog(e, sub)}
+                                  sx={{ textTransform: 'none', fontWeight: 600, fontSize: '0.75rem', whiteSpace: 'nowrap' }}
+                                >
+                                  Re-assign
+                                </Button>
+                              </Tooltip>
+                            );
+                          }
+
+                          /* ---- Pending: Show Review button ---- */
                           return (
                             <Button
                               size="small"
                               variant="outlined"
                               color="primary"
-                              onClick={(e) => { e.stopPropagation(); setReviewingId(sub.id); }}
+                              onClick={(e) => handleReviewSubmission(e, sub)}
                               sx={{ textTransform: 'none', fontWeight: 600, fontSize: '0.75rem' }}
                             >
                               Review
@@ -693,9 +710,9 @@ export default function ClientSubmissions() {
                               </Alert>
                             )}
 
-                            <Grid container spacing={4}>
+                            <Box sx={{ display: 'flex', gap: 4, flexWrap: 'nowrap', overflowX: 'auto' }}>
                               {/* Client Information */}
-                              <Grid item xs={12} md={3}>
+                              <Box sx={{ minWidth: 180, flex: '1 1 auto' }}>
                                 <Typography variant="subtitle2" sx={{ fontWeight: 700, color: 'primary.main', mb: 2 }}>
                                   Client Information
                                 </Typography>
@@ -703,19 +720,19 @@ export default function ClientSubmissions() {
                                 <DetailField label="Email" value={sub.email} />
                                 <DetailField label="Phone" value={sub.phone} />
                                 <DetailField label="NIC" value={sub.nic} />
-                              </Grid>
+                              </Box>
 
                               {/* Company & Address */}
-                              <Grid item xs={12} md={3}>
+                              <Box sx={{ minWidth: 150, flex: '1 1 auto' }}>
                                 <Typography variant="subtitle2" sx={{ fontWeight: 700, color: 'primary.main', mb: 2 }}>
                                   Company Details
                                 </Typography>
                                 <DetailField label="Company" value={sub.company_name} />
                                 <DetailField label="Address" value={sub.address} />
-                              </Grid>
+                              </Box>
 
                               {/* Project Information */}
-                              <Grid item xs={12} md={3}>
+                              <Box sx={{ minWidth: 180, flex: '1 1 auto' }}>
                                 <Typography variant="subtitle2" sx={{ fontWeight: 700, color: 'primary.main', mb: 2 }}>
                                   Project Details
                                 </Typography>
@@ -723,10 +740,10 @@ export default function ClientSubmissions() {
                                 <Box sx={{ mb: 1.5 }}>
                                   <Typography
                                     variant="caption"
-                                    sx={{ 
-                                      color: 'text.secondary', 
-                                      fontWeight: 600, 
-                                      display: 'block', 
+                                    sx={{
+                                      color: 'text.secondary',
+                                      fontWeight: 600,
+                                      display: 'block',
                                       mb: 0.5,
                                       textTransform: 'uppercase',
                                       fontSize: '0.65rem',
@@ -735,9 +752,9 @@ export default function ClientSubmissions() {
                                   >
                                     Description
                                   </Typography>
-                                  <Typography 
-                                    variant="body2" 
-                                    sx={{ 
+                                  <Typography
+                                    variant="body2"
+                                    sx={{
                                       fontWeight: 500,
                                       bgcolor: 'background.paper',
                                       p: 1,
@@ -752,18 +769,26 @@ export default function ClientSubmissions() {
                                     {sub.project_description || '-'}
                                   </Typography>
                                 </Box>
-                              </Grid>
+                              </Box>
 
                               {/* Agent Information */}
-                              <Grid item xs={12} md={3}>
+                              <Box sx={{ minWidth: 180, flex: '1 1 auto' }}>
                                 <Typography variant="subtitle2" sx={{ fontWeight: 700, color: 'primary.main', mb: 2 }}>
                                   Agent Information
                                 </Typography>
-                                <DetailField label="Agent Name" value={sub.agent_name || 'Not provided'} />
-                                <DetailField label="Agent Email" value={sub.agent_email || 'Not provided'} />
-                                <DetailField label="Agent Phone" value={sub.agent_phone || 'Not provided'} />
-                              </Grid>
-                            </Grid>
+                                {sub.agent_name || sub.agent_email || sub.agent_phone ? (
+                                  <>
+                                    <DetailField label="Agent Name" value={sub.agent_name || 'Not provided'} />
+                                    <DetailField label="Agent Email" value={sub.agent_email || 'Not provided'} />
+                                    <DetailField label="Agent Phone" value={sub.agent_phone || 'Not provided'} />
+                                  </>
+                                ) : (
+                                  <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                                    No agent is assigned to this project
+                                  </Typography>
+                                )}
+                              </Box>
+                            </Box>
 
                             {/* Action Button for rejected */}
                             {sub.coordinator_response === 'rejected' && (
@@ -824,6 +849,16 @@ export default function ClientSubmissions() {
                                           Assigned: {formatDate(assignment.assigned_at)}
                                           {assignment.assigned_by_name && ` by ${assignment.assigned_by_name}`}
                                         </Typography>
+                                        {assignment.status === 'rejected' && assignment.rejection_reason && (
+                                          <Box sx={{ mt: 0.5 }}>
+                                            <Typography variant="caption" sx={{ fontWeight: 600, color: 'error.main' }}>
+                                              Reason for Rejection:
+                                            </Typography>
+                                            <Typography variant="caption" sx={{ color: 'error.main', ml: 0.5 }}>
+                                              {assignment.rejection_reason}
+                                            </Typography>
+                                          </Box>
+                                        )}
                                       </Box>
                                       <Chip
                                         label={assignment.status_display}
@@ -831,30 +866,18 @@ export default function ClientSubmissions() {
                                         sx={{
                                           fontSize: '0.7rem',
                                           fontWeight: 600,
-                                          bgcolor: 
-                                            assignment.status === 'accepted' ? '#D1FAE5' :
-                                            assignment.status === 'rejected' ? '#FEE2E2' : '#FEF3C7',
-                                          color: 
-                                            assignment.status === 'accepted' ? '#16A34A' :
-                                            assignment.status === 'rejected' ? '#DC2626' : '#D97706',
+                                          bgcolor:
+                                            assignment.status === 'accepted' ? '#1565C015' :
+                                            assignment.status === 'rejected' ? '#DC262615' : '#1E88E515',
+                                          color:
+                                            assignment.status === 'accepted' ? '#1565C0' :
+                                            assignment.status === 'rejected' ? '#DC2626' : '#1E88E5',
+                                          border: `1px solid ${
+                                            assignment.status === 'accepted' ? '#1565C0' :
+                                            assignment.status === 'rejected' ? '#DC2626' : '#1E88E5'
+                                          }50`,
                                         }}
                                       />
-                                      {assignment.status === 'rejected' && assignment.rejection_reason && (
-                                        <Tooltip title={assignment.rejection_reason}>
-                                          <Typography 
-                                            variant="caption" 
-                                            sx={{ 
-                                              color: 'error.main',
-                                              maxWidth: 200,
-                                              overflow: 'hidden',
-                                              textOverflow: 'ellipsis',
-                                              whiteSpace: 'nowrap'
-                                            }}
-                                          >
-                                            {assignment.rejection_reason}
-                                          </Typography>
-                                        </Tooltip>
-                                      )}
                                     </Box>
                                   ))}
                                 </Box>

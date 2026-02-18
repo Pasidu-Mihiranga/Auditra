@@ -98,13 +98,13 @@ export default function MyAttendance() {
               </Button>
             )}
             {today?.flags?.can_leave_early && (
-              <Button variant="outlined" color="warning" startIcon={<Logout />} disabled={actionLoading}
+              <Button variant="outlined" color="primary" startIcon={<Logout />} disabled={actionLoading}
                 onClick={() => handleAction(attendanceService.leaveEarly, 'Leave early')}>
                 Leave Early
               </Button>
             )}
             {today?.flags?.can_checkout && (
-              <Button variant="contained" color="warning" startIcon={<Logout />} disabled={actionLoading}
+              <Button variant="contained" color="primary" startIcon={<Logout />} disabled={actionLoading}
                 onClick={() => handleAction(attendanceService.checkout, 'Check-out')}>
                 Check Out
               </Button>

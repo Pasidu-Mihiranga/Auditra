@@ -90,12 +90,12 @@ const getCategoryColor = (cat) => {
     auth: '#1565C0',
     user: '#1565C0',
     project: '#1565C0',
-    payment: '#16A34A',
-    leave: '#D97706',
+    payment: '#1565C0',
+    leave: '#1E88E5',
     removal: '#DC2626',
     submission: '#1565C0',
     attendance: '#1565C0',
-    valuation: '#D97706',
+    valuation: '#1E88E5',
     system: '#DC2626',
   };
   return colorMap[cat] || '#64748B';
@@ -408,7 +408,7 @@ export default function SystemLogs() {
           <Chip
             icon={verifyResult.is_valid ? <VerifiedUserIcon /> : <WarningAmberIcon />}
             label={verifyResult.is_valid ? `Chain Valid (${verifyResult.total_blocks || totalCount} blocks)` : 'Chain Tampered'}
-            color={verifyResult.is_valid ? 'success' : 'error'}
+            color={verifyResult.is_valid ? 'primary' : 'error'}
             variant="outlined"
             size="small"
           />

@@ -46,11 +46,11 @@ export default function AccessorDashboard() {
             onClick={() => navigate('/dashboard/my-projects')} />
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
-          <StatsCard title="In Progress" value={stats.inProgress} icon={PendingActions} color="#D97706"
+          <StatsCard title="In Progress" value={stats.inProgress} icon={PendingActions} color="#1E88E5"
             onClick={() => navigate('/dashboard/my-projects', { state: { filter: 'in_progress' } })} />
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
-          <StatsCard title="Completed" value={stats.completed} icon={CheckCircle} color="#16A34A"
+          <StatsCard title="Completed" value={stats.completed} icon={CheckCircle} color="#1565C0"
             onClick={() => navigate('/dashboard/my-projects', { state: { filter: 'completed' } })} />
         </Grid>
         <Grid item xs={12} sm={6} md={3}>

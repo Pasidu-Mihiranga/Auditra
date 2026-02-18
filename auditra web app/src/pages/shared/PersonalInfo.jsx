@@ -34,7 +34,7 @@ export default function PersonalInfo() {
                 {user?.first_name && user?.last_name ? `${user.first_name} ${user.last_name}` : user?.username}
               </Typography>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>{user?.email}</Typography>
-              <Chip label={getRoleLabel(role)} sx={{ bgcolor: (t) => `${t.palette.primary.main}14`, color: 'primary.main', fontWeight: 600 }} />
+              <Chip label={getRoleLabel(role)} sx={{ bgcolor: (t) => `${t.palette.primary.main}14`, color: 'primary.main', fontWeight: 600, border: (t) => `1px solid ${t.palette.primary.main}50` }} />
             </Box>
           </Box>
           <Divider sx={{ mb: 3 }} />
