@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Box, Typography, Grid } from '@mui/material';
+import { Box, Typography, Grid, Alert } from '@mui/material';
 import { RateReview, PendingActions, CheckCircle, Assignment } from '@mui/icons-material';
 import StatsCard from '../../components/StatsCard';
 import LoadingSpinner from '../../components/LoadingSpinner';
@@ -9,6 +9,7 @@ import valuationService from '../../services/valuationService';
 export default function SeniorValuerDashboard() {
   const [stats, setStats] = useState({ total: 0, pending: 0, approved: 0, rejected: 0 });
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -22,8 +23,8 @@ export default function SeniorValuerDashboard() {
           approved: valuations.filter(v => v.status === 'approved').length,
           rejected: valuations.filter(v => v.status === 'rejected').length,
         });
-      } catch (err) {
-        console.error('Failed to fetch stats:', err);
+      } catch {
+        setError('Failed to load dashboard data');
       } finally {
         setLoading(false);
       }
@@ -35,11 +36,8 @@ export default function SeniorValuerDashboard() {
 
   return (
     <Box>
-      <Typography variant="h5" sx={{ fontWeight: 700 }} gutterBottom>Senior Valuer Dashboard</Typography>
-      <Typography variant="body1" color="text.secondary" sx={{ mb: 4 }}>
-        Welcome back! Here is an overview of valuations requiring your review.
-      </Typography>
-
+      <Typography variant="h5" sx={{ fontWeight: 700, mb: 3 }}>Senior Valuer Dashboard</Typography>
+      {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
       <Grid container spacing={3}>
         <Grid item xs={12} sm={6} md={3}>
           <StatsCard title="Total Valuations" value={stats.total} icon={Assignment} color="#1565C0"

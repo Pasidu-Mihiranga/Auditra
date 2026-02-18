@@ -325,10 +325,10 @@ class FieldOfficerProjectCard extends StatelessWidget {
 
   Widget _buildPriorityBadge(String priority) {
     Color color;
-    
+
     switch (priority.toLowerCase()) {
       case 'high':
-        color = const Color(0xFFD32F2F);
+        color = const Color(0xFF0D47A1);
         break;
       case 'low':
         color = const Color(0xFF388E3C);
@@ -337,21 +337,32 @@ class FieldOfficerProjectCard extends StatelessWidget {
       default:
         color = const Color(0xFFF57C00);
     }
-    
-    return Row(
-      children: [
-        Icon(Icons.flag_rounded, size: 14, color: color),
-        const SizedBox(width: 4),
-        Text(
-          priority.toUpperCase(),
-          style: TextStyle(
-            color: color,
-            fontSize: 11,
-            fontWeight: FontWeight.bold,
-            letterSpacing: 0.5,
+
+    return Container(
+      width: 90,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withOpacity(0.3)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.flag_rounded, size: 14, color: color),
+          const SizedBox(width: 4),
+          Text(
+            priority.toUpperCase(),
+            style: TextStyle(
+              color: color,
+              fontSize: 11,
+              fontWeight: FontWeight.bold,
+              letterSpacing: 0.5,
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 

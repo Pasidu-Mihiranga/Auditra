@@ -29,8 +29,8 @@ class _ProjectDetailsScreenState extends State<ProjectDetailsScreen> {
   }
 
   String _formatPriorityLabel(String priority) {
-    if (priority.isEmpty) return 'Medium';
-    return priority[0].toUpperCase() + priority.substring(1).toLowerCase();
+    if (priority.isEmpty) return 'MEDIUM';
+    return priority.toUpperCase();
   }
 
   Widget _buildModernInfoCard({

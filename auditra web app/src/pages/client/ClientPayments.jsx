@@ -130,11 +130,15 @@ export default function ClientPayments() {
 
   const handleUpload = async () => {
     if (!selectedFile || !selectedPayment) return;
-    
+
     setUploading(true);
     setError('');
     try {
-      await projectService.uploadBankSlip(selectedPayment.project_id, selectedFile);
+      await Promise.all([
+        projectService.uploadBankSlip(selectedPayment.project_id, selectedFile),
+        new Promise(resolve => setTimeout(resolve, 2000)),
+      ]);
+      setUploading(false);
       setSuccess('Bank slip uploaded successfully! Waiting for coordinator review.');
       setUploadDialog(false);
       setSelectedPayment(null);
@@ -142,7 +146,6 @@ export default function ClientPayments() {
       fetchPayments();
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to upload bank slip');
-    } finally {
       setUploading(false);
     }
   };

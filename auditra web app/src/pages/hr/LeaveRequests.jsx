@@ -120,7 +120,7 @@ export default function LeaveRequests() {
                     {req.reason || '-'}
                   </TableCell>
                   <TableCell>
-                    <Chip label={req.status} color={getStatusColor(req.status)} size="small" />
+                    <Chip label={req.status} color={getStatusColor(req.status)} size="small" sx={{ width: 110, justifyContent: 'center', textTransform: 'capitalize' }} />
                   </TableCell>
                   <TableCell align="right">
                     <IconButton size="small" onClick={() => setDetailDialog({ open: true, request: req })}>
@@ -163,8 +163,8 @@ export default function LeaveRequests() {
         <DialogActions>
           {detailDialog.request?.status === 'pending' && (
             <>
-              <Button color="error" onClick={() => { handleAction(detailDialog.request.id, 'rejected'); setDetailDialog({ open: false, request: null }); }}>Reject</Button>
-              <Button color="primary" variant="contained" onClick={() => { handleAction(detailDialog.request.id, 'approved'); setDetailDialog({ open: false, request: null }); }}>Approve</Button>
+              <Button color="error" sx={{ width: 110 }} onClick={() => { handleAction(detailDialog.request.id, 'rejected'); setDetailDialog({ open: false, request: null }); }}>Reject</Button>
+              <Button color="primary" variant="contained" sx={{ width: 110 }} onClick={() => { handleAction(detailDialog.request.id, 'approved'); setDetailDialog({ open: false, request: null }); }}>Approve</Button>
             </>
           )}
           <Button onClick={() => setDetailDialog({ open: false, request: null })}>Close</Button>

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Box, Typography, Card, CardContent, Grid, Chip, Alert, TextField, InputAdornment, Tabs, Tab,
 } from '@mui/material';
@@ -7,7 +7,7 @@ import { Search, Folder } from '@mui/icons-material';
 import projectService from '../../services/projectService';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import StatusChip from '../../components/StatusChip';
-import { formatDate, getPriorityColor } from '../../utils/helpers';
+import { formatDate, getPriorityColor, capitalize } from '../../utils/helpers';
 
 const STATUS_TAB_MAP = { pending: 1, in_progress: 2, completed: 3 };
 
@@ -17,6 +17,7 @@ export default function MyProjects() {
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
   const location = useLocation();
+  const navigate = useNavigate();
   const [tab, setTab] = useState(STATUS_TAB_MAP[location.state?.filter] || 0);
 
   useEffect(() => {
@@ -65,11 +66,11 @@ export default function MyProjects() {
         <Grid container spacing={2}>
           {filtered.map((p) => (
             <Grid item xs={12} sm={6} md={4} key={p.id}>
-              <Card sx={{ height: '100%', '&:hover': { boxShadow: (t) => t.palette.mode === 'dark' ? '0 8px 24px rgba(0,0,0,0.4)' : '0 8px 24px rgba(0,0,0,0.12)' }, transition: '0.2s' }}>
+              <Card sx={{ height: '100%', cursor: 'pointer', '&:hover': { boxShadow: (t) => t.palette.mode === 'dark' ? '0 8px 24px rgba(0,0,0,0.4)' : '0 8px 24px rgba(0,0,0,0.12)' }, transition: '0.2s' }} onClick={() => navigate(`/dashboard/projects/${p.id}`)}>
                 <CardContent>
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1 }}>
                     <Folder color="primary" />
-                    <Chip label={p.priority} size="small" sx={{ bgcolor: `${getPriorityColor(p.priority)}20`, color: getPriorityColor(p.priority), fontWeight: 600, fontSize: 11, border: `1px solid ${getPriorityColor(p.priority)}50` }} />
+                    <Chip label={capitalize(p.priority)} size="small" sx={{ bgcolor: `${getPriorityColor(p.priority)}20`, color: getPriorityColor(p.priority), fontWeight: 600, fontSize: 11, width: 90, justifyContent: 'center', border: `1px solid ${getPriorityColor(p.priority)}50` }} />
                   </Box>
                   <Typography variant="h6" sx={{ fontWeight: 600, mb: 0.5 }}>{p.title}</Typography>
                   <Typography variant="body2" color="text.secondary" sx={{ mb: 2, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>

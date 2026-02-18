@@ -193,6 +193,7 @@ export default function createAppTheme(mode = 'light') {
         styleOverrides: {
           root: {
             fontWeight: 500,
+            borderRadius: 8,
           },
         },
       },

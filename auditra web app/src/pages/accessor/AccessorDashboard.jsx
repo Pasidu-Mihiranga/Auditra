@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Box, Typography, Grid } from '@mui/material';
+import { Box, Typography, Grid, Alert } from '@mui/material';
 import { Assignment, PendingActions, CheckCircle, Assessment } from '@mui/icons-material';
 import StatsCard from '../../components/StatsCard';
 import LoadingSpinner from '../../components/LoadingSpinner';
@@ -9,6 +9,7 @@ import projectService from '../../services/projectService';
 export default function AccessorDashboard() {
   const [stats, setStats] = useState({ total: 0, pending: 0, completed: 0, inProgress: 0 });
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -22,8 +23,8 @@ export default function AccessorDashboard() {
           completed: projects.filter(p => p.status === 'completed').length,
           inProgress: projects.filter(p => p.status === 'active' || p.status === 'in_progress').length,
         });
-      } catch (err) {
-        console.error('Failed to fetch stats:', err);
+      } catch {
+        setError('Failed to load dashboard data');
       } finally {
         setLoading(false);
       }
@@ -35,11 +36,8 @@ export default function AccessorDashboard() {
 
   return (
     <Box>
-      <Typography variant="h5" sx={{ fontWeight: 700 }} gutterBottom>Accessor Dashboard</Typography>
-      <Typography variant="body1" color="text.secondary" sx={{ mb: 4 }}>
-        Welcome back! Here is an overview of your assigned projects.
-      </Typography>
-
+      <Typography variant="h5" sx={{ fontWeight: 700, mb: 3 }}>Assessor Dashboard</Typography>
+      {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
       <Grid container spacing={3}>
         <Grid item xs={12} sm={6} md={3}>
           <StatsCard title="Total Projects" value={stats.total} icon={Assignment} color="#1565C0"

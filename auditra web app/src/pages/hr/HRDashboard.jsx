@@ -179,7 +179,7 @@ export default function HRDashboard() {
                           color="primary"
                           startIcon={<Check />}
                           onClick={() => handleLeaveAction(leave.id, 'approved')}
-                          sx={{ minWidth: 100 }}
+                          sx={{ width: 110 }}
                         >
                           Approve
                         </Button>
@@ -189,7 +189,7 @@ export default function HRDashboard() {
                           color="error"
                           startIcon={<Close />}
                           onClick={() => handleLeaveAction(leave.id, 'rejected')}
-                          sx={{ minWidth: 100 }}
+                          sx={{ width: 110 }}
                         >
                           Reject
                         </Button>

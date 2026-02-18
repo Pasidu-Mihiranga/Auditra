@@ -381,8 +381,8 @@ export default function CancellationRequests() {
           </DialogContent>
         )}
         <DialogActions sx={{ px: 3, pb: 2 }}>
-          <Button onClick={() => setApproveDialog(null)} disabled={processing}>Cancel</Button>
-          <Button variant="contained" color="primary" onClick={handleApprove} disabled={processing} startIcon={<Check />}>
+          <Button onClick={() => setApproveDialog(null)} disabled={processing} sx={{ width: 110 }}>Cancel</Button>
+          <Button variant="contained" color="primary" onClick={handleApprove} disabled={processing} startIcon={<Check />} sx={{ width: 110 }}>
             {processing ? 'Processing...' : 'Approve'}
           </Button>
         </DialogActions>
@@ -413,8 +413,8 @@ export default function CancellationRequests() {
           </DialogContent>
         )}
         <DialogActions sx={{ px: 3, pb: 2 }}>
-          <Button onClick={() => setRejectDialog(null)} disabled={processing}>Cancel</Button>
-          <Button variant="contained" color="error" onClick={handleReject} disabled={processing || !adminRemarks.trim()} startIcon={<Close />}>
+          <Button onClick={() => setRejectDialog(null)} disabled={processing} sx={{ width: 110 }}>Cancel</Button>
+          <Button variant="contained" color="error" onClick={handleReject} disabled={processing || !adminRemarks.trim()} startIcon={<Close />} sx={{ width: 110 }}>
             {processing ? 'Processing...' : 'Reject'}
           </Button>
         </DialogActions>

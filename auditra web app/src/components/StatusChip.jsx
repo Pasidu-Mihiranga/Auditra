@@ -14,6 +14,8 @@ export default function StatusChip({ status, label }) {
         fontWeight: 600,
         textTransform: 'capitalize',
         fontSize: 12,
+        width: 110,
+        justifyContent: 'center',
         border: `1px solid ${color}50`,
       }}
     />

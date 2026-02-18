@@ -29,7 +29,7 @@ import authService from '../../services/authService';
 /*  Constants                                                         */
 /* ------------------------------------------------------------------ */
 const RESPONSE_CHIP_COLORS = {
-  pending: { bg: '#1E88E515', color: '#1E88E5', label: 'Pending Response' },
+  pending: { bg: '#1E88E515', color: '#1E88E5', label: 'Pending' },
   accepted: { bg: '#1565C015', color: '#1565C0', label: 'Accepted' },
   rejected: { bg: '#DC262615', color: '#DC2626', label: 'Rejected' },
 };
@@ -103,7 +103,7 @@ export default function AssignedSubmissions() {
   /* ---- state ---- */
   const [submissions, setSubmissions] = useState([]);
   const [totalCount, setTotalCount] = useState(0);
-  const [summaryCounts, setSummaryCounts] = useState({ all: 0, pending: 0, accepted: 0 });
+  const [summaryCounts, setSummaryCounts] = useState({ all: 0, pending: 0, accepted: 0, rejected: 0 });
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [search, setSearch] = useState('');
@@ -144,6 +144,7 @@ export default function AssignedSubmissions() {
         all: countRes.data.count || 0,
         pending: allData.filter(s => s.coordinator_response === 'pending' && s.status === 'assigned').length,
         accepted: allData.filter(s => s.coordinator_response === 'accepted').length,
+        rejected: allData.filter(s => s.coordinator_response === 'rejected').length,
       });
     } catch {
       setSubmissions([]);
@@ -252,6 +253,7 @@ export default function AssignedSubmissions() {
 
   const pendingCount = summaryCounts.pending;
   const acceptedCount = summaryCounts.accepted;
+  const rejectedCount = summaryCounts.rejected;
 
   return (
     <Box>
@@ -283,7 +285,7 @@ export default function AssignedSubmissions() {
           value="pending" 
           label={
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              Pending Response
+              Pending
               {pendingCount > 0 && (
                 <Chip 
                   label={pendingCount} 
@@ -302,6 +304,7 @@ export default function AssignedSubmissions() {
           } 
         />
         <Tab value="accepted" label={`Accepted (${acceptedCount})`} />
+        <Tab value="rejected" label={`Rejected (${rejectedCount})`} />
       </Tabs>
 
       {/* ---- Search Toolbar ---- */}
@@ -336,7 +339,7 @@ export default function AssignedSubmissions() {
               <TableCell sx={{ fontWeight: 700 }}>Company</TableCell>
               <TableCell sx={{ fontWeight: 700 }}>Response Status</TableCell>
               <TableCell sx={{ fontWeight: 700 }}>Submitted</TableCell>
-              <TableCell sx={{ fontWeight: 700, textAlign: 'center', minWidth: 200 }}>Actions</TableCell>
+              <TableCell sx={{ fontWeight: 700, textAlign: 'center' }}>Actions</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
@@ -373,14 +376,16 @@ export default function AssignedSubmissions() {
                 const canCreateProject = responseStatus === 'accepted' && !sub.project_created;
                 // Show Project Created status when project has been created
                 const projectCreated = responseStatus === 'accepted' && sub.project_created;
+                // Rejected by this coordinator
+                const isRejected = responseStatus === 'rejected';
 
                 return (
                   <Fragment key={sub.id}>
                     {/* ---- Main row ---- */}
-                    <TableRow 
-                      hover 
-                      sx={{ 
-                        '& > *': { borderBottom: 'unset' },
+                    <TableRow
+                      hover
+                      sx={{
+                        '& > *': { borderBottom: '1px solid', borderColor: 'divider' },
                         bgcolor: canRespond ? 'warning.50' : 'inherit',
                       }}
                     >
@@ -396,22 +401,25 @@ export default function AssignedSubmissions() {
                       </TableCell>
 
                       <TableCell>
-                        <Typography 
-                          variant="body2" 
-                          sx={{ 
-                            fontWeight: 500,
-                            maxWidth: 200,
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            whiteSpace: 'nowrap',
-                          }}
+                        <Typography
+                          variant="body2"
+                          sx={{ fontWeight: 500 }}
                         >
                           {sub.project_title || '-'}
                         </Typography>
                       </TableCell>
 
                       <TableCell>
-                        <Typography variant="body2">{sub.company_name || '-'}</Typography>
+                        <Typography
+                          variant="body2"
+                          sx={{
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          {sub.company_name || '-'}
+                        </Typography>
                       </TableCell>
 
                       <TableCell>
@@ -424,6 +432,8 @@ export default function AssignedSubmissions() {
                             bgcolor: responseChip.bg,
                             color: responseChip.color,
                             border: `1px solid ${responseChip.color}50`,
+                            width: 100,
+                            justifyContent: 'center',
                           }}
                         />
                       </TableCell>
@@ -443,10 +453,10 @@ export default function AssignedSubmissions() {
                                 startIcon={<CheckCircleIcon />}
                                 onClick={() => handleAccept(sub)}
                                 disabled={actionLoading}
-                                sx={{ 
+                                sx={{
                                   textTransform: 'none',
                                   fontWeight: 600,
-                                  minWidth: 80,
+                                  width: 100,
                                 }}
                               >
                                 Accept
@@ -458,10 +468,10 @@ export default function AssignedSubmissions() {
                                 startIcon={<CancelIcon />}
                                 onClick={() => handleOpenRejectDialog(sub)}
                                 disabled={actionLoading}
-                                sx={{ 
-                                  textTransform: 'none', 
+                                sx={{
+                                  textTransform: 'none',
                                   fontWeight: 600,
-                                  minWidth: 80,
+                                  width: 100,
                                 }}
                               >
                                 Reject
@@ -475,19 +485,19 @@ export default function AssignedSubmissions() {
                               size="small"
                               startIcon={<AddCircleIcon />}
                               onClick={() => handleCreateProject(sub)}
-                              sx={{ 
+                              sx={{
                                 textTransform: 'none',
                                 fontWeight: 600,
-                                minWidth: 120,
+                                width: 100,
                               }}
                             >
-                              Create Project
+                              Create
                             </Button>
                           )}
                           {projectCreated && (
                             <Chip
                               icon={<CheckCircleIcon sx={{ color: '#1565C0 !important', fontSize: 16 }} />}
-                              label="Project Created"
+                              label="Created"
                               size="small"
                               sx={{
                                 fontSize: '0.72rem',
@@ -496,8 +506,15 @@ export default function AssignedSubmissions() {
                                 color: '#1565C0',
                                 border: '1px solid #1565C0',
                                 '& .MuiChip-icon': { color: '#1565C0' },
+                                width: 100,
+                                justifyContent: 'center',
                               }}
                             />
+                          )}
+                          {isRejected && (
+                            <Typography variant="body2" sx={{ fontWeight: 600, color: 'text.secondary' }}>
+                              -
+                            </Typography>
                           )}
                         </Stack>
                       </TableCell>
@@ -650,10 +667,10 @@ export default function AssignedSubmissions() {
           />
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 3 }}>
-          <Button 
-            onClick={() => setRejectDialogOpen(false)} 
+          <Button
+            onClick={() => setRejectDialogOpen(false)}
             disabled={actionLoading}
-            sx={{ textTransform: 'none' }}
+            sx={{ textTransform: 'none', width: 100 }}
           >
             Cancel
           </Button>
@@ -662,7 +679,7 @@ export default function AssignedSubmissions() {
             color="error"
             onClick={handleReject}
             disabled={actionLoading || !rejectionReason.trim()}
-            sx={{ textTransform: 'none', fontWeight: 600 }}
+            sx={{ textTransform: 'none', fontWeight: 600, width: 100 }}
           >
             {actionLoading ? <CircularProgress size={20} /> : 'Submit Rejection'}
           </Button>

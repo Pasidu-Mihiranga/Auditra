@@ -31,7 +31,7 @@ class DashboardColors {
   static Color getPriorityColor(String priority) {
     switch (priority.toLowerCase()) {
       case 'high':
-        return AppColors.danger;
+        return AppColors.primaryDark;
       case 'low':
         return AppColors.secondary;
       case 'medium':
@@ -161,11 +161,11 @@ class PriorityRibbon extends StatelessWidget {
   const PriorityRibbon({super.key, required this.priority});
 
   String _formatLabel() {
-    if (priority.isEmpty) return 'Medium';
+    if (priority.isEmpty) return 'MEDIUM';
     final lower = priority.toLowerCase();
-    if (lower == 'high') return 'High';
-    if (lower == 'low') return 'Low';
-    return 'Medium';
+    if (lower == 'high') return 'HIGH';
+    if (lower == 'low') return 'LOW';
+    return 'MEDIUM';
   }
 
   IconData _getIcon() {
@@ -184,6 +184,7 @@ class PriorityRibbon extends StatelessWidget {
     final color = DashboardColors.getPriorityColor(priority);
     
     return Container(
+      width: 90,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       decoration: BoxDecoration(
         color: color,
@@ -198,6 +199,7 @@ class PriorityRibbon extends StatelessWidget {
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Icon(
             _getIcon(),

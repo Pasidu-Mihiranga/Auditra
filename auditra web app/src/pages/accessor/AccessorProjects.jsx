@@ -8,7 +8,9 @@ import {
 import { Search, Visibility, Add, Map } from '@mui/icons-material';
 import projectService from '../../services/projectService';
 import valuationService from '../../services/valuationService';
-import { formatDate, getStatusColor } from '../../utils/helpers';
+import StatusChip from '../../components/StatusChip';
+import LoadingSpinner from '../../components/LoadingSpinner';
+import { formatDate, getStatusColor, getPriorityColor, capitalize } from '../../utils/helpers';
 
 export default function AccessorProjects() {
   const [projects, setProjects] = useState([]);
@@ -84,14 +86,11 @@ export default function AccessorProjects() {
     return statusMatch && searchMatch;
   });
 
-  if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}><CircularProgress /></Box>;
+  if (loading) return <LoadingSpinner />;
 
   return (
     <Box>
-      <Typography variant="h4" fontWeight="bold" gutterBottom>My Projects</Typography>
-      <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
-        View your assigned projects and valuations
-      </Typography>
+      <Typography variant="h5" sx={{ fontWeight: 700, mb: 3 }}>My Projects</Typography>
 
       <Paper sx={{ mb: 3 }}>
         <Tabs value={tabValue} onChange={(_, v) => setTabValue(v)} sx={{ borderBottom: 1, borderColor: 'divider' }}>
@@ -113,16 +112,16 @@ export default function AccessorProjects() {
       />
 
       <TableContainer component={Paper}>
-        <Table>
+        <Table size="small">
           <TableHead>
             <TableRow>
-              <TableCell>Project Title</TableCell>
-              <TableCell>Client</TableCell>
-              <TableCell>Start Date</TableCell>
-              <TableCell>Due Date</TableCell>
-              <TableCell>Priority</TableCell>
-              <TableCell>Status</TableCell>
-              <TableCell align="right">Actions</TableCell>
+              <TableCell sx={{ fontWeight: 700 }}>Project Title</TableCell>
+              <TableCell sx={{ fontWeight: 700 }}>Client</TableCell>
+              <TableCell sx={{ fontWeight: 700 }}>Start Date</TableCell>
+              <TableCell sx={{ fontWeight: 700 }}>Due Date</TableCell>
+              <TableCell sx={{ fontWeight: 700 }}>Priority</TableCell>
+              <TableCell sx={{ fontWeight: 700 }}>Status</TableCell>
+              <TableCell sx={{ fontWeight: 700 }} align="right">Actions</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
@@ -135,20 +134,16 @@ export default function AccessorProjects() {
             ) : (
               filteredProjects.map((project) => (
                 <TableRow key={project.id} hover>
-                  <TableCell fontWeight="medium">{project.title}</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>{project.title}</TableCell>
                   <TableCell>{project.client_name || project.client_info?.name || 'N/A'}</TableCell>
                   <TableCell>{formatDate(project.start_date)}</TableCell>
                   <TableCell>{formatDate(project.end_date || project.due_date)}</TableCell>
                   <TableCell>
-                    <Chip label={project.priority || 'Normal'} size="small"
-                      color={project.priority === 'high' ? 'error' : project.priority === 'medium' ? 'warning' : 'default'} />
+                    <Chip label={capitalize(project.priority) || 'Normal'} size="small"
+                      sx={{ bgcolor: `${getPriorityColor(project.priority)}20`, color: getPriorityColor(project.priority), fontWeight: 600, fontSize: 12, width: 90, justifyContent: 'center', border: `1px solid ${getPriorityColor(project.priority)}50` }} />
                   </TableCell>
                   <TableCell>
-                    <Chip
-                      label={project.status === 'pending' ? 'Active' : project.status.replace('_', ' ')}
-                      size="small"
-                      color={getStatusColor(project.status === 'pending' ? 'active' : project.status) || 'default'}
-                    />
+                    <StatusChip status={project.status === 'pending' ? 'active' : project.status} label={project.status === 'pending' ? 'Active' : project.status.replace('_', ' ')} />
                   </TableCell>
                   <TableCell align="right">
                     <Button size="small" startIcon={<Visibility />} onClick={() => handleViewProject(project)}>View</Button>
@@ -168,7 +163,7 @@ export default function AccessorProjects() {
               <Box><Typography variant="subtitle2" color="text.secondary">Description</Typography><Typography>{detailDialog.project.description || 'No description'}</Typography></Box>
               <Box sx={{ display: 'flex', gap: 4 }}>
                 <Box><Typography variant="subtitle2" color="text.secondary">Status</Typography><Chip label={detailDialog.project.status} size="small" color={getStatusColor(detailDialog.project.status) || 'default'} /></Box>
-                <Box><Typography variant="subtitle2" color="text.secondary">Priority</Typography><Typography sx={{ textTransform: 'capitalize' }}>{detailDialog.project.priority || 'Normal'}</Typography></Box>
+                <Box><Typography variant="subtitle2" color="text.secondary">Priority</Typography><Typography>{capitalize(detailDialog.project.priority) || 'Normal'}</Typography></Box>
               </Box>
               <Box sx={{ display: 'flex', gap: 4 }}>
                 <Box><Typography variant="subtitle2" color="text.secondary">Start Date</Typography><Typography>{formatDate(detailDialog.project.start_date)}</Typography></Box>
@@ -213,7 +208,7 @@ export default function AccessorProjects() {
                                         variant="contained"
                                         color="primary"
                                         onClick={() => handleAcceptValuation(v.id)}
-                                        sx={{ minWidth: 80 }}
+                                        sx={{ width: 110 }}
                                       >
                                         Accept
                                       </Button>
@@ -222,7 +217,7 @@ export default function AccessorProjects() {
                                         variant="outlined"
                                         color="error"
                                         onClick={() => setRejectDialog({ open: true, valuationId: v.id, reason: '' })}
-                                        sx={{ minWidth: 80 }}
+                                        sx={{ width: 110 }}
                                       >
                                         Reject
                                       </Button>
@@ -431,6 +426,7 @@ export default function AccessorProjects() {
               <Button
                 variant="contained"
                 color="primary"
+                sx={{ width: 110 }}
                 onClick={() => {
                   handleAcceptValuation(valuationDetailDialog.valuation.id);
                   setValuationDetailDialog({ open: false, valuation: null });
@@ -441,6 +437,7 @@ export default function AccessorProjects() {
               <Button
                 variant="outlined"
                 color="error"
+                sx={{ width: 110 }}
                 onClick={() => {
                   setRejectDialog({ open: true, valuationId: valuationDetailDialog.valuation.id, reason: '' });
                   setValuationDetailDialog({ open: false, valuation: null });
@@ -470,9 +467,9 @@ export default function AccessorProjects() {
             onChange={(e) => setRejectDialog({ ...rejectDialog, reason: e.target.value })}
           />
         </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setRejectDialog({ ...rejectDialog, open: false })}>Cancel</Button>
-          <Button onClick={handleRejectValuation} color="error" variant="contained">Confirm Rejection</Button>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setRejectDialog({ ...rejectDialog, open: false })} sx={{ width: 110 }}>Cancel</Button>
+          <Button onClick={handleRejectValuation} color="error" variant="contained" sx={{ width: 110 }}>Reject</Button>
         </DialogActions>
       </Dialog>
 

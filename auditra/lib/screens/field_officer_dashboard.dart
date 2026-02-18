@@ -832,7 +832,7 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
   Color _getPriorityColor(String priority) {
     switch (priority.toLowerCase()) {
       case 'high':
-        return Colors.red[600]!;
+        return const Color(0xFF0D47A1);
       case 'low':
         return Colors.green[600]!;
       case 'medium':
@@ -842,11 +842,11 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
   }
   
   String _formatPriorityLabel(String priority) {
-    if (priority.isEmpty) return 'Medium';
+    if (priority.isEmpty) return 'MEDIUM';
     final lower = priority.toLowerCase();
-    if (lower == 'high') return 'High';
-    if (lower == 'low') return 'Low';
-    return 'Medium';
+    if (lower == 'high') return 'HIGH';
+    if (lower == 'low') return 'LOW';
+    return 'MEDIUM';
   }
   
   Widget _buildPriorityRibbon(String priority) {
@@ -854,6 +854,7 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
     final label = _formatPriorityLabel(priority);
     
     return Container(
+      width: 90,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       decoration: BoxDecoration(
         color: color,
@@ -868,6 +869,7 @@ class _FieldOfficerDashboardState extends State<FieldOfficerDashboard> with Tick
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Icon(
             priority.toLowerCase() == 'high'

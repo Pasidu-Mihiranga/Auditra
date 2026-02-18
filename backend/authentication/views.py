@@ -1667,8 +1667,15 @@ class AllClientSubmissionsView(APIView):
         if user_role == 'admin':
             queryset = ClientFormSubmission.objects.select_related('coordinator').all().order_by('-submitted_at')
         else:
-            # Coordinator sees only submissions assigned to them
-            queryset = ClientFormSubmission.objects.select_related('coordinator').filter(coordinator=request.user).order_by('-submitted_at')
+            # Coordinator sees submissions assigned to them AND submissions they rejected
+            from .models import CoordinatorAssignment
+            rejected_submission_ids = CoordinatorAssignment.objects.filter(
+                coordinator=request.user,
+                status='rejected'
+            ).values_list('submission_id', flat=True)
+            queryset = ClientFormSubmission.objects.select_related('coordinator').filter(
+                Q(coordinator=request.user) | Q(id__in=rejected_submission_ids)
+            ).order_by('-submitted_at')
 
         # Summary counts BEFORE applying search/status filters
         summary = {

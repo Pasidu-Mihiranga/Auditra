@@ -2,12 +2,14 @@ import { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import {
   Box, Typography, Paper, Table, TableBody, TableCell, TableContainer,
-  TableHead, TableRow, Chip, TextField, InputAdornment, CircularProgress,
+  TableHead, TableRow, TextField, InputAdornment,
   Alert, Snackbar, Button, Dialog, DialogTitle, DialogContent,
   DialogActions, Tabs, Tab, Divider
 } from '@mui/material';
 import { Search, CheckCircle, Cancel, Visibility } from '@mui/icons-material';
 import valuationService from '../../services/valuationService';
+import StatusChip from '../../components/StatusChip';
+import LoadingSpinner from '../../components/LoadingSpinner';
 import { formatDate, getStatusColor } from '../../utils/helpers';
 
 const STATUS_TAB_MAP = { pending: 1, approved: 2, rejected: 3 };
@@ -60,14 +62,11 @@ export default function ValuationReview() {
     return statusMatch && searchMatch;
   });
 
-  if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}><CircularProgress /></Box>;
+  if (loading) return <LoadingSpinner />;
 
   return (
     <Box>
-      <Typography variant="h4" fontWeight="bold" gutterBottom>Valuation Review</Typography>
-      <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
-        Review and approve or reject valuations submitted by accessors
-      </Typography>
+      <Typography variant="h5" sx={{ fontWeight: 700, mb: 3 }}>Valuation Review</Typography>
 
       <Paper sx={{ mb: 3 }}>
         <Tabs value={tabValue} onChange={(_, v) => setTabValue(v)} sx={{ borderBottom: 1, borderColor: 'divider' }}>
@@ -90,16 +89,16 @@ export default function ValuationReview() {
       />
 
       <TableContainer component={Paper}>
-        <Table>
+        <Table size="small">
           <TableHead>
             <TableRow>
-              <TableCell>Project</TableCell>
-              <TableCell>Accessor</TableCell>
-              <TableCell>Valuation Type</TableCell>
-              <TableCell>Value</TableCell>
-              <TableCell>Date Submitted</TableCell>
-              <TableCell>Status</TableCell>
-              <TableCell align="right">Actions</TableCell>
+              <TableCell sx={{ fontWeight: 700 }}>Project</TableCell>
+              <TableCell sx={{ fontWeight: 700 }}>Accessor</TableCell>
+              <TableCell sx={{ fontWeight: 700 }}>Valuation Type</TableCell>
+              <TableCell sx={{ fontWeight: 700 }}>Value</TableCell>
+              <TableCell sx={{ fontWeight: 700 }}>Date Submitted</TableCell>
+              <TableCell sx={{ fontWeight: 700 }}>Status</TableCell>
+              <TableCell sx={{ fontWeight: 700 }} align="right">Actions</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
@@ -112,14 +111,13 @@ export default function ValuationReview() {
             ) : (
               filteredValuations.map((val) => (
                 <TableRow key={val.id} hover>
-                  <TableCell>{val.project_title || val.project?.title || 'N/A'}</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>{val.project_title || val.project?.title || 'N/A'}</TableCell>
                   <TableCell>{val.accessor_name || val.created_by_name || 'N/A'}</TableCell>
                   <TableCell sx={{ textTransform: 'capitalize' }}>{val.valuation_type || val.type || 'N/A'}</TableCell>
                   <TableCell>{val.value || val.amount || 'N/A'}</TableCell>
                   <TableCell>{formatDate(val.created_at || val.submitted_at)}</TableCell>
                   <TableCell>
-                    <Chip label={val.status} size="small"
-                      color={val.status === 'approved' ? 'success' : val.status === 'rejected' ? 'error' : 'warning'} />
+                    <StatusChip status={val.status} label={val.status} />
                   </TableCell>
                   <TableCell align="right">
                     <Button size="small" startIcon={<Visibility />}
@@ -165,8 +163,7 @@ export default function ValuationReview() {
               </Box>
               <Box>
                 <Typography variant="subtitle2" color="text.secondary">Status</Typography>
-                <Chip label={detailDialog.valuation.status} size="small"
-                  color={detailDialog.valuation.status === 'approved' ? 'success' : detailDialog.valuation.status === 'rejected' ? 'error' : 'warning'} />
+                <StatusChip status={detailDialog.valuation.status} label={detailDialog.valuation.status} />
               </Box>
 
               {(detailDialog.valuation.status === 'pending' || detailDialog.valuation.status === 'submitted') && (
@@ -185,14 +182,14 @@ export default function ValuationReview() {
             </Box>
           )}
         </DialogContent>
-        <DialogActions>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
           {(detailDialog.valuation?.status === 'pending' || detailDialog.valuation?.status === 'submitted') && (
             <>
-              <Button color="error" startIcon={<Cancel />}
+              <Button color="error" startIcon={<Cancel />} sx={{ width: 110 }}
                 onClick={() => handleAction(detailDialog.valuation.id, 'rejected')}>
                 Reject
               </Button>
-              <Button color="primary" variant="contained" startIcon={<CheckCircle />}
+              <Button color="primary" variant="contained" startIcon={<CheckCircle />} sx={{ width: 110 }}
                 onClick={() => handleAction(detailDialog.valuation.id, 'approved')}>
                 Approve
               </Button>

@@ -8,7 +8,7 @@ import {
 } from '@mui/material';
 import { Search, CheckCircle, Cancel, Visibility } from '@mui/icons-material';
 import projectService from '../../services/projectService';
-import { formatDate, getStatusColor } from '../../utils/helpers';
+import { formatDate, getStatusColor, capitalize } from '../../utils/helpers';
 
 const STATUS_TAB_MAP = { pending: 1, approved: 2, rejected: 3 };
 
@@ -114,13 +114,14 @@ export default function ProjectApproval() {
                   <TableCell>{project.title}</TableCell>
                   <TableCell>{project.client_name || project.client_info?.name || 'N/A'}</TableCell>
                   <TableCell>
-                    <Chip label={project.priority || 'Normal'} size="small"
-                      color={project.priority === 'high' ? 'error' : project.priority === 'medium' ? 'warning' : 'default'} />
+                    <Chip label={capitalize(project.priority) || 'Normal'} size="small"
+                      color={project.priority === 'high' ? 'primary' : project.priority === 'medium' ? 'warning' : 'default'}
+                      sx={{ width: 90, justifyContent: 'center' }} />
                   </TableCell>
                   <TableCell>{formatDate(project.start_date)}</TableCell>
                   <TableCell>{formatDate(project.end_date || project.due_date)}</TableCell>
                   <TableCell>
-                    <Chip label={project.status} size="small" color={getStatusColor(project.status) || 'default'} />
+                    <Chip label={project.status} size="small" color={getStatusColor(project.status) || 'default'} sx={{ width: 110, justifyContent: 'center' }} />
                   </TableCell>
                   <TableCell align="right">
                     <Button size="small" startIcon={<Visibility />}
@@ -155,7 +156,7 @@ export default function ProjectApproval() {
                 </Box>
                 <Box sx={{ flex: 1 }}>
                   <Typography variant="subtitle2" color="text.secondary">Priority</Typography>
-                  <Typography sx={{ textTransform: 'capitalize' }}>{detailDialog.project.priority || 'Normal'}</Typography>
+                  <Typography>{capitalize(detailDialog.project.priority) || 'Normal'}</Typography>
                 </Box>
               </Box>
               <Box sx={{ display: 'flex', gap: 4 }}>
@@ -192,11 +193,11 @@ export default function ProjectApproval() {
         <DialogActions>
           {detailDialog.project?.status === 'pending' && (
             <>
-              <Button color="error" startIcon={<Cancel />}
+              <Button color="error" startIcon={<Cancel />} sx={{ width: 110 }}
                 onClick={() => handleAction(detailDialog.project.id, 'rejected')}>
                 Reject
               </Button>
-              <Button color="primary" variant="contained" startIcon={<CheckCircle />}
+              <Button color="primary" variant="contained" startIcon={<CheckCircle />} sx={{ width: 110 }}
                 onClick={() => handleAction(detailDialog.project.id, 'approved')}>
                 Approve
               </Button>

@@ -734,11 +734,11 @@ class _ProjectDetailsScreenState extends State<ProjectDetailsScreen> {
   String _getPriorityDisplay() {
     final priority = _project.priority ?? 'medium';
     final icons = {
-      'high': '🔴',
+      'high': '🔵',
       'medium': '🟡',
       'low': '🟢',
     };
-    return '${icons[priority.toLowerCase()] ?? ''} ${priority[0].toUpperCase()}${priority.substring(1)}';
+    return '${icons[priority.toLowerCase()] ?? ''} ${priority.toUpperCase()}';
   }
 
   Future<void> _deleteDocument(int docId) async {

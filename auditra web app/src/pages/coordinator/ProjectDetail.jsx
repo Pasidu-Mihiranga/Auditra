@@ -14,7 +14,7 @@ import {
 import projectService from '../../services/projectService';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import StatusChip from '../../components/StatusChip';
-import { formatDate, formatDateTime, getPriorityColor } from '../../utils/helpers';
+import { formatDate, formatDateTime, getPriorityColor, capitalize } from '../../utils/helpers';
 import { useAuth } from '../../contexts/AuthContext';
 
 export default function ProjectDetail() {
@@ -287,7 +287,7 @@ export default function ProjectDetail() {
               <Typography variant="h5" sx={{ fontWeight: 700, mb: 1 }}>{project.title}</Typography>
               <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
                 <StatusChip status={project.status} label={project.status_display || project.status} />
-                <Chip label={project.priority} size="small" sx={{ bgcolor: `${getPriorityColor(project.priority)}20`, color: getPriorityColor(project.priority), fontWeight: 600, textTransform: 'capitalize', border: `1px solid ${getPriorityColor(project.priority)}50` }} />
+                <Chip label={capitalize(project.priority)} size="small" sx={{ bgcolor: `${getPriorityColor(project.priority)}20`, color: getPriorityColor(project.priority), fontWeight: 600, width: 90, justifyContent: 'center', border: `1px solid ${getPriorityColor(project.priority)}50` }} />
               </Box>
             </Box>
             {isCoordinator && (

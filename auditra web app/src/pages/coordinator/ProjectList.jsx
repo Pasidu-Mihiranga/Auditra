@@ -9,7 +9,7 @@ import { Search, Add, Visibility } from '@mui/icons-material';
 import projectService from '../../services/projectService';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import StatusChip from '../../components/StatusChip';
-import { formatDate, getPriorityColor } from '../../utils/helpers';
+import { formatDate, getPriorityColor, capitalize } from '../../utils/helpers';
 
 const STATUS_TAB_MAP = { pending: 1, in_progress: 2, completed: 3 };
 
@@ -100,7 +100,7 @@ export default function ProjectList() {
                   <TableRow key={p.id} hover sx={{ cursor: 'pointer' }} onClick={() => navigate(`/dashboard/projects/${p.id}`)}>
                     <TableCell sx={{ fontWeight: 600 }}>{p.title}</TableCell>
                     <TableCell>
-                      <Chip label={p.priority} size="small" sx={{ bgcolor: `${getPriorityColor(p.priority)}20`, color: getPriorityColor(p.priority), fontWeight: 600, fontSize: 12, border: `1px solid ${getPriorityColor(p.priority)}50` }} />
+                      <Chip label={capitalize(p.priority)} size="small" sx={{ bgcolor: `${getPriorityColor(p.priority)}20`, color: getPriorityColor(p.priority), fontWeight: 600, fontSize: 12, width: 90, justifyContent: 'center', border: `1px solid ${getPriorityColor(p.priority)}50` }} />
                     </TableCell>
                     <TableCell><StatusChip status={p.status} label={p.status_display || p.status} /></TableCell>
                     <TableCell>
@@ -112,6 +112,8 @@ export default function ProjectList() {
                           color: paymentConfig.color,
                           fontWeight: 600,
                           fontSize: 12,
+                          width: 110,
+                          justifyContent: 'center',
                           border: `1px solid ${paymentConfig.color}50`,
                         }}
                       />

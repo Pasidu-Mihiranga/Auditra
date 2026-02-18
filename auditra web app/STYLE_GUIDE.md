@@ -85,7 +85,7 @@ default     → #64748B (Slate)
 ### Priority Color Mapping
 
 ```
-high   → #DC2626 (Red)
+high   → #0D47A1 (Dark Navy Blue)
 medium → #1E88E5 (Medium Blue)
 low    → #1565C0 (Primary Blue)
 ```

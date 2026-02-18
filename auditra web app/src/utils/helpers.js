@@ -20,11 +20,16 @@ export const getStatusColor = (status) => {
 
 export const getPriorityColor = (priority) => {
   const colors = {
-    high: '#DC2626',
+    high: '#0D47A1',
     medium: '#1E88E5',
     low: '#1565C0',
   };
   return colors[priority] || '#64748B';
+};
+
+export const capitalize = (str) => {
+  if (!str) return '';
+  return str.toUpperCase();
 };
 
 export const formatDate = (dateString) => {
