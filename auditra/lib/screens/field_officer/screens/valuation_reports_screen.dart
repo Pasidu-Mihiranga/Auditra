@@ -244,21 +244,23 @@ class _ValuationReportsScreenState extends State<ValuationReportsScreen> {
                     },
                   ),
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () async {
-          final result = await Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (_) => ValuationFormScreen(project: project),
-            ),
-          );
-          if (result == true) {
-            _refreshProject();
-          }
-        },
-        backgroundColor: const Color(0xFF0D47A1),
-        icon: const Icon(Icons.add, color: Colors.white),
-        label: const Text('New Report', style: TextStyle(color: Colors.white)),
-      ),
+      floatingActionButton: project.status == 'in_progress'
+          ? FloatingActionButton.extended(
+              onPressed: () async {
+                final result = await Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => ValuationFormScreen(project: project),
+                  ),
+                );
+                if (result == true) {
+                  _refreshProject();
+                }
+              },
+              backgroundColor: const Color(0xFF0D47A1),
+              icon: const Icon(Icons.add, color: Colors.white),
+              label: const Text('New Report', style: TextStyle(color: Colors.white)),
+            )
+          : null,
     );
   }
 

@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
-from .models import Project, ProjectDocument, ProjectStatusHistory, ProjectPayment, ProjectCancellationRequest
+from .models import Project, ProjectDocument, ProjectStatusHistory, ProjectPayment, ProjectCancellationRequest, CommissionReport
 
 
 class ProjectPaymentSerializer(serializers.ModelSerializer):
@@ -10,7 +10,8 @@ class ProjectPaymentSerializer(serializers.ModelSerializer):
     bank_slip_uploaded_by_name = serializers.SerializerMethodField()
     payment_requested_by_name = serializers.SerializerMethodField()
     payment_approved_by_name = serializers.SerializerMethodField()
-    
+    agent_paid_by_name = serializers.SerializerMethodField()
+
     class Meta:
         model = ProjectPayment
         fields = (
@@ -20,12 +21,14 @@ class ProjectPaymentSerializer(serializers.ModelSerializer):
             'payment_requested_by_name', 'payment_approved_at', 'payment_approved_by',
             'payment_approved_by_name', 'payment_rejection_reason', 'payment_rejection_count',
             'last_rejected_at', 'coordinator_notes', 'client_notes', 'payment_instructions',
+            'agent_payment_amount', 'agent_payment_status', 'agent_paid_at', 'agent_paid_by',
+            'agent_paid_by_name', 'agent_payment_notes',
             'created_at', 'updated_at'
         )
         read_only_fields = (
             'created_at', 'updated_at', 'bank_slip_uploaded_at', 'bank_slip_uploaded_by',
             'payment_requested_at', 'payment_requested_by', 'payment_approved_at',
-            'payment_approved_by', 'last_rejected_at'
+            'payment_approved_by', 'last_rejected_at', 'agent_paid_at', 'agent_paid_by'
         )
     
     def get_bank_slip_url(self, obj):
@@ -52,6 +55,12 @@ class ProjectPaymentSerializer(serializers.ModelSerializer):
         if obj.payment_approved_by:
             name = f"{obj.payment_approved_by.first_name} {obj.payment_approved_by.last_name}".strip()
             return name or obj.payment_approved_by.username
+        return None
+
+    def get_agent_paid_by_name(self, obj):
+        if obj.agent_paid_by:
+            name = f"{obj.agent_paid_by.first_name} {obj.agent_paid_by.last_name}".strip()
+            return name or obj.agent_paid_by.username
         return None
 
 
@@ -405,4 +414,45 @@ class ProjectCancellationRequestSerializer(serializers.ModelSerializer):
         if obj.project and obj.project.coordinator:
             name = f"{obj.project.coordinator.first_name} {obj.project.coordinator.last_name}".strip()
             return name or obj.project.coordinator.username
+        return None
+
+
+class CommissionReportSerializer(serializers.ModelSerializer):
+    """Serializer for commission reports"""
+    project_title = serializers.CharField(source='project.title', read_only=True)
+    agent_name = serializers.SerializerMethodField()
+    generated_by_name = serializers.SerializerMethodField()
+    report_file_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = CommissionReport
+        fields = (
+            'id', 'project', 'project_title', 'agent', 'agent_name',
+            'generated_by', 'generated_by_name', 'commission_amount',
+            'report_file', 'report_file_url', 'sent_to_agent', 'sent_at',
+            'created_at'
+        )
+        read_only_fields = (
+            'generated_by', 'agent', 'report_file', 'sent_to_agent',
+            'sent_at', 'created_at'
+        )
+
+    def get_agent_name(self, obj):
+        if obj.agent:
+            name = f"{obj.agent.first_name} {obj.agent.last_name}".strip()
+            return name or obj.agent.username
+        return None
+
+    def get_generated_by_name(self, obj):
+        if obj.generated_by:
+            name = f"{obj.generated_by.first_name} {obj.generated_by.last_name}".strip()
+            return name or obj.generated_by.username
+        return None
+
+    def get_report_file_url(self, obj):
+        if obj.report_file:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.report_file.url)
+            return obj.report_file.url
         return None

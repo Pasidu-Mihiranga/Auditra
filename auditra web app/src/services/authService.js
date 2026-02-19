@@ -44,6 +44,9 @@ const authService = {
 
   rejectAssignment: (submissionId, rejectionReason) =>
     axiosClient.post(`/auth/client-submissions/${submissionId}/reject/`, { rejection_reason: rejectionReason }),
+
+  getAdminDashboardStats: () =>
+    axiosClient.get('/auth/admin-dashboard-stats/'),
 };
 
 export default authService;

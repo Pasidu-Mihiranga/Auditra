@@ -6,13 +6,14 @@ from rest_framework.parsers import MultiPartParser, FormParser
 from django.contrib.auth.models import User
 from django.db.models import Q
 from django.utils import timezone
-from .models import Project, ProjectDocument, ProjectStatusHistory, ProjectPayment, ProjectCancellationRequest
+from .models import Project, ProjectDocument, ProjectStatusHistory, ProjectPayment, ProjectCancellationRequest, CommissionReport
 from .serializers import (
     ProjectSerializer,
     ProjectCreateSerializer,
     ProjectDocumentSerializer,
     ProjectPaymentSerializer,
     ProjectCancellationRequestSerializer,
+    CommissionReportSerializer,
     AssignFieldOfficerSerializer,
     AssignClientSerializer,
     AssignAgentSerializer,
@@ -1603,6 +1604,131 @@ class ClientPaymentOverviewView(APIView):
         }, status=status.HTTP_200_OK)
 
 
+class AgentPaymentOverviewView(APIView):
+    """Get all projects with payment info for the logged-in agent"""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user_role = get_user_role(request.user)
+        if user_role != 'agent':
+            return Response(
+                {'error': 'Only agents can access this endpoint'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        projects = Project.objects.filter(assigned_agent=request.user).select_related('coordinator')
+
+        result = []
+        for project in projects:
+            payment_data = None
+            try:
+                payment = project.payment
+                payment_data = ProjectPaymentSerializer(payment, context={'request': request}).data
+            except ProjectPayment.DoesNotExist:
+                pass
+
+            result.append({
+                'id': project.id,
+                'title': project.title,
+                'description': project.description,
+                'status': project.status,
+                'status_display': project.get_status_display(),
+                'estimated_value': str(project.estimated_value),
+                'coordinator_name': f"{project.coordinator.first_name} {project.coordinator.last_name}".strip() or project.coordinator.username if project.coordinator else None,
+                'created_at': project.created_at.isoformat(),
+                'payment': payment_data
+            })
+
+        return Response({
+            'projects': result
+        }, status=status.HTTP_200_OK)
+
+
+class RecordAgentPaymentView(APIView):
+    """Coordinator records payment made to agent for a project"""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, project_id):
+        user_role = get_user_role(request.user)
+        if user_role != 'coordinator':
+            return Response(
+                {'error': 'Only coordinators can record agent payments'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        try:
+            project = Project.objects.get(id=project_id, coordinator=request.user)
+        except Project.DoesNotExist:
+            return Response(
+                {'error': 'Project not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        if not project.assigned_agent:
+            return Response(
+                {'error': 'No agent assigned to this project'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        amount = request.data.get('amount')
+        if not amount:
+            return Response(
+                {'error': 'Payment amount is required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            amount = float(amount)
+            if amount <= 0:
+                raise ValueError
+        except (ValueError, TypeError):
+            return Response(
+                {'error': 'Invalid payment amount'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        payment, created = ProjectPayment.objects.get_or_create(
+            project=project,
+            defaults={
+                'estimated_value': project.estimated_value,
+                'payment_status': 'pending'
+            }
+        )
+
+        if payment.agent_payment_status == 'paid':
+            return Response(
+                {'error': 'Agent payment has already been recorded for this project'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        payment.agent_payment_amount = amount
+        payment.agent_payment_status = 'paid'
+        payment.agent_paid_at = timezone.now()
+        payment.agent_paid_by = request.user
+        payment.agent_payment_notes = request.data.get('notes', '')
+        payment.save()
+
+        try:
+            from system_logs.utils import log_action, get_client_ip
+            log_action(
+                action='AGENT_PAYMENT_RECORDED',
+                user=request.user,
+                target_user=project.assigned_agent,
+                description=f"Agent payment recorded for project: {project.title}. Amount: Rs. {amount:,.2f}",
+                category='payment',
+                ip_address=get_client_ip(request),
+                metadata={'project_id': project.id, 'amount': str(amount)},
+            )
+        except Exception:
+            pass
+
+        return Response({
+            'success': True,
+            'message': 'Agent payment recorded successfully',
+            'payment': ProjectPaymentSerializer(payment, context={'request': request}).data
+        }, status=status.HTTP_200_OK)
+
+
 # ============================================================================
 # Cancellation Request Views
 # ============================================================================
@@ -1925,4 +2051,266 @@ class GetProjectCancellationStatusView(APIView):
         return Response({
             'has_request': True,
             'request': ProjectCancellationRequestSerializer(latest_request, context={'request': request}).data
+        }, status=status.HTTP_200_OK)
+
+
+# ============================================================================
+# Commission Report Views
+# ============================================================================
+
+class GenerateCommissionReportView(APIView):
+    """Generate a PDF commission report for a project's agent payment"""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, project_id):
+        user_role = get_user_role(request.user)
+        if user_role != 'coordinator':
+            return Response(
+                {'error': 'Only coordinators can generate commission reports'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        try:
+            project = Project.objects.get(id=project_id, coordinator=request.user)
+        except Project.DoesNotExist:
+            return Response(
+                {'error': 'Project not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        if not project.assigned_agent:
+            return Response(
+                {'error': 'No agent assigned to this project'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            payment = project.payment
+        except ProjectPayment.DoesNotExist:
+            return Response(
+                {'error': 'No payment record found for this project'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if payment.agent_payment_status != 'paid':
+            return Response(
+                {'error': 'Agent payment must be recorded before generating commission report'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Generate PDF
+        import io
+        from django.core.files.base import ContentFile
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib import colors
+        from reportlab.lib.units import inch, mm
+        from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+
+        buffer = io.BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=A4, topMargin=30*mm, bottomMargin=20*mm, leftMargin=20*mm, rightMargin=20*mm)
+
+        styles = getSampleStyleSheet()
+        title_style = ParagraphStyle('CustomTitle', parent=styles['Title'], fontSize=20, spaceAfter=6, textColor=colors.HexColor('#1565C0'))
+        subtitle_style = ParagraphStyle('CustomSubtitle', parent=styles['Normal'], fontSize=10, textColor=colors.grey, spaceAfter=20)
+        heading_style = ParagraphStyle('CustomHeading', parent=styles['Heading2'], fontSize=13, textColor=colors.HexColor('#1565C0'), spaceBefore=16, spaceAfter=8)
+        normal_style = styles['Normal']
+
+        elements = []
+
+        # Header
+        elements.append(Paragraph('AUDITRA', title_style))
+        elements.append(Paragraph('Commission Report', subtitle_style))
+        elements.append(Spacer(1, 10))
+
+        # Project Information
+        elements.append(Paragraph('Project Information', heading_style))
+
+        agent = project.assigned_agent
+        agent_name = f"{agent.first_name} {agent.last_name}".strip() or agent.username
+        coordinator_name = f"{request.user.first_name} {request.user.last_name}".strip() or request.user.username
+
+        project_data = [
+            ['Project Title', project.title],
+            ['Description', project.description or 'N/A'],
+            ['Status', project.get_status_display()],
+            ['Start Date', str(project.start_date) if project.start_date else 'N/A'],
+            ['End Date', str(project.end_date) if project.end_date else 'N/A'],
+            ['Coordinator', coordinator_name],
+        ]
+
+        project_table = Table(project_data, colWidths=[150, 350])
+        project_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#F0F4F8')),
+            ('TEXTCOLOR', (0, 0), (0, -1), colors.HexColor('#333333')),
+            ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 10),
+            ('ALIGN', (0, 0), (0, -1), 'LEFT'),
+            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#DEE2E6')),
+            ('TOPPADDING', (0, 0), (-1, -1), 8),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+            ('LEFTPADDING', (0, 0), (-1, -1), 10),
+        ]))
+        elements.append(project_table)
+
+        # Agent & Payment Information
+        elements.append(Paragraph('Agent Payment Details', heading_style))
+
+        payment_data = [
+            ['Agent Name', agent_name],
+            ['Agent Email', agent.email or 'N/A'],
+            ['Commission Amount', f'Rs. {payment.agent_payment_amount:,.2f}'],
+            ['Payment Date', str(payment.agent_paid_at.strftime('%Y-%m-%d %H:%M')) if payment.agent_paid_at else 'N/A'],
+            ['Payment Notes', payment.agent_payment_notes or 'N/A'],
+        ]
+
+        payment_table = Table(payment_data, colWidths=[150, 350])
+        payment_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#F0F4F8')),
+            ('TEXTCOLOR', (0, 0), (0, -1), colors.HexColor('#333333')),
+            ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 10),
+            ('ALIGN', (0, 0), (0, -1), 'LEFT'),
+            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#DEE2E6')),
+            ('TOPPADDING', (0, 0), (-1, -1), 8),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+            ('LEFTPADDING', (0, 0), (-1, -1), 10),
+        ]))
+        elements.append(payment_table)
+
+        # Footer
+        elements.append(Spacer(1, 30))
+        footer_style = ParagraphStyle('Footer', parent=styles['Normal'], fontSize=8, textColor=colors.grey, alignment=1)
+        elements.append(Paragraph(f'Generated on {timezone.now().strftime("%Y-%m-%d %H:%M")} by {coordinator_name}', footer_style))
+        elements.append(Paragraph('This is a system-generated document from Auditra.', footer_style))
+
+        doc.build(elements)
+        pdf_content = buffer.getvalue()
+        buffer.close()
+
+        # Save to CommissionReport
+        filename = f'commission_report_{project.id}_{timezone.now().strftime("%Y%m%d_%H%M%S")}.pdf'
+        report = CommissionReport.objects.create(
+            project=project,
+            generated_by=request.user,
+            agent=agent,
+            commission_amount=payment.agent_payment_amount,
+        )
+        report.report_file.save(filename, ContentFile(pdf_content))
+
+        # Log action
+        try:
+            from system_logs.utils import log_action, get_client_ip
+            log_action(
+                action='COMMISSION_REPORT_GENERATED',
+                user=request.user,
+                target_user=agent,
+                description=f"Commission report generated for project: {project.title}. Amount: Rs. {payment.agent_payment_amount:,.2f}",
+                category='project',
+                ip_address=get_client_ip(request),
+                metadata={'project_id': project.id, 'report_id': report.id},
+            )
+        except Exception:
+            pass
+
+        return Response({
+            'success': True,
+            'message': 'Commission report generated successfully',
+            'report': CommissionReportSerializer(report, context={'request': request}).data
+        }, status=status.HTTP_201_CREATED)
+
+
+class SendCommissionReportView(APIView):
+    """Send a commission report to the agent via email"""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, report_id):
+        user_role = get_user_role(request.user)
+        if user_role != 'coordinator':
+            return Response(
+                {'error': 'Only coordinators can send commission reports'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        try:
+            report = CommissionReport.objects.select_related('project', 'agent').get(
+                id=report_id,
+                generated_by=request.user
+            )
+        except CommissionReport.DoesNotExist:
+            return Response(
+                {'error': 'Commission report not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        if not report.agent or not report.agent.email:
+            return Response(
+                {'error': 'Agent has no email address'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Send email with PDF attachment
+        try:
+            from authentication.services import EmailService
+            EmailService.send_commission_report_to_agent(
+                report=report,
+                agent=report.agent,
+                project=report.project
+            )
+        except Exception as e:
+            logger.warning(f"Failed to send commission report email: {str(e)}")
+            return Response(
+                {'error': 'Failed to send email. Please try again.'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+        # Update report
+        report.sent_to_agent = True
+        report.sent_at = timezone.now()
+        report.save()
+
+        # Log action
+        try:
+            from system_logs.utils import log_action, get_client_ip
+            log_action(
+                action='COMMISSION_REPORT_SENT',
+                user=request.user,
+                target_user=report.agent,
+                description=f"Commission report sent to agent for project: {report.project.title}",
+                category='project',
+                ip_address=get_client_ip(request),
+                metadata={'project_id': report.project.id, 'report_id': report.id},
+            )
+        except Exception:
+            pass
+
+        return Response({
+            'success': True,
+            'message': 'Commission report sent to agent successfully',
+            'report': CommissionReportSerializer(report, context={'request': request}).data
+        }, status=status.HTTP_200_OK)
+
+
+class AgentCommissionReportsView(APIView):
+    """Get all commission reports sent to the logged-in agent"""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user_role = get_user_role(request.user)
+        if user_role != 'agent':
+            return Response(
+                {'error': 'Only agents can access this endpoint'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        reports = CommissionReport.objects.filter(
+            agent=request.user,
+            sent_to_agent=True
+        ).select_related('project', 'generated_by').order_by('-created_at')
+
+        serializer = CommissionReportSerializer(reports, many=True, context={'request': request})
+        return Response({
+            'reports': serializer.data
         }, status=status.HTTP_200_OK)

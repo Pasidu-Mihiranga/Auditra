@@ -16,6 +16,7 @@ import LoadingSpinner from '../../components/LoadingSpinner';
 import StatusChip from '../../components/StatusChip';
 import { formatDate, formatDateTime, getPriorityColor, capitalize } from '../../utils/helpers';
 import { useAuth } from '../../contexts/AuthContext';
+import ReportHistory from '../../components/ReportHistory';
 
 export default function ProjectDetail() {
   const { id } = useParams();
@@ -42,6 +43,18 @@ export default function ProjectDetail() {
   const [cancelReason, setCancelReason] = useState('');
   const [cancelLoading, setCancelLoading] = useState(false);
   const [cancellationStatus, setCancellationStatus] = useState(null);
+
+  // Agent payment states
+  const [agentPaymentDialog, setAgentPaymentDialog] = useState(false);
+  const [agentPaymentAmount, setAgentPaymentAmount] = useState('');
+  const [agentPaymentNotes, setAgentPaymentNotes] = useState('');
+  const [agentPaymentLoading, setAgentPaymentLoading] = useState(false);
+
+  // Commission report states
+  const [reportLoading, setReportLoading] = useState(false);
+  const [generatedReport, setGeneratedReport] = useState(null);
+  const [sendingReport, setSendingReport] = useState(false);
+  const [reportDialog, setReportDialog] = useState(false);
 
   const fetchProject = async () => {
     try {
@@ -232,6 +245,62 @@ export default function ProjectDetail() {
     }
   };
 
+  // Agent payment handler
+  const handleRecordAgentPayment = async () => {
+    if (!agentPaymentAmount || Number(agentPaymentAmount) <= 0) {
+      setError('Please enter a valid payment amount');
+      return;
+    }
+    setAgentPaymentLoading(true);
+    setError('');
+    try {
+      await projectService.recordAgentPayment(id, {
+        amount: agentPaymentAmount,
+        notes: agentPaymentNotes,
+      });
+      setSuccess('Agent payment recorded successfully!');
+      setAgentPaymentDialog(false);
+      setAgentPaymentAmount('');
+      setAgentPaymentNotes('');
+      await fetchProject();
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to record agent payment');
+    } finally {
+      setAgentPaymentLoading(false);
+    }
+  };
+
+  // Commission report handlers
+  const handleGenerateReport = async () => {
+    setReportLoading(true);
+    setError('');
+    try {
+      const res = await projectService.generateCommissionReport(id);
+      setGeneratedReport(res.data.report);
+      setReportDialog(true);
+      setSuccess('Commission report generated successfully!');
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to generate commission report');
+    } finally {
+      setReportLoading(false);
+    }
+  };
+
+  const handleSendReport = async () => {
+    if (!generatedReport) return;
+    setSendingReport(true);
+    setError('');
+    try {
+      await projectService.sendCommissionReport(generatedReport.id);
+      setSuccess('Commission report sent to agent successfully!');
+      setGeneratedReport({ ...generatedReport, sent_to_agent: true });
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to send commission report');
+    } finally {
+      setSendingReport(false);
+    }
+  };
+
   if (loading) return <LoadingSpinner />;
   if (!project) return <Alert severity="error">Project not found</Alert>;
 
@@ -242,6 +311,8 @@ export default function ProjectDetail() {
   const payment = project.payment;
   const paymentStatus = payment?.payment_status || 'pending';
   const isPaymentApproved = paymentStatus === 'approved';
+  const agentPaymentStatus = payment?.agent_payment_status || 'pending';
+  const isAgentPaid = agentPaymentStatus === 'paid';
 
   // Readiness check for starting the project
   const requiredAssignments = [
@@ -569,6 +640,83 @@ export default function ProjectDetail() {
         </Card>
       )}
 
+      {/* Agent Payment Section - shown when project has an agent */}
+      {isCoordinator && project.has_agent && project.assigned_agent && (
+        <Card sx={{ mb: 3 }}>
+          <CardContent sx={{ p: 3 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <AttachMoney color="primary" />
+                <Typography variant="h6" sx={{ fontWeight: 600 }}>Agent Payment</Typography>
+              </Box>
+              {isAgentPaid && (
+                <Chip
+                  icon={<CheckCircle sx={{ fontSize: 16 }} />}
+                  label="Paid"
+                  size="small"
+                  sx={{
+                    bgcolor: '#1565C020',
+                    color: '#1565C0',
+                    fontWeight: 600,
+                    border: '1px solid #1565C050',
+                    '& .MuiChip-icon': { color: '#1565C0' }
+                  }}
+                />
+              )}
+            </Box>
+
+            <Box sx={{ p: 2, bgcolor: (t) => t.palette.custom.cardInner, borderRadius: 2, mb: 2 }}>
+              <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500, mb: 0.5 }}>Agent</Typography>
+              <Typography sx={{ fontWeight: 600 }}>{project.assigned_agent_name || 'Assigned'}</Typography>
+            </Box>
+
+            {isAgentPaid ? (
+              <Box sx={{ p: 2, bgcolor: (t) => t.palette.custom.cardInner, borderRadius: 2 }}>
+                <Grid container spacing={2}>
+                  <Grid item xs={6}>
+                    <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500, mb: 0.5 }}>Amount Paid</Typography>
+                    <Typography variant="h6" sx={{ fontWeight: 700, color: 'primary.main' }}>
+                      Rs. {Number(payment.agent_payment_amount).toLocaleString()}
+                    </Typography>
+                  </Grid>
+                  <Grid item xs={6}>
+                    <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500, mb: 0.5 }}>Paid On</Typography>
+                    <Typography sx={{ fontWeight: 600 }}>{formatDate(payment.agent_paid_at)}</Typography>
+                  </Grid>
+                  {payment.agent_payment_notes && (
+                    <Grid item xs={12}>
+                      <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500, mb: 0.5 }}>Notes</Typography>
+                      <Typography variant="body2">{payment.agent_payment_notes}</Typography>
+                    </Grid>
+                  )}
+                  <Grid item xs={12}>
+                    <Button
+                      variant="outlined"
+                      startIcon={<Description />}
+                      onClick={handleGenerateReport}
+                      disabled={reportLoading}
+                      size="small"
+                    >
+                      {reportLoading ? 'Generating...' : 'Generate Commission Report'}
+                    </Button>
+                  </Grid>
+                </Grid>
+              </Box>
+            ) : (
+              <Button
+                variant="contained"
+                startIcon={<AttachMoney />}
+                onClick={() => setAgentPaymentDialog(true)}
+                size="small"
+                sx={{ alignSelf: 'flex-start' }}
+              >
+                Record Agent Payment
+              </Button>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       <Card sx={{ mb: 3 }}>
         <CardContent sx={{ p: 3 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
@@ -710,19 +858,20 @@ export default function ProjectDetail() {
               </Typography>
 
               {project.history && project.history.length > 0 ? (
-                <Box sx={{ position: 'relative', pl: 2, '&::before': { content: '""', position: 'absolute', left: 7, top: 0, bottom: 0, width: '2px', bgcolor: 'divider' } }}>
+                <Box sx={{ position: 'relative', pl: 3, '&::before': { content: '""', position: 'absolute', left: 8, top: 10, bottom: 10, width: '2px', bgcolor: 'divider' } }}>
                   {project.history.slice().reverse().map((event, index) => (
                     <Box key={event.id} sx={{ mb: 3, position: 'relative' }}>
                       <Box sx={{
                         position: 'absolute',
-                        left: -20,
+                        left: -21,
                         top: 4,
                         width: 12,
                         height: 12,
                         borderRadius: '50%',
                         bgcolor: index === 0 ? 'primary.main' : 'divider',
                         border: '2px solid white',
-                        boxShadow: '0 0 0 2px rgba(0,0,0,0.05)'
+                        boxShadow: '0 0 0 2px rgba(0,0,0,0.05)',
+                        zIndex: 1,
                       }} />
                       <Typography variant="subtitle2" sx={{ fontWeight: 700, lineHeight: 1.2 }}>
                         {event.status_display || event.status}
@@ -805,7 +954,38 @@ export default function ProjectDetail() {
           </Card>
         </Grid>
       </Grid>
-      
+
+      {/* Valuation Report History */}
+      {project.valuations && project.valuations.length > 0 && (
+        <Card sx={{ mt: 3 }}>
+          <CardContent sx={{ p: 3 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+              <TimelineIcon color="primary" />
+              <Typography variant="h6" sx={{ fontWeight: 600 }}>Valuation Report History</Typography>
+            </Box>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+              Submission and review history for each valuation report
+            </Typography>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+              {project.valuations.map(v => (
+                <Box key={v.id} sx={{ p: 2, bgcolor: (t) => t.palette.custom.cardInner, borderRadius: 2, border: '1px solid', borderColor: 'divider' }}>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                    <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                      {v.category_display || v.category || 'Valuation'}
+                    </Typography>
+                    <StatusChip status={v.status} label={v.status_display || v.status} />
+                  </Box>
+                  <Typography variant="caption" color="text.secondary">
+                    Field Officer: {v.field_officer_name || v.field_officer_username}
+                  </Typography>
+                  <ReportHistory history={v.history} />
+                </Box>
+              ))}
+            </Box>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Payment Rejection Dialog */}
       <Dialog open={rejectPaymentDialog} onClose={() => !paymentLoading && setRejectPaymentDialog(false)} maxWidth="sm" fullWidth>
         <DialogTitle sx={{ pb: 1 }}>
@@ -879,6 +1059,114 @@ export default function ProjectDetail() {
             startIcon={<Block />}
           >
             {cancelLoading ? 'Submitting...' : 'Submit Request'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Agent Payment Dialog */}
+      <Dialog open={agentPaymentDialog} onClose={() => !agentPaymentLoading && setAgentPaymentDialog(false)} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ pb: 1 }}>
+          <Typography variant="h6" sx={{ fontWeight: 700 }}>
+            Record Agent Payment
+          </Typography>
+        </DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Record the payment made to the agent for this project. The agent will be able to see this in their payments tab.
+          </Typography>
+          <TextField
+            fullWidth
+            label="Payment Amount (Rs.)"
+            type="number"
+            value={agentPaymentAmount}
+            onChange={(e) => setAgentPaymentAmount(e.target.value)}
+            required
+            sx={{ mb: 2 }}
+            inputProps={{ min: 0, step: 0.01 }}
+          />
+          <TextField
+            fullWidth
+            multiline
+            rows={2}
+            label="Notes (Optional)"
+            placeholder="Any notes about this payment..."
+            value={agentPaymentNotes}
+            onChange={(e) => setAgentPaymentNotes(e.target.value)}
+          />
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setAgentPaymentDialog(false)} disabled={agentPaymentLoading}>
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            onClick={handleRecordAgentPayment}
+            disabled={agentPaymentLoading || !agentPaymentAmount || Number(agentPaymentAmount) <= 0}
+            startIcon={<AttachMoney />}
+          >
+            {agentPaymentLoading ? 'Recording...' : 'Record Payment'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Commission Report Dialog */}
+      <Dialog open={reportDialog} onClose={() => { setReportDialog(false); setGeneratedReport(null); }} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ pb: 1 }}>
+          <Typography variant="h6" sx={{ fontWeight: 700 }}>
+            Commission Report
+          </Typography>
+        </DialogTitle>
+        <DialogContent>
+          {generatedReport && (
+            <Box>
+              <Alert severity="success" sx={{ mb: 2 }}>
+                Commission report generated successfully!
+              </Alert>
+              <Box sx={{ p: 2, bgcolor: (t) => t.palette.custom?.cardInner || '#f5f5f5', borderRadius: 2, mb: 2 }}>
+                <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500, mb: 0.5 }}>Project</Typography>
+                <Typography sx={{ fontWeight: 600, mb: 1 }}>{generatedReport.project_title}</Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500, mb: 0.5 }}>Agent</Typography>
+                <Typography sx={{ fontWeight: 600, mb: 1 }}>{generatedReport.agent_name}</Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500, mb: 0.5 }}>Commission Amount</Typography>
+                <Typography variant="h6" sx={{ fontWeight: 700, color: 'primary.main' }}>
+                  Rs. {Number(generatedReport.commission_amount).toLocaleString()}
+                </Typography>
+              </Box>
+              <Box sx={{ display: 'flex', gap: 1 }}>
+                {generatedReport.report_file_url && (
+                  <Button
+                    variant="outlined"
+                    startIcon={<Download />}
+                    href={generatedReport.report_file_url}
+                    target="_blank"
+                    size="small"
+                  >
+                    Download Report
+                  </Button>
+                )}
+                {!generatedReport.sent_to_agent && (
+                  <Button
+                    variant="contained"
+                    startIcon={<Send />}
+                    onClick={handleSendReport}
+                    disabled={sendingReport}
+                    size="small"
+                  >
+                    {sendingReport ? 'Sending...' : 'Send to Agent'}
+                  </Button>
+                )}
+                {generatedReport.sent_to_agent && (
+                  <Alert severity="info" sx={{ flex: 1 }}>
+                    Report has been sent to the agent.
+                  </Alert>
+                )}
+              </Box>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => { setReportDialog(false); setGeneratedReport(null); }}>
+            Close
           </Button>
         </DialogActions>
       </Dialog>

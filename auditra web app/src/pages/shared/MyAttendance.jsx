@@ -92,7 +92,7 @@ export default function MyAttendance() {
           </Grid>
           <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
             {today?.flags?.can_check_in && (
-              <Button variant="contained" startIcon={<Login />} disabled={actionLoading}
+              <Button variant="contained" color="error" startIcon={<Login />} disabled={actionLoading}
                 onClick={() => handleAction(attendanceService.markAttendance, 'Check-in')}>
                 Check In
               </Button>

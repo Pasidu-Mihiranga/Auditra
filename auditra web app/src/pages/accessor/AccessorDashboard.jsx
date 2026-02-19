@@ -15,8 +15,8 @@ export default function AccessorDashboard() {
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        const res = await projectService.getProjects();
-        const projects = Array.isArray(res.data) ? res.data : res.data?.results || [];
+        const projRes = await projectService.getProjects();
+        const projects = Array.isArray(projRes.data) ? projRes.data : projRes.data?.results || [];
         setStats({
           total: projects.length,
           pending: projects.filter(p => p.status === 'pending').length,
@@ -38,6 +38,7 @@ export default function AccessorDashboard() {
     <Box>
       <Typography variant="h5" sx={{ fontWeight: 700, mb: 3 }}>Assessor Dashboard</Typography>
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+      <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 2, color: 'text.secondary' }}>Projects</Typography>
       <Grid container spacing={3}>
         <Grid item xs={12} sm={6} md={3}>
           <StatsCard title="Total Projects" value={stats.total} icon={Assignment} color="#1565C0"
@@ -52,7 +53,7 @@ export default function AccessorDashboard() {
             onClick={() => navigate('/dashboard/my-projects', { state: { filter: 'completed' } })} />
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
-          <StatsCard title="Pending" value={stats.pending} icon={Assessment} color="#DC2626"
+          <StatsCard title="Pending" value={stats.pending} icon={Assessment} color="#1E88E5"
             onClick={() => navigate('/dashboard/my-projects', { state: { filter: 'pending' } })} />
         </Grid>
       </Grid>

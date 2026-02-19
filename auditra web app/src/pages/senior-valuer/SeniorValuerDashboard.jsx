@@ -1,13 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Box, Typography, Grid, Alert } from '@mui/material';
-import { RateReview, PendingActions, CheckCircle, Assignment } from '@mui/icons-material';
+import { PendingActions, CheckCircle, Folder, Assessment } from '@mui/icons-material';
 import StatsCard from '../../components/StatsCard';
 import LoadingSpinner from '../../components/LoadingSpinner';
-import valuationService from '../../services/valuationService';
+import projectService from '../../services/projectService';
 
 export default function SeniorValuerDashboard() {
-  const [stats, setStats] = useState({ total: 0, pending: 0, approved: 0, rejected: 0 });
+  const [projectStats, setProjectStats] = useState({ total: 0, inProgress: 0, completed: 0, pending: 0 });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const navigate = useNavigate();
@@ -15,13 +15,13 @@ export default function SeniorValuerDashboard() {
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        const res = await valuationService.getValuations();
-        const valuations = Array.isArray(res.data) ? res.data : res.data?.results || [];
-        setStats({
-          total: valuations.length,
-          pending: valuations.filter(v => v.status === 'pending' || v.status === 'submitted').length,
-          approved: valuations.filter(v => v.status === 'approved').length,
-          rejected: valuations.filter(v => v.status === 'rejected').length,
+        const projRes = await projectService.getProjects();
+        const projects = Array.isArray(projRes.data) ? projRes.data : projRes.data?.results || [];
+        setProjectStats({
+          total: projects.length,
+          inProgress: projects.filter(p => p.status === 'active' || p.status === 'in_progress').length,
+          completed: projects.filter(p => p.status === 'completed').length,
+          pending: projects.filter(p => p.status === 'pending').length,
         });
       } catch {
         setError('Failed to load dashboard data');
@@ -38,22 +38,24 @@ export default function SeniorValuerDashboard() {
     <Box>
       <Typography variant="h5" sx={{ fontWeight: 700, mb: 3 }}>Senior Valuer Dashboard</Typography>
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+
+      <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 2, color: 'text.secondary' }}>Projects</Typography>
       <Grid container spacing={3}>
         <Grid item xs={12} sm={6} md={3}>
-          <StatsCard title="Total Valuations" value={stats.total} icon={Assignment} color="#1565C0"
-            onClick={() => navigate('/dashboard/valuation-review')} />
+          <StatsCard title="Total Projects" value={projectStats.total} icon={Folder} color="#1565C0"
+            onClick={() => navigate('/dashboard/sv-projects')} />
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
-          <StatsCard title="Pending Review" value={stats.pending} icon={PendingActions} color="#1E88E5"
-            onClick={() => navigate('/dashboard/valuation-review', { state: { filter: 'pending' } })} />
+          <StatsCard title="In Progress" value={projectStats.inProgress} icon={PendingActions} color="#1E88E5"
+            onClick={() => navigate('/dashboard/sv-projects')} />
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
-          <StatsCard title="Approved" value={stats.approved} icon={CheckCircle} color="#1565C0"
-            onClick={() => navigate('/dashboard/valuation-review', { state: { filter: 'approved' } })} />
+          <StatsCard title="Completed" value={projectStats.completed} icon={CheckCircle} color="#1565C0"
+            onClick={() => navigate('/dashboard/sv-projects')} />
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
-          <StatsCard title="Rejected" value={stats.rejected} icon={RateReview} color="#DC2626"
-            onClick={() => navigate('/dashboard/valuation-review', { state: { filter: 'rejected' } })} />
+          <StatsCard title="Pending" value={projectStats.pending} icon={Assessment} color="#1E88E5"
+            onClick={() => navigate('/dashboard/sv-projects')} />
         </Grid>
       </Grid>
     </Box>

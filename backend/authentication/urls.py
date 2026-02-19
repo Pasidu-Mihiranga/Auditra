@@ -42,6 +42,7 @@ from .views import (
     RoleSalariesView,
     AcceptAssignmentView,
     RejectAssignmentView,
+    AdminDashboardStatsView,
 )
 
 urlpatterns = [
@@ -88,5 +89,6 @@ urlpatterns = [
     path('employee-submissions/<int:pk>/', EmployeeSubmissionDetailView.as_view(), name='employee-submission-detail'),
     path('employee-submissions/<int:pk>/hire/', HireEmployeeSubmissionView.as_view(), name='hire-employee-submission'),
     path('role-salaries/', RoleSalariesView.as_view(), name='role-salaries'),
+    path('admin-dashboard-stats/', AdminDashboardStatsView.as_view(), name='admin-dashboard-stats'),
 ]
 

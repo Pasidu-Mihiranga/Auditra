@@ -6,7 +6,7 @@ import {
   Alert, Snackbar, Button, Dialog, DialogTitle, DialogContent,
   DialogActions, Tabs, Tab, Divider
 } from '@mui/material';
-import { Search, Cancel, Visibility, Send } from '@mui/icons-material';
+import { Search, CheckCircle, Cancel, Visibility, Download } from '@mui/icons-material';
 import valuationService from '../../services/valuationService';
 import StatusChip from '../../components/StatusChip';
 import LoadingSpinner from '../../components/LoadingSpinner';
@@ -14,7 +14,7 @@ import { formatDate, formatCurrency } from '../../utils/helpers';
 
 const STATUS_TAB_MAP = { pending: 1, approved: 2, rejected: 3 };
 
-export default function ValuationReview() {
+export default function MDGMValuationReview() {
   const [valuations, setValuations] = useState([]);
   const [loading, setLoading] = useState(true);
   const location = useLocation();
@@ -30,7 +30,7 @@ export default function ValuationReview() {
   const fetchValuations = async () => {
     try {
       setLoading(true);
-      const res = await valuationService.getValuations();
+      const res = await valuationService.getMDGMValuations();
       setValuations(Array.isArray(res.data) ? res.data : res.data?.results || []);
     } catch {
       setSnackbar({ open: true, message: 'Failed to load valuations', severity: 'error' });
@@ -39,11 +39,11 @@ export default function ValuationReview() {
     }
   };
 
-  const handleApproveAndSend = async (id) => {
+  const handleApprove = async (id) => {
     try {
       setActionLoading(true);
-      await valuationService.approveValuation(id, { senior_valuer_comments: remarks });
-      setSnackbar({ open: true, message: 'Valuation approved and sent to MD/GM for final approval', severity: 'success' });
+      await valuationService.mdGmApprove(id, { md_gm_comments: remarks });
+      setSnackbar({ open: true, message: 'Valuation approved successfully', severity: 'success' });
       setRemarks('');
       setDetailDialog({ open: false, valuation: null });
       fetchValuations();
@@ -61,7 +61,7 @@ export default function ValuationReview() {
     }
     try {
       setActionLoading(true);
-      await valuationService.seniorValuerReject(id, { rejection_reason: remarks });
+      await valuationService.mdGmReject(id, { rejection_reason: remarks, md_gm_comments: remarks });
       setSnackbar({ open: true, message: 'Valuation rejected successfully', severity: 'success' });
       setRemarks('');
       setDetailDialog({ open: false, valuation: null });
@@ -73,12 +73,16 @@ export default function ValuationReview() {
     }
   };
 
-  const isPending = (status) => status === 'pending' || status === 'submitted' || status === 'reviewed';
+  const getStatusLabel = (status) => {
+    if (status === 'md_approved') return 'MD/GM Approved';
+    if (status === 'approved') return 'Pending Approval';
+    return status;
+  };
 
   const filteredValuations = valuations.filter(v => {
     const statusMatch = tabValue === 0 ||
-      (tabValue === 1 && isPending(v.status)) ||
-      (tabValue === 2 && v.status === 'approved') ||
+      (tabValue === 1 && v.status === 'approved') ||
+      (tabValue === 2 && v.status === 'md_approved') ||
       (tabValue === 3 && v.status === 'rejected');
     const searchMatch = !searchQuery ||
       (v.project_title || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -95,8 +99,8 @@ export default function ValuationReview() {
       <Paper sx={{ mb: 3 }}>
         <Tabs value={tabValue} onChange={(_, v) => setTabValue(v)} sx={{ borderBottom: 1, borderColor: 'divider' }}>
           <Tab label={`All (${valuations.length})`} />
-          <Tab label={`Pending (${valuations.filter(v => isPending(v.status)).length})`} />
-          <Tab label={`Approved (${valuations.filter(v => v.status === 'approved').length})`} />
+          <Tab label={`Pending (${valuations.filter(v => v.status === 'approved').length})`} />
+          <Tab label={`Approved (${valuations.filter(v => v.status === 'md_approved').length})`} />
           <Tab label={`Rejected (${valuations.filter(v => v.status === 'rejected').length})`} />
         </Tabs>
       </Paper>
@@ -141,7 +145,7 @@ export default function ValuationReview() {
                   <TableCell>{formatCurrency(val.estimated_value)}</TableCell>
                   <TableCell>{formatDate(val.submitted_at || val.created_at)}</TableCell>
                   <TableCell>
-                    <StatusChip status={val.status} label={val.status} />
+                    <StatusChip status={val.status === 'md_approved' ? 'approved' : val.status} label={getStatusLabel(val.status)} />
                   </TableCell>
                   <TableCell align="right">
                     <Button size="small" startIcon={<Visibility />}
@@ -193,9 +197,45 @@ export default function ValuationReview() {
                   </Alert>
                 </Box>
               )}
+              {detailDialog.valuation.senior_valuer_comments && (
+                <Box>
+                  <Typography variant="subtitle2" color="text.secondary">Senior Valuer Comments</Typography>
+                  <Alert severity="info" sx={{ mt: 0.5 }}>
+                    {detailDialog.valuation.senior_valuer_comments}
+                  </Alert>
+                </Box>
+              )}
+              {detailDialog.valuation.final_report_url && (
+                <Box>
+                  <Typography variant="subtitle2" color="text.secondary">Final Report</Typography>
+                  <Button
+                    size="small"
+                    startIcon={<Download />}
+                    href={detailDialog.valuation.final_report_url}
+                    target="_blank"
+                    sx={{ mt: 0.5 }}
+                  >
+                    Download Report
+                  </Button>
+                </Box>
+              )}
+              {detailDialog.valuation.submitted_report_url && (
+                <Box>
+                  <Typography variant="subtitle2" color="text.secondary">Submitted Report</Typography>
+                  <Button
+                    size="small"
+                    startIcon={<Download />}
+                    href={detailDialog.valuation.submitted_report_url}
+                    target="_blank"
+                    sx={{ mt: 0.5 }}
+                  >
+                    Download Report
+                  </Button>
+                </Box>
+              )}
               <Box>
                 <Typography variant="subtitle2" color="text.secondary">Status</Typography>
-                <StatusChip status={detailDialog.valuation.status} label={detailDialog.valuation.status} />
+                <StatusChip status={detailDialog.valuation.status === 'md_approved' ? 'approved' : detailDialog.valuation.status} label={getStatusLabel(detailDialog.valuation.status)} />
               </Box>
               {detailDialog.valuation.rejection_reason && detailDialog.valuation.status === 'rejected' && (
                 <Box>
@@ -205,13 +245,20 @@ export default function ValuationReview() {
                   </Alert>
                 </Box>
               )}
+              {detailDialog.valuation.md_gm_comments && detailDialog.valuation.status === 'md_approved' && (
+                <Box>
+                  <Typography variant="subtitle2" color="text.secondary">MD/GM Comments</Typography>
+                  <Alert severity="success" sx={{ mt: 0.5 }}>
+                    {detailDialog.valuation.md_gm_comments}
+                  </Alert>
+                </Box>
+              )}
 
-              {isPending(detailDialog.valuation.status) && (
+              {detailDialog.valuation.status === 'approved' && (
                 <>
                   <Divider sx={{ my: 1 }} />
                   <TextField
-                    label="Comments (required for rejection)"
-                    placeholder="Add your comments here..."
+                    label="Remarks (required for rejection)"
                     value={remarks}
                     onChange={(e) => setRemarks(e.target.value)}
                     multiline
@@ -224,17 +271,17 @@ export default function ValuationReview() {
           )}
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
-          {detailDialog.valuation && isPending(detailDialog.valuation.status) && (
+          {detailDialog.valuation?.status === 'approved' && (
             <>
               <Button color="error" startIcon={<Cancel />} sx={{ width: 110 }}
                 disabled={actionLoading}
                 onClick={() => handleReject(detailDialog.valuation.id)}>
                 Reject
               </Button>
-              <Button color="primary" variant="contained" startIcon={<Send />}
+              <Button color="primary" variant="contained" startIcon={<CheckCircle />} sx={{ width: 110 }}
                 disabled={actionLoading}
-                onClick={() => handleApproveAndSend(detailDialog.valuation.id)}>
-                Approve & Send to MD/GM
+                onClick={() => handleApprove(detailDialog.valuation.id)}>
+                Approve
               </Button>
             </>
           )}

@@ -53,7 +53,7 @@ export const roleMenuConfig = {
   ],
   senior_valuer: [
     { label: 'Dashboard', path: '/dashboard', icon: DashboardIcon },
-    { label: 'Valuation Review', path: '/dashboard/valuation-review', icon: RateReviewIcon },
+    { label: 'My Projects', path: '/dashboard/sv-projects', icon: FolderIcon },
     { label: 'My Attendance', path: '/dashboard/my-attendance', icon: EventNoteIcon },
     { label: 'My Leave', path: '/dashboard/my-leave', icon: BeachAccessIcon },
     { label: 'My Payments', path: '/dashboard/my-payments', icon: PaymentIcon },
@@ -69,6 +69,7 @@ export const roleMenuConfig = {
   ],
   field_officer: [
     { label: 'Dashboard', path: '/dashboard', icon: DashboardIcon },
+    { label: 'My Projects', path: '/dashboard/my-projects', icon: FolderIcon },
     { label: 'My Attendance', path: '/dashboard/my-attendance', icon: EventNoteIcon },
     { label: 'My Leave', path: '/dashboard/my-leave', icon: BeachAccessIcon },
     { label: 'My Payments', path: '/dashboard/my-payments', icon: PaymentIcon },
@@ -87,6 +88,8 @@ export const roleMenuConfig = {
   ],
   agent: [
     { label: 'My Projects', path: '/dashboard', icon: FolderIcon },
+    { label: 'Payments', path: '/dashboard/agent-payments', icon: PaymentIcon },
+    { label: 'Commission Reports', path: '/dashboard/agent-commission-reports', icon: ReceiptLongIcon },
     { label: 'Profile', path: '/dashboard/profile', icon: PersonIcon },
   ],
   unassigned: [

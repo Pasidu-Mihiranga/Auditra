@@ -47,6 +47,7 @@ class Valuation {
   final DateTime? submittedAt;
   final bool canBeEdited;
   final String? rejectionReason;
+  final String? accessorComments;
   final String? seniorValuerComments;
   final String? finalReportUrl;
 
@@ -90,6 +91,7 @@ class Valuation {
     this.submittedAt,
     this.canBeEdited = false,
     this.rejectionReason,
+    this.accessorComments,
     this.seniorValuerComments,
     this.finalReportUrl,
   });
@@ -186,6 +188,7 @@ class Valuation {
           : null,
       canBeEdited: json['can_be_edited'] ?? false,
       rejectionReason: json['rejection_reason'] as String?,
+      accessorComments: json['accessor_comments'] as String?,
       seniorValuerComments: json['senior_valuer_comments'] as String?,
       finalReportUrl: json['final_report_url'] as String?,
     );

@@ -5,10 +5,11 @@ from rest_framework.response import Response
 from django.shortcuts import get_object_or_404
 from django.db import transaction
 import logging
-from .models import Valuation, ValuationPhoto
+from .models import Valuation, ValuationPhoto, Notification, ValuationHistory
 from .serializers import (
     ValuationSerializer, ValuationCreateSerializer,
-    ValuationPhotoSerializer, ValuationPhotoCreateSerializer
+    ValuationPhotoSerializer, ValuationPhotoCreateSerializer,
+    NotificationSerializer
 )
 from projects.models import Project, ProjectStatusHistory
 
@@ -22,11 +23,14 @@ class ValuationListCreateView(generics.ListCreateAPIView):
     def get_queryset(self):
         user = self.request.user
         project_id = self.request.query_params.get('project', None)
-        
+
         # Field Officers see their own valuations
         # Accessors see valuations for projects assigned to them
+        # Senior Valuers see valuations for projects assigned to them
         if hasattr(user, 'role') and user.role.role == 'accessor':
             queryset = Valuation.objects.filter(project__assigned_accessor=user)
+        elif hasattr(user, 'role') and user.role.role == 'senior_valuer':
+            queryset = Valuation.objects.filter(project__assigned_senior_valuer=user)
         else:
             queryset = Valuation.objects.filter(field_officer=user)
         
@@ -143,7 +147,16 @@ def submit_valuation(request, pk):
             status=status.HTTP_400_BAD_REQUEST
         )
     
+    is_resubmit = valuation.status == 'rejected'
     valuation.submit()
+
+    # Create history entry
+    ValuationHistory.objects.create(
+        valuation=valuation,
+        action='resubmitted' if is_resubmit else 'submitted',
+        performed_by=request.user,
+        comments='Report resubmitted after rejection' if is_resubmit else 'Report submitted for review',
+    )
 
     try:
         from system_logs.utils import log_action, get_client_ip
@@ -157,6 +170,30 @@ def submit_valuation(request, pk):
         )
     except Exception:
         pass
+
+    serializer = ValuationSerializer(valuation, context={'request': request})
+    return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def upload_submitted_report(request, pk):
+    """Upload the field officer's generated PDF report for a valuation"""
+    valuation = get_object_or_404(
+        Valuation,
+        pk=pk,
+        field_officer=request.user
+    )
+
+    report_file = request.FILES.get('submitted_report', None)
+    if not report_file:
+        return Response(
+            {'error': 'No report file provided.'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    valuation.submitted_report = report_file
+    valuation.save(update_fields=['submitted_report', 'updated_at'])
 
     serializer = ValuationSerializer(valuation, context={'request': request})
     return Response(serializer.data, status=status.HTTP_200_OK)
@@ -237,10 +274,14 @@ def accept_valuation(request, pk):
     # Change status to reviewed (accessor acceptance - not final approval)
     # Reports are automatically sent to senior valuer for final approval
     valuation.status = 'reviewed'
-    
+
+    # Save accessor comments if provided
+    accessor_comments = request.data.get('accessor_comments', '').strip()
+    valuation.accessor_comments = accessor_comments
+
     # Clear rejection reason if it exists
     valuation.rejection_reason = ''
-    valuation.save(update_fields=['status', 'rejection_reason', 'updated_at'])
+    valuation.save(update_fields=['status', 'accessor_comments', 'rejection_reason', 'updated_at'])
     
     senior_valuer_name = valuation.project.assigned_senior_valuer.get_full_name() or valuation.project.assigned_senior_valuer.username
     logger.info(
@@ -253,6 +294,14 @@ def accept_valuation(request, pk):
         status=valuation.project.status,
         notes=f"Valuation ({valuation.get_category_display()}) accepted by Accessor and sent to Senior Valuer for approval.",
         created_by=request.user
+    )
+
+    # Create valuation history entry
+    ValuationHistory.objects.create(
+        valuation=valuation,
+        action='reviewed',
+        performed_by=request.user,
+        comments=accessor_comments,
     )
 
     try:
@@ -323,6 +372,25 @@ def reject_valuation(request, pk):
         status=valuation.project.status,
         notes=f"Valuation ({valuation.get_category_display()}) rejected by Accessor. Reason: {rejection_reason}",
         created_by=request.user
+    )
+
+    # Create valuation history entry
+    ValuationHistory.objects.create(
+        valuation=valuation,
+        action='rejected_by_accessor',
+        performed_by=request.user,
+        comments=rejection_reason,
+    )
+
+    # Create notification for field officer
+    accessor_name = request.user.get_full_name() or request.user.username
+    Notification.objects.create(
+        user=valuation.field_officer,
+        title='Valuation Rejected by Assessor',
+        message=f'Your {valuation.get_category_display()} valuation for project "{valuation.project.title}" has been rejected by Assessor ({accessor_name}). Reason: {rejection_reason}',
+        notification_type='rejection',
+        valuation=valuation,
+        project=valuation.project,
     )
 
     try:
@@ -441,17 +509,34 @@ def senior_valuer_approve_valuation(request, pk):
             status=status.HTTP_400_BAD_REQUEST
         )
     
-    # Change status to approved (final approval by senior valuer)
+    # Save senior valuer comments if provided
+    senior_valuer_comments = request.data.get('senior_valuer_comments', '').strip()
+    if senior_valuer_comments:
+        valuation.senior_valuer_comments = senior_valuer_comments
+
+    # Change status to approved (sends to MD/GM for final approval)
     valuation.status = 'approved'
-    valuation.save(update_fields=['status', 'updated_at'])
-    
-    logger.info(f'Valuation {valuation.id} approved by senior valuer {request.user.username}')
-    
+
+    update_fields = ['status', 'updated_at']
+    if senior_valuer_comments:
+        update_fields.append('senior_valuer_comments')
+    valuation.save(update_fields=update_fields)
+
+    logger.info(f'Valuation {valuation.id} approved by senior valuer {request.user.username} and sent to MD/GM')
+
     ProjectStatusHistory.objects.create(
         project=valuation.project,
         status=valuation.project.status,
-        notes=f"Valuation ({valuation.get_category_display()}) approved by Senior Valuer.",
+        notes=f"Valuation ({valuation.get_category_display()}) approved by Senior Valuer and sent to MD/GM for final approval.",
         created_by=request.user
+    )
+
+    # Create valuation history entry
+    ValuationHistory.objects.create(
+        valuation=valuation,
+        action='approved_by_sv',
+        performed_by=request.user,
+        comments=senior_valuer_comments,
     )
 
     try:
@@ -459,7 +544,7 @@ def senior_valuer_approve_valuation(request, pk):
         log_action(
             action='VALUATION_APPROVED',
             user=request.user,
-            description=f"Valuation approved by senior valuer for project: {valuation.project.title}",
+            description=f"Valuation approved by senior valuer for project: {valuation.project.title} and sent to MD/GM",
             category='valuation',
             ip_address=get_client_ip(request),
             metadata={'valuation_id': valuation.id, 'project_id': valuation.project.id},
@@ -468,7 +553,10 @@ def senior_valuer_approve_valuation(request, pk):
         pass
 
     serializer = ValuationSerializer(valuation, context={'request': request})
-    return Response(serializer.data, status=status.HTTP_200_OK)
+    return Response({
+        **serializer.data,
+        'message': 'Valuation approved and sent to MD/GM for final approval.'
+    }, status=status.HTTP_200_OK)
 
 
 @api_view(['POST'])
@@ -521,6 +609,39 @@ def senior_valuer_reject_valuation(request, pk):
         created_by=request.user
     )
 
+    # Create valuation history entry
+    ValuationHistory.objects.create(
+        valuation=valuation,
+        action='rejected_by_sv',
+        performed_by=request.user,
+        comments=rejection_reason,
+    )
+
+    # Create notifications for assessor and field officer
+    sv_name = request.user.get_full_name() or request.user.username
+    notification_msg = f'{valuation.get_category_display()} valuation for project "{valuation.project.title}" has been rejected by Senior Valuer ({sv_name}). Reason: {rejection_reason}'
+
+    # Notify assessor
+    if valuation.project.assigned_accessor:
+        Notification.objects.create(
+            user=valuation.project.assigned_accessor,
+            title='Valuation Rejected by Senior Valuer',
+            message=notification_msg,
+            notification_type='rejection',
+            valuation=valuation,
+            project=valuation.project,
+        )
+
+    # Notify field officer
+    Notification.objects.create(
+        user=valuation.field_officer,
+        title='Valuation Rejected by Senior Valuer',
+        message=notification_msg,
+        notification_type='rejection',
+        valuation=valuation,
+        project=valuation.project,
+    )
+
     try:
         from system_logs.utils import log_action, get_client_ip
         log_action(
@@ -536,3 +657,220 @@ def senior_valuer_reject_valuation(request, pk):
 
     serializer = ValuationSerializer(valuation, context={'request': request})
     return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+# ============================================================================
+# MD/GM Valuation Views
+# ============================================================================
+
+class MDGMValuationListView(generics.ListAPIView):
+    """List approved valuations for MD/GM review"""
+    permission_classes = [IsAuthenticated]
+    serializer_class = ValuationSerializer
+
+    def get_queryset(self):
+        user = self.request.user
+
+        if not hasattr(user, 'role') or user.role.role != 'md_gm':
+            return Valuation.objects.none()
+
+        # MD/GM sees all approved and md_approved valuations
+        queryset = Valuation.objects.filter(
+            status__in=['approved', 'md_approved', 'rejected']
+        ).select_related('project', 'field_officer').prefetch_related('photos')
+
+        project_id = self.request.query_params.get('project', None)
+        if project_id:
+            queryset = queryset.filter(project_id=project_id)
+
+        return queryset
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+@transaction.atomic
+def md_gm_approve_valuation(request, pk):
+    """MD/GM approves a valuation (change status to md_approved)"""
+    valuation = get_object_or_404(Valuation, pk=pk)
+
+    if not hasattr(request.user, 'role') or request.user.role.role != 'md_gm':
+        return Response(
+            {'error': 'Only MD/GM can approve valuations at this stage.'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+
+    if valuation.status != 'approved':
+        return Response(
+            {'error': f'Only senior-valuer-approved valuations can be approved by MD/GM. Current status: {valuation.status}'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    md_gm_comments = request.data.get('md_gm_comments', '').strip()
+
+    valuation.status = 'md_approved'
+    valuation.md_gm_comments = md_gm_comments
+    valuation.save(update_fields=['status', 'md_gm_comments', 'updated_at'])
+
+    logger.info(f'Valuation {valuation.id} approved by MD/GM {request.user.username}')
+
+    ProjectStatusHistory.objects.create(
+        project=valuation.project,
+        status=valuation.project.status,
+        notes=f"Valuation ({valuation.get_category_display()}) approved by MD/GM.",
+        created_by=request.user
+    )
+
+    # Create valuation history entry
+    ValuationHistory.objects.create(
+        valuation=valuation,
+        action='md_approved',
+        performed_by=request.user,
+        comments=md_gm_comments,
+    )
+
+    try:
+        from system_logs.utils import log_action, get_client_ip
+        log_action(
+            action='VALUATION_MD_APPROVED',
+            user=request.user,
+            description=f"Valuation approved by MD/GM for project: {valuation.project.title}",
+            category='valuation',
+            ip_address=get_client_ip(request),
+            metadata={'valuation_id': valuation.id, 'project_id': valuation.project.id},
+        )
+    except Exception:
+        pass
+
+    serializer = ValuationSerializer(valuation, context={'request': request})
+    return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+@transaction.atomic
+def md_gm_reject_valuation(request, pk):
+    """MD/GM rejects a valuation (change status to rejected)"""
+    valuation = get_object_or_404(Valuation, pk=pk)
+
+    if not hasattr(request.user, 'role') or request.user.role.role != 'md_gm':
+        return Response(
+            {'error': 'Only MD/GM can reject valuations at this stage.'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+
+    if valuation.status != 'approved':
+        return Response(
+            {'error': f'Only senior-valuer-approved valuations can be rejected by MD/GM. Current status: {valuation.status}'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    rejection_reason = request.data.get('rejection_reason', '').strip()
+    if not rejection_reason:
+        return Response(
+            {'error': 'Rejection reason is required.'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    md_gm_comments = request.data.get('md_gm_comments', '').strip()
+
+    valuation.status = 'rejected'
+    valuation.rejection_reason = rejection_reason
+    valuation.md_gm_comments = md_gm_comments
+    valuation.save(update_fields=['status', 'rejection_reason', 'md_gm_comments', 'updated_at'])
+
+    logger.info(f'Valuation {valuation.id} rejected by MD/GM {request.user.username}')
+
+    ProjectStatusHistory.objects.create(
+        project=valuation.project,
+        status=valuation.project.status,
+        notes=f"Valuation ({valuation.get_category_display()}) rejected by MD/GM. Reason: {rejection_reason}",
+        created_by=request.user
+    )
+
+    # Create valuation history entry
+    ValuationHistory.objects.create(
+        valuation=valuation,
+        action='rejected_by_mdgm',
+        performed_by=request.user,
+        comments=rejection_reason,
+    )
+
+    # Create notifications for senior valuer and field officer
+    mdgm_name = request.user.get_full_name() or request.user.username
+    notification_msg = f'{valuation.get_category_display()} valuation for project "{valuation.project.title}" has been rejected by MD/GM ({mdgm_name}). Reason: {rejection_reason}'
+
+    # Notify senior valuer
+    if valuation.project.assigned_senior_valuer:
+        Notification.objects.create(
+            user=valuation.project.assigned_senior_valuer,
+            title='Valuation Rejected by MD/GM',
+            message=notification_msg,
+            notification_type='rejection',
+            valuation=valuation,
+            project=valuation.project,
+        )
+
+    # Notify field officer
+    Notification.objects.create(
+        user=valuation.field_officer,
+        title='Valuation Rejected by MD/GM',
+        message=notification_msg,
+        notification_type='rejection',
+        valuation=valuation,
+        project=valuation.project,
+    )
+
+    try:
+        from system_logs.utils import log_action, get_client_ip
+        log_action(
+            action='VALUATION_MD_REJECTED',
+            user=request.user,
+            description=f"Valuation rejected by MD/GM for project: {valuation.project.title}. Reason: {rejection_reason}",
+            category='valuation',
+            ip_address=get_client_ip(request),
+            metadata={'valuation_id': valuation.id, 'project_id': valuation.project.id, 'reason': rejection_reason},
+        )
+    except Exception:
+        pass
+
+    serializer = ValuationSerializer(valuation, context={'request': request})
+    return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+# ============================================================================
+# Notification Views
+# ============================================================================
+
+class NotificationListView(generics.ListAPIView):
+    """List notifications for the current user"""
+    permission_classes = [IsAuthenticated]
+    serializer_class = NotificationSerializer
+
+    def get_queryset(self):
+        return Notification.objects.filter(user=self.request.user).order_by('-created_at')[:50]
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def unread_notification_count(request):
+    """Get count of unread notifications"""
+    count = Notification.objects.filter(user=request.user, is_read=False).count()
+    return Response({'count': count})
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def mark_notification_read(request, pk):
+    """Mark a single notification as read"""
+    notification = get_object_or_404(Notification, pk=pk, user=request.user)
+    notification.is_read = True
+    notification.save(update_fields=['is_read'])
+    return Response({'status': 'ok'})
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def mark_all_notifications_read(request):
+    """Mark all notifications as read for the current user"""
+    Notification.objects.filter(user=request.user, is_read=False).update(is_read=True)
+    return Response({'status': 'ok'})

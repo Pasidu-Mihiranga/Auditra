@@ -803,3 +803,90 @@ The Auditra Team
         except Exception as e:
             logger.error(f'Error sending cancellation notification: {str(e)}', exc_info=True)
             return False
+
+    @staticmethod
+    def send_commission_report_to_agent(report, agent, project):
+        """Send commission report PDF to agent via email"""
+        if not agent.email:
+            logger.warning(f'Agent {agent.username} has no email address')
+            return False
+
+        agent_name = f"{agent.first_name} {agent.last_name}".strip() or agent.username
+
+        subject = f'Auditra - Commission Report: {project.title}'
+
+        html_message = f"""
+        <html>
+        <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+            <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+                <div style="background-color: #1565C0; color: white; padding: 20px; text-align: center; border-radius: 5px 5px 0 0;">
+                    <h1 style="margin: 0;">Commission Report</h1>
+                </div>
+                <div style="background-color: #f9f9f9; padding: 30px; border-radius: 0 0 5px 5px;">
+                    <p>Dear {agent_name},</p>
+                    <p>Your commission report for the project <strong>{project.title}</strong> is ready.</p>
+
+                    <div style="background-color: white; padding: 20px; border-left: 4px solid #1565C0; margin: 20px 0;">
+                        <p style="margin: 10px 0;"><strong>Project:</strong> {project.title}</p>
+                        <p style="margin: 10px 0; font-size: 20px; color: #16A34A; font-weight: bold;">
+                            Commission: Rs. {report.commission_amount:,.2f}
+                        </p>
+                    </div>
+
+                    <p>The commission report PDF is attached to this email. You can also view and download it from your dashboard.</p>
+
+                    <p style="margin-top: 30px;">Best regards,<br>The Auditra Team</p>
+                </div>
+                <div style="text-align: center; padding: 20px; color: #999; font-size: 12px;">
+                    <p>This is an automated message. Please do not reply to this email.</p>
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+
+        plain_message = f"""
+Commission Report
+
+Dear {agent_name},
+
+Your commission report for the project "{project.title}" is ready.
+
+Project: {project.title}
+Commission: Rs. {report.commission_amount:,.2f}
+
+The commission report PDF is attached to this email. You can also view and download it from your dashboard.
+
+Best regards,
+The Auditra Team
+        """
+
+        try:
+            from django.core.mail import EmailMultiAlternatives
+
+            logger.info(f'Sending commission report to agent: {agent.email}')
+
+            email_msg = EmailMultiAlternatives(
+                subject=subject,
+                body=plain_message,
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                to=[agent.email],
+            )
+            email_msg.attach_alternative(html_message, 'text/html')
+
+            # Attach the PDF file
+            if report.report_file:
+                report.report_file.open('rb')
+                pdf_content = report.report_file.read()
+                report.report_file.close()
+                email_msg.attach(
+                    f'commission_report_{project.title}.pdf',
+                    pdf_content,
+                    'application/pdf'
+                )
+
+            email_msg.send(fail_silently=False)
+            return True
+        except Exception as e:
+            logger.error(f'Error sending commission report to {agent.email}: {str(e)}', exc_info=True)
+            return False

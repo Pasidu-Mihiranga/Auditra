@@ -42,10 +42,12 @@ import AccessorProjects from './pages/accessor/AccessorProjects';
 // Senior Valuer pages
 import SeniorValuerDashboard from './pages/senior-valuer/SeniorValuerDashboard';
 import ValuationReview from './pages/senior-valuer/ValuationReview';
+import SeniorValuerProjects from './pages/senior-valuer/SeniorValuerProjects';
 
 // MD/GM pages
 import MDGMDashboard from './pages/md-gm/MDGMDashboard';
 import ProjectApproval from './pages/md-gm/ProjectApproval';
+import MDGMValuationReview from './pages/md-gm/MDGMValuationReview';
 
 // Shared pages
 import MyAttendance from './pages/shared/MyAttendance';
@@ -61,6 +63,10 @@ import FieldOfficerDashboard from './pages/field-officer/FieldOfficerDashboard';
 
 // Client pages
 import ClientPayments from './pages/client/ClientPayments';
+
+// Agent pages
+import AgentPayments from './pages/agent/AgentPayments';
+import AgentCommissionReports from './pages/agent/AgentCommissionReports';
 
 // Unassigned
 import UnassignedDashboard from './pages/unassigned/UnassignedDashboard';
@@ -144,12 +150,18 @@ export default function App() {
 
         {/* Senior Valuer routes */}
         <Route path="valuation-review" element={<ProtectedRoute allowedRoles={['senior_valuer']}><ValuationReview /></ProtectedRoute>} />
+        <Route path="sv-projects" element={<ProtectedRoute allowedRoles={['senior_valuer']}><SeniorValuerProjects /></ProtectedRoute>} />
 
         {/* MD/GM routes */}
         <Route path="project-approval" element={<ProtectedRoute allowedRoles={['md_gm']}><ProjectApproval /></ProtectedRoute>} />
+        <Route path="md-gm-valuation-review" element={<ProtectedRoute allowedRoles={['md_gm']}><MDGMValuationReview /></ProtectedRoute>} />
 
         {/* Client routes */}
         <Route path="client-payments" element={<ProtectedRoute allowedRoles={['client']}><ClientPayments /></ProtectedRoute>} />
+
+        {/* Agent routes */}
+        <Route path="agent-payments" element={<ProtectedRoute allowedRoles={['agent']}><AgentPayments /></ProtectedRoute>} />
+        <Route path="agent-commission-reports" element={<ProtectedRoute allowedRoles={['agent']}><AgentCommissionReports /></ProtectedRoute>} />
 
         {/* Shared routes - accessible by all authenticated users */}
         <Route path="my-attendance" element={<MyAttendance />} />

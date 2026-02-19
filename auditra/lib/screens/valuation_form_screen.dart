@@ -4,6 +4,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'dart:io';
 import '../services/api_service.dart';
+import '../services/pdf_service.dart';
 import '../models/project_model.dart';
 import '../models/valuation_model.dart';
 
@@ -771,6 +772,22 @@ class _ValuationFormScreenState extends State<ValuationFormScreen> {
     setState(() => _isSubmitting = true);
 
     try {
+      // Fetch the latest valuation data to generate the PDF
+      final valResult = await ApiService.getValuation(_valuationId!);
+      if (valResult['success'] && valResult['data'] != null) {
+        final valuation = Valuation.fromJson(valResult['data']);
+
+        // Generate the PDF report
+        final pdfFile = await PdfService.generateValuationReport(
+          valuation: valuation,
+          project: widget.project,
+        );
+
+        // Upload the PDF report to the server
+        await ApiService.uploadSubmittedReport(_valuationId!, pdfFile.path);
+      }
+
+      // Submit the valuation
       final result = await ApiService.submitValuation(_valuationId!);
       if (result['success']) {
         if (mounted) {

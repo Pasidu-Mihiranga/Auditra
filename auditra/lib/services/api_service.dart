@@ -1938,6 +1938,38 @@ class ApiService {
     }
   }
 
+  static Future<Map<String, dynamic>> uploadSubmittedReport(int valuationId, String pdfPath) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token');
+
+      if (token == null) {
+        return {'success': false, 'message': 'Not authenticated'};
+      }
+
+      final request = http.MultipartRequest(
+        'POST',
+        Uri.parse('$baseUrl/valuations/$valuationId/upload-report/'),
+      );
+
+      request.headers['Authorization'] = 'Bearer $token';
+      final file = await http.MultipartFile.fromPath('submitted_report', pdfPath);
+      request.files.add(file);
+
+      final streamedResponse = await request.send();
+      final response = await http.Response.fromStream(streamedResponse);
+      final data = jsonDecode(response.body);
+
+      if (response.statusCode == 200) {
+        return {'success': true, 'data': data};
+      } else {
+        return {'success': false, 'message': data['detail'] ?? data['message'] ?? 'Failed to upload report'};
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'Connection error: $e'};
+    }
+  }
+
   static Future<Map<String, dynamic>> uploadValuationPhoto(int valuationId, String photoPath, {String? caption}) async {
     try {
       final prefs = await SharedPreferences.getInstance();

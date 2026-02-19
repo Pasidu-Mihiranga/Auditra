@@ -16,6 +16,7 @@ import DarkModeIcon from '@mui/icons-material/DarkMode';
 import { useAuth } from '../contexts/AuthContext';
 import { useThemeMode } from '../contexts/ThemeContext';
 import { roleMenuConfig, getRoleLabel } from '../utils/roleConfig';
+import NotificationDropdown from './NotificationDropdown';
 
 const DRAWER_WIDTH = 260;
 const DRAWER_COLLAPSED = 72;
@@ -247,6 +248,9 @@ export default function Layout() {
                 {mode === 'light' ? <DarkModeIcon fontSize="small" /> : <LightModeIcon fontSize="small" />}
               </IconButton>
             </Tooltip>
+
+            {/* Notifications */}
+            <NotificationDropdown />
 
             {/* User menu */}
             <IconButton onClick={(e) => setAnchorEl(e.currentTarget)} sx={{ p: 0.5 }}>

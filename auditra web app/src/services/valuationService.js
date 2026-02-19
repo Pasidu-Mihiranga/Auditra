@@ -1,8 +1,8 @@
 import axiosClient from '../api/axiosClient';
 
 const valuationService = {
-  getValuations: () =>
-    axiosClient.get('/valuations/'),
+  getValuations: (projectId) =>
+    axiosClient.get('/valuations/', { params: projectId ? { project: projectId } : {} }),
 
   getValuation: (id) =>
     axiosClient.get(`/valuations/${id}/`),
@@ -19,14 +19,14 @@ const valuationService = {
   submitValuation: (id) =>
     axiosClient.post(`/valuations/${id}/submit/`),
 
-  acceptValuation: (id) =>
-    axiosClient.post(`/valuations/${id}/accept/`),
+  acceptValuation: (id, data) =>
+    axiosClient.post(`/valuations/${id}/accept/`, data),
 
   rejectValuation: (id, data) =>
     axiosClient.post(`/valuations/${id}/reject/`, data),
 
-  approveValuation: (id) =>
-    axiosClient.post(`/valuations/${id}/approve/`),
+  approveValuation: (id, data) =>
+    axiosClient.post(`/valuations/${id}/approve/`, data),
 
   seniorValuerReject: (id, data) =>
     axiosClient.post(`/valuations/${id}/senior-valuer-reject/`, data),
@@ -52,6 +52,16 @@ const valuationService = {
 
   deletePhoto: (photoId) =>
     axiosClient.delete(`/valuations/photos/${photoId}/`),
+
+  // MD/GM endpoints
+  getMDGMValuations: () =>
+    axiosClient.get('/valuations/md-gm/valuations/'),
+
+  mdGmApprove: (id, data) =>
+    axiosClient.post(`/valuations/${id}/md-gm-approve/`, data),
+
+  mdGmReject: (id, data) =>
+    axiosClient.post(`/valuations/${id}/md-gm-reject/`, data),
 };
 
 export default valuationService;

@@ -679,7 +679,7 @@ export default function AssignedSubmissions() {
             color="error"
             onClick={handleReject}
             disabled={actionLoading || !rejectionReason.trim()}
-            sx={{ textTransform: 'none', fontWeight: 600, width: 100 }}
+            sx={{ textTransform: 'none', fontWeight: 600, whiteSpace: 'nowrap' }}
           >
             {actionLoading ? <CircularProgress size={20} /> : 'Submit Rejection'}
           </Button>

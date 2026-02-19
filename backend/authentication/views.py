@@ -2360,7 +2360,81 @@ class RejectAssignmentView(APIView):
                 'message': 'Assignment rejected. Admin has been notified for reassignment.',
                 'data': serializer.data
             }, status=status.HTTP_200_OK)
-            
+
         except ClientFormSubmission.DoesNotExist:
             return Response({'error': 'Submission not found'}, status=status.HTTP_404_NOT_FOUND)
+
+
+class AdminDashboardStatsView(APIView):
+    """Aggregated dashboard stats for admin"""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        try:
+            user_role = UserRole.objects.get(user=request.user)
+            if user_role.role != 'admin':
+                return Response({'error': 'Admin access required'}, status=status.HTTP_403_FORBIDDEN)
+        except UserRole.DoesNotExist:
+            return Response({'error': 'Admin access required'}, status=status.HTTP_403_FORBIDDEN)
+
+        from datetime import timedelta
+        from django.db.models import Count
+        from django.db.models.functions import TruncMonth
+
+        now = timezone.now()
+
+        # Total users
+        total_users = User.objects.filter(is_active=True).count()
+
+        # Active projects
+        from projects.models import Project
+        active_projects = Project.objects.filter(status='in_progress').count()
+
+        # Pending removal requests
+        removal_requests = EmployeeRemovalRequest.objects.filter(status='pending').count()
+
+        # Project status distribution
+        status_dist = dict(
+            Project.objects.values_list('status')
+            .annotate(count=Count('id'))
+            .values_list('status', 'count')
+        )
+
+        # New projects per month (last 6 months)
+        six_months_ago = now - timedelta(days=180)
+        monthly_projects = (
+            Project.objects.filter(created_at__gte=six_months_ago)
+            .annotate(month=TruncMonth('created_at'))
+            .values('month')
+            .annotate(count=Count('id'))
+            .order_by('month')
+        )
+        new_projects_chart = [
+            {'month': entry['month'].strftime('%b %y'), 'count': entry['count']}
+            for entry in monthly_projects
+        ]
+
+        # Priority distribution
+        priority_dist = dict(
+            Project.objects.values_list('priority')
+            .annotate(count=Count('id'))
+            .values_list('priority', 'count')
+        )
+
+        return Response({
+            'total_users': total_users,
+            'active_projects': active_projects,
+            'removal_requests': removal_requests,
+            'project_status_distribution': {
+                'completed': status_dist.get('completed', 0),
+                'in_progress': status_dist.get('in_progress', 0),
+                'pending': status_dist.get('pending', 0),
+            },
+            'new_projects_per_month': new_projects_chart,
+            'priority_distribution': {
+                'high': priority_dist.get('high', 0),
+                'medium': priority_dist.get('medium', 0),
+                'low': priority_dist.get('low', 0),
+            },
+        })
 

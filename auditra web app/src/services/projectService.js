@@ -99,6 +99,12 @@ const projectService = {
   getClientPayments: () =>
     axiosClient.get('/projects/client-payments/'),
 
+  getAgentPayments: () =>
+    axiosClient.get('/projects/agent-payments/'),
+
+  recordAgentPayment: (projectId, data) =>
+    axiosClient.post(`/projects/${projectId}/record-agent-payment/`, data),
+
   // Cancellation request endpoints
   requestCancellation: (projectId, reason) =>
     axiosClient.post(`/projects/${projectId}/request-cancellation/`, { reason }),
@@ -114,6 +120,16 @@ const projectService = {
 
   rejectCancellation: (requestId, adminRemarks) =>
     axiosClient.post(`/projects/cancellation-requests/${requestId}/reject/`, { admin_remarks: adminRemarks }),
+
+  // Commission report endpoints
+  generateCommissionReport: (projectId) =>
+    axiosClient.post(`/projects/${projectId}/generate-commission-report/`),
+
+  sendCommissionReport: (reportId) =>
+    axiosClient.post(`/projects/commission-reports/${reportId}/send/`),
+
+  getAgentCommissionReports: () =>
+    axiosClient.get('/projects/agent-commission-reports/'),
 };
 
 export default projectService;

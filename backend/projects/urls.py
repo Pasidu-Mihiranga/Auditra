@@ -30,11 +30,17 @@ urlpatterns = [
     path('<int:project_id>/payment-details/', views.GetPaymentDetailsView.as_view(), name='payment-details'),
     path('<int:project_id>/start-project/', views.StartProjectView.as_view(), name='start-project'),
     path('client-payments/', views.ClientPaymentOverviewView.as_view(), name='client-payments'),
+    path('agent-payments/', views.AgentPaymentOverviewView.as_view(), name='agent-payments'),
+    path('<int:project_id>/record-agent-payment/', views.RecordAgentPaymentView.as_view(), name='record-agent-payment'),
     # Cancellation request endpoints
     path('<int:project_id>/request-cancellation/', views.RequestCancellationView.as_view(), name='request-cancellation'),
     path('<int:project_id>/cancellation-status/', views.GetProjectCancellationStatusView.as_view(), name='cancellation-status'),
     path('cancellation-requests/', views.GetCancellationRequestsView.as_view(), name='cancellation-requests'),
     path('cancellation-requests/<int:request_id>/approve/', views.ApproveCancellationView.as_view(), name='approve-cancellation'),
     path('cancellation-requests/<int:request_id>/reject/', views.RejectCancellationView.as_view(), name='reject-cancellation'),
+    # Commission report endpoints
+    path('<int:project_id>/generate-commission-report/', views.GenerateCommissionReportView.as_view(), name='generate-commission-report'),
+    path('commission-reports/<int:report_id>/send/', views.SendCommissionReportView.as_view(), name='send-commission-report'),
+    path('agent-commission-reports/', views.AgentCommissionReportsView.as_view(), name='agent-commission-reports'),
 ]
 

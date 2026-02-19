@@ -7,7 +7,7 @@ import LoadingSpinner from '../../components/LoadingSpinner';
 import projectService from '../../services/projectService';
 import valuationService from '../../services/valuationService';
 
-export default function FieldOfficerDashboard() {
+export default function AgentDashboard() {
   const [stats, setStats] = useState({ total: 0, pending: 0, completed: 0, inProgress: 0 });
   const [valuationStats, setValuationStats] = useState({ total: 0, pending: 0, accepted: 0, rejected: 0 });
   const [loading, setLoading] = useState(true);
@@ -48,25 +48,25 @@ export default function FieldOfficerDashboard() {
 
   return (
     <Box>
-      <Typography variant="h5" sx={{ fontWeight: 700, mb: 3 }}>Field Officer Dashboard</Typography>
+      <Typography variant="h5" sx={{ fontWeight: 700, mb: 3 }}>Agent Dashboard</Typography>
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
       <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 2, color: 'text.secondary' }}>Projects</Typography>
       <Grid container spacing={3}>
         <Grid item xs={12} sm={6} md={3}>
           <StatsCard title="Total Projects" value={stats.total} icon={Assignment} color="#1565C0"
-            onClick={() => navigate('/dashboard/my-projects')} />
+            onClick={() => navigate('/dashboard/agent-projects')} />
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
           <StatsCard title="In Progress" value={stats.inProgress} icon={PendingActions} color="#1E88E5"
-            onClick={() => navigate('/dashboard/my-projects', { state: { filter: 'in_progress' } })} />
+            onClick={() => navigate('/dashboard/agent-projects')} />
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
           <StatsCard title="Completed" value={stats.completed} icon={CheckCircle} color="#1565C0"
-            onClick={() => navigate('/dashboard/my-projects', { state: { filter: 'completed' } })} />
+            onClick={() => navigate('/dashboard/agent-projects')} />
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
           <StatsCard title="Pending" value={stats.pending} icon={Assessment} color="#1E88E5"
-            onClick={() => navigate('/dashboard/my-projects', { state: { filter: 'pending' } })} />
+            onClick={() => navigate('/dashboard/agent-projects')} />
         </Grid>
       </Grid>
 
@@ -74,19 +74,19 @@ export default function FieldOfficerDashboard() {
       <Grid container spacing={3}>
         <Grid item xs={12} sm={6} md={3}>
           <StatsCard title="Total Valuations" value={valuationStats.total} icon={Description} color="#1565C0"
-            onClick={() => navigate('/dashboard/my-projects')} />
+            onClick={() => navigate('/dashboard/agent-projects')} />
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
           <StatsCard title="Pending" value={valuationStats.pending} icon={PendingActions} color="#1E88E5"
-            onClick={() => navigate('/dashboard/my-projects')} />
+            onClick={() => navigate('/dashboard/agent-projects')} />
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
           <StatsCard title="Accepted" value={valuationStats.accepted} icon={CheckCircle} color="#1565C0"
-            onClick={() => navigate('/dashboard/my-projects')} />
+            onClick={() => navigate('/dashboard/agent-projects')} />
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
           <StatsCard title="Rejected" value={valuationStats.rejected} icon={Assessment} color="#0D47A1"
-            onClick={() => navigate('/dashboard/my-projects')} />
+            onClick={() => navigate('/dashboard/agent-projects')} />
         </Grid>
       </Grid>
     </Box>

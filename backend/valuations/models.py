@@ -19,6 +19,7 @@ class Valuation(models.Model):
         ('submitted', 'Submitted'),
         ('reviewed', 'Reviewed'),
         ('approved', 'Approved'),
+        ('md_approved', 'MD/GM Approved'),
         ('rejected', 'Rejected'),
     ]
     
@@ -71,10 +72,17 @@ class Valuation(models.Model):
     
     # Accessor review fields
     rejection_reason = models.TextField(blank=True, help_text='Reason for rejection if status is rejected')
+    accessor_comments = models.TextField(blank=True, default='', help_text='Comments from accessor when accepting valuation')
     
+    # Field officer submitted report
+    submitted_report = models.FileField(upload_to='submitted_valuation_reports/%Y/%m/%d/', blank=True, null=True, help_text='PDF report generated and uploaded by field officer on submission')
+
     # Senior valuer fields
     senior_valuer_comments = models.TextField(blank=True, default='', help_text='Comments from senior valuer during review')
     final_report = models.FileField(upload_to='final_valuation_reports/%Y/%m/%d/', blank=True, null=True, help_text='Final valuation report uploaded by senior valuer for MD/GM approval')
+
+    # MD/GM fields
+    md_gm_comments = models.TextField(blank=True, default='', help_text='Comments from MD/GM during final approval')
     
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -131,3 +139,57 @@ class ValuationPhoto(models.Model):
     
     def __str__(self):
         return f"Photo for {self.valuation}"
+
+
+class Notification(models.Model):
+    """In-app notifications for valuation workflow events"""
+
+    NOTIFICATION_TYPES = [
+        ('rejection', 'Rejection'),
+        ('approval', 'Approval'),
+        ('submission', 'Submission'),
+    ]
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='notifications')
+    title = models.CharField(max_length=255)
+    message = models.TextField()
+    notification_type = models.CharField(max_length=50, choices=NOTIFICATION_TYPES, default='rejection')
+    is_read = models.BooleanField(default=False)
+    valuation = models.ForeignKey(Valuation, on_delete=models.CASCADE, null=True, blank=True, related_name='notifications')
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, null=True, blank=True, related_name='notifications')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'notifications'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.title} - {self.user.username}"
+
+
+class ValuationHistory(models.Model):
+    """Tracks every status change of a valuation for report history"""
+
+    ACTION_CHOICES = [
+        ('submitted', 'Submitted by Field Officer'),
+        ('resubmitted', 'Resubmitted by Field Officer'),
+        ('reviewed', 'Accepted by Assessor'),
+        ('rejected_by_accessor', 'Rejected by Assessor'),
+        ('approved_by_sv', 'Approved by Senior Valuer'),
+        ('rejected_by_sv', 'Rejected by Senior Valuer'),
+        ('md_approved', 'Approved by MD/GM'),
+        ('rejected_by_mdgm', 'Rejected by MD/GM'),
+    ]
+
+    valuation = models.ForeignKey(Valuation, on_delete=models.CASCADE, related_name='history')
+    action = models.CharField(max_length=50, choices=ACTION_CHOICES)
+    performed_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)
+    comments = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'valuation_history'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.get_action_display()} - {self.valuation}"

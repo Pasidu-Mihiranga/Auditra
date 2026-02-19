@@ -128,7 +128,7 @@ export default function HRDashboard() {
             title="Pending Removals"
             value={stats.pendingRemovals}
             icon={PersonRemoveIcon}
-            color="#DC2626"
+            color="#1E88E5"
             onClick={() => navigate('/dashboard/request-removal')}
           />
         </Grid>
@@ -302,7 +302,7 @@ export default function HRDashboard() {
             },
           }} onClick={() => navigate('/dashboard/request-removal')}>
             <CardContent>
-              <PersonRemoveIcon sx={{ fontSize: 40, mb: 1, color: '#DC2626' }} />
+              <PersonRemoveIcon sx={{ fontSize: 40, mb: 1, color: '#1E88E5' }} />
               <Typography variant="subtitle1" fontWeight={600}>Request Removal</Typography>
               <Typography variant="body2" color="text.secondary">
                 Submit employee removal requests for admin approval

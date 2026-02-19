@@ -10,6 +10,7 @@ import projectService from '../../services/projectService';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import StatusChip from '../../components/StatusChip';
 import { formatDate, getPriorityColor, capitalize } from '../../utils/helpers';
+import { useAuth } from '../../contexts/AuthContext';
 
 const STATUS_TAB_MAP = { pending: 1, in_progress: 2, completed: 3 };
 
@@ -31,6 +32,7 @@ export default function ProjectList() {
   const [tab, setTab] = useState(initialTab);
   const [search, setSearch] = useState('');
   const navigate = useNavigate();
+  const { role } = useAuth();
 
   useEffect(() => {
     const fetchProjects = async () => {
@@ -57,9 +59,11 @@ export default function ProjectList() {
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
         <Typography variant="h5" sx={{ fontWeight: 700 }}>Projects</Typography>
-        <Button variant="contained" startIcon={<Add />} onClick={() => navigate('/dashboard/projects/create')}>
-          Create Project
-        </Button>
+        {role === 'coordinator' && (
+          <Button variant="contained" startIcon={<Add />} onClick={() => navigate('/dashboard/projects/create')}>
+            Create Project
+          </Button>
+        )}
       </Box>
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 

@@ -4,18 +4,18 @@ export const getStatusColor = (status) => {
     active: '#2563EB',
     in_progress: '#2563EB',
     completed: '#1565C0',
-    cancelled: '#DC2626',
+    cancelled: '#0D47A1',
     approved: '#1565C0',
-    rejected: '#DC2626',
-    draft: '#64748B',
+    rejected: '#0D47A1',
     submitted: '#1565C0',
     reviewed: '#0D47A1',
     accepted: '#1565C0',
+    md_approved: '#1565C0',
     present: '#1565C0',
-    absent: '#DC2626',
+    absent: '#D32F2F',
     half_day: '#1E88E5',
   };
-  return colors[status] || '#64748B';
+  return colors[status] || '#90CAF9';
 };
 
 export const getPriorityColor = (priority) => {
