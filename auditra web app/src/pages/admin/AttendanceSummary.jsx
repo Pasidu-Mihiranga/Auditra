@@ -117,26 +117,26 @@ export default function AttendanceSummary() {
         <LoadingSpinner />
       ) : (
         <TableContainer component={Paper} sx={{ maxHeight: 500, overflow: 'auto' }}>
-          <Table size="small" stickyHeader>
+          <Table size="small" stickyHeader sx={{ tableLayout: 'fixed' }}>
             <TableHead>
               <TableRow>
-                <TableCell>Employee Name</TableCell>
-                <TableCell>Employee ID</TableCell>
+                <TableCell sx={{ width: '18%' }}>Employee Name</TableCell>
+                <TableCell sx={{ width: '12%' }}>Employee ID</TableCell>
                 {isDaily ? (
                   <>
-                    <TableCell align="center">Status</TableCell>
-                    <TableCell align="center">Check In</TableCell>
-                    <TableCell align="center">Check Out</TableCell>
-                    <TableCell align="center">Working Hrs</TableCell>
-                    <TableCell align="center">Overtime Hrs</TableCell>
+                    <TableCell align="center" sx={{ width: '14%' }}>Status</TableCell>
+                    <TableCell align="center" sx={{ width: '14%' }}>Check In</TableCell>
+                    <TableCell align="center" sx={{ width: '14%' }}>Check Out</TableCell>
+                    <TableCell align="center" sx={{ width: '14%' }}>Working Hrs</TableCell>
+                    <TableCell align="center" sx={{ width: '14%' }}>Overtime Hrs</TableCell>
                   </>
                 ) : (
                   <>
-                    <TableCell align="center">Present Days</TableCell>
-                    <TableCell align="center">Absent Days</TableCell>
-                    <TableCell align="center">Half Days</TableCell>
-                    <TableCell align="center">Overtime Hrs</TableCell>
-                    <TableCell align="center">Attendance %</TableCell>
+                    <TableCell align="center" sx={{ width: '14%' }}>Present Days</TableCell>
+                    <TableCell align="center" sx={{ width: '14%' }}>Absent Days</TableCell>
+                    <TableCell align="center" sx={{ width: '14%' }}>Half Days</TableCell>
+                    <TableCell align="center" sx={{ width: '14%' }}>Overtime Hrs</TableCell>
+                    <TableCell align="center" sx={{ width: '14%' }}>Attendance %</TableCell>
                   </>
                 )}
               </TableRow>
@@ -151,7 +151,7 @@ export default function AttendanceSummary() {
               ) : (
                 filteredRecords.map((r, i) => (
                   <TableRow key={i} hover>
-                    <TableCell sx={{ fontWeight: 600 }}>{r.employee_name || 'N/A'}</TableCell>
+                    <TableCell sx={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.employee_name || 'N/A'}</TableCell>
                     <TableCell>{r.employee_id || r.employee_number || '-'}</TableCell>
                     {isDaily ? (
                       <>
@@ -174,8 +174,8 @@ export default function AttendanceSummary() {
                             );
                           })()}
                         </TableCell>
-                        <TableCell align="center">{r.check_in || '-'}</TableCell>
-                        <TableCell align="center">{r.check_out || '-'}</TableCell>
+                        <TableCell align="center">{r.check_in ? new Date(r.check_in).toLocaleTimeString() : '-'}</TableCell>
+                        <TableCell align="center">{r.check_out ? new Date(r.check_out).toLocaleTimeString() : '-'}</TableCell>
                         <TableCell align="center">{r.working_hours ?? '0.00'}</TableCell>
                         <TableCell align="center">{r.overtime_hours ?? '0.00'}</TableCell>
                       </>

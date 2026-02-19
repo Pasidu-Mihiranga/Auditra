@@ -135,15 +135,15 @@ export default function MyAttendance() {
         </ToggleButtonGroup>
       </Box>
       <TableContainer component={Paper}>
-        <Table size="small">
+        <Table size="small" sx={{ tableLayout: 'fixed' }}>
           <TableHead>
             <TableRow>
-              <TableCell>Date</TableCell>
-              <TableCell>Status</TableCell>
-              <TableCell>Check In</TableCell>
-              <TableCell>Check Out</TableCell>
-              <TableCell>Hours</TableCell>
-              <TableCell>Overtime</TableCell>
+              <TableCell sx={{ width: '18%' }}>Date</TableCell>
+              <TableCell sx={{ width: '14%' }}>Status</TableCell>
+              <TableCell sx={{ width: '18%' }}>Check In</TableCell>
+              <TableCell sx={{ width: '18%' }}>Check Out</TableCell>
+              <TableCell sx={{ width: '16%' }}>Hours</TableCell>
+              <TableCell sx={{ width: '16%' }}>Overtime</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>

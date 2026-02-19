@@ -100,14 +100,14 @@ export default function MyLeaveRequests() {
       </Tabs>
 
       <TableContainer component={Paper}>
-        <Table size="small">
+        <Table size="small" sx={{ tableLayout: 'fixed' }}>
           <TableHead>
             <TableRow>
-              <TableCell>Type</TableCell>
-              <TableCell>From</TableCell>
-              <TableCell>To</TableCell>
-              <TableCell>Reason</TableCell>
-              <TableCell>Status</TableCell>
+              <TableCell sx={{ width: '15%' }}>Type</TableCell>
+              <TableCell sx={{ width: '18%' }}>From</TableCell>
+              <TableCell sx={{ width: '18%' }}>To</TableCell>
+              <TableCell sx={{ width: '34%' }}>Reason</TableCell>
+              <TableCell sx={{ width: '15%' }}>Status</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
@@ -119,7 +119,7 @@ export default function MyLeaveRequests() {
                   <TableCell>{r.leave_type}</TableCell>
                   <TableCell>{formatDate(r.start_date)}</TableCell>
                   <TableCell>{formatDate(r.end_date)}</TableCell>
-                  <TableCell sx={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.reason}</TableCell>
+                  <TableCell sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.reason}</TableCell>
                   <TableCell><StatusChip status={r.status} /></TableCell>
                 </TableRow>
               ))

@@ -82,16 +82,16 @@ export default function LeaveManagement() {
       />
 
       <TableContainer component={Paper}>
-        <Table size="small">
+        <Table size="small" sx={{ tableLayout: 'fixed' }}>
           <TableHead>
             <TableRow>
-              <TableCell>Employee</TableCell>
-              <TableCell>Type</TableCell>
-              <TableCell>From</TableCell>
-              <TableCell>To</TableCell>
-              <TableCell>Reason</TableCell>
-              <TableCell>Status</TableCell>
-              <TableCell>Actions</TableCell>
+              <TableCell sx={{ width: '15%' }}>Employee</TableCell>
+              <TableCell sx={{ width: '10%' }}>Type</TableCell>
+              <TableCell sx={{ width: '12%' }}>From</TableCell>
+              <TableCell sx={{ width: '12%' }}>To</TableCell>
+              <TableCell sx={{ width: '21%' }}>Reason</TableCell>
+              <TableCell sx={{ width: '10%' }}>Status</TableCell>
+              <TableCell sx={{ width: '20%' }}>Actions</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
@@ -100,23 +100,23 @@ export default function LeaveManagement() {
             ) : (
               filtered.map((r) => (
                 <TableRow key={r.id}>
-                  <TableCell sx={{ fontWeight: 600 }}>{r.user_username || r.employee_name || '-'}</TableCell>
-                  <TableCell>{r.leave_type}</TableCell>
+                  <TableCell sx={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.user_username || r.employee_name || '-'}</TableCell>
+                  <TableCell sx={{ textTransform: 'capitalize' }}>{r.leave_type}</TableCell>
                   <TableCell>{formatDate(r.start_date)}</TableCell>
                   <TableCell>{formatDate(r.end_date)}</TableCell>
-                  <TableCell sx={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.reason}</TableCell>
+                  <TableCell sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.reason}</TableCell>
                   <TableCell><StatusChip status={r.status} /></TableCell>
                   <TableCell>
-                    {r.status === 'pending' && (
+                    {r.status === 'pending' ? (
                       <Box sx={{ display: 'flex', gap: 0.5 }}>
                         <Button size="small" variant="outlined" color="primary" startIcon={<Check />}
-                          sx={{ minWidth: 100 }}
+                          sx={{ textTransform: 'none', whiteSpace: 'nowrap', minWidth: 0, px: 1 }}
                           onClick={() => handleAction(r.id, 'approved')}>Approve</Button>
                         <Button size="small" variant="outlined" color="error" startIcon={<Close />}
-                          sx={{ minWidth: 100 }}
+                          sx={{ textTransform: 'none', whiteSpace: 'nowrap', minWidth: 0, px: 1 }}
                           onClick={() => handleAction(r.id, 'rejected')}>Reject</Button>
                       </Box>
-                    )}
+                    ) : <Box sx={{ textAlign: 'center' }}>-</Box>}
                   </TableCell>
                 </TableRow>
               ))

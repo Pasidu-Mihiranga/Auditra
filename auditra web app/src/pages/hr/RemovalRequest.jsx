@@ -129,13 +129,13 @@ export default function RemovalRequest() {
       </Box>
 
       <TableContainer component={Paper}>
-        <Table>
+        <Table sx={{ tableLayout: 'fixed' }}>
           <TableHead>
             <TableRow>
-              <TableCell>Employee</TableCell>
-              <TableCell>Reason</TableCell>
-              <TableCell>Date Submitted</TableCell>
-              <TableCell>Status</TableCell>
+              <TableCell sx={{ width: '25%' }}>Employee</TableCell>
+              <TableCell sx={{ width: '30%' }}>Reason</TableCell>
+              <TableCell sx={{ width: '25%' }}>Date Submitted</TableCell>
+              <TableCell sx={{ width: '20%' }}>Status</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
@@ -148,8 +148,8 @@ export default function RemovalRequest() {
             ) : (
               requests.map((req) => (
                 <TableRow key={req.id} hover>
-                  <TableCell>{req.employee_name || 'N/A'}</TableCell>
-                  <TableCell sx={{ textTransform: 'capitalize' }}>{req.reason?.replace('_', ' ') || 'N/A'}</TableCell>
+                  <TableCell sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{req.employee_name || 'N/A'}</TableCell>
+                  <TableCell sx={{ textTransform: 'capitalize', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{req.reason?.replace('_', ' ') || 'N/A'}</TableCell>
                   <TableCell>{formatDate(req.created_at)}</TableCell>
                   <TableCell><StatusChip status={req.status} /></TableCell>
                 </TableRow>

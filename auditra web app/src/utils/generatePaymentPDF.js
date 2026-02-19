@@ -16,10 +16,14 @@ const formatLKR = (amount) => {
 
 // Pre-load logo as base64 for PDF embedding
 let logoBase64 = null;
+let logoWidth = 0;
+let logoHeight = 0;
 const logoReady = new Promise((resolve) => {
   const img = new Image();
   img.crossOrigin = 'anonymous';
   img.onload = () => {
+    logoWidth = img.width;
+    logoHeight = img.height;
     const canvas = document.createElement('canvas');
     canvas.width = img.width;
     canvas.height = img.height;
@@ -44,43 +48,40 @@ export async function generatePaymentSlipPDF(slip) {
   let y = 20;
 
   // --- Header ---
-  // White area with logo
+  // Light grey background for logo area
+  doc.setFillColor(243, 244, 249); // #F3F4F9
+  doc.rect(0, 0, pageWidth, 34, 'F');
+
+  // Logo
   if (logoBase64) {
-    doc.addImage(logoBase64, 'PNG', margin, 6, 50, 25);
+    const logoH = 22;
+    const logoW = logoHeight > 0 ? (logoWidth / logoHeight) * logoH : 50;
+    doc.addImage(logoBase64, 'PNG', margin, 6, logoW, logoH);
   }
 
-  // Blue band below the logo
-  doc.setFillColor(22, 100, 192);
-  doc.rect(0, 34, pageWidth, 18, 'F');
-
-  doc.setTextColor(255, 255, 255);
-  doc.setFontSize(10);
-  doc.setFont('helvetica', 'normal');
-  doc.text('Valuation & Property Consultants', margin, 45);
-
-  // Right side - document title
+  // Payment Slip title in the header area
+  doc.setTextColor(47, 122, 244);
   doc.setFontSize(14);
   doc.setFont('helvetica', 'bold');
-  doc.text('PAYMENT SLIP', pageWidth - margin, 43, { align: 'right' });
+  doc.text('PAYMENT SLIP', pageWidth - margin, 16, { align: 'right' });
 
+  // Month/year in the header area
+  const monthName = slip.month_display || MONTH_NAMES[slip.month] || String(slip.month);
   doc.setFontSize(9);
   doc.setFont('helvetica', 'normal');
-  const monthName = slip.month_display || MONTH_NAMES[slip.month] || String(slip.month);
-  doc.text(`${monthName} ${slip.year}`, pageWidth - margin, 49, { align: 'right' });
+  doc.text(`${monthName} ${slip.year}`, pageWidth - margin, 24, { align: 'right' });
 
-  y = 58;
+  y = 40;
 
   // --- Slip Info Bar ---
-  doc.setFillColor(241, 245, 249);
-  doc.rect(margin, y, pageWidth - 2 * margin, 10, 'F');
-  doc.setTextColor(22, 100, 192);
+  doc.setTextColor(47, 122, 244);
   doc.setFontSize(9);
   doc.setFont('helvetica', 'bold');
-  doc.text(`Pay Slip No: ${slip.pay_slip_number || '-'}`, margin + 4, y + 7);
+  doc.text(`Pay Slip No: ${slip.pay_slip_number || '-'}`, margin, y + 7);
   const genDate = slip.generated_at
     ? new Date(slip.generated_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
     : '-';
-  doc.text(`Generated: ${genDate}`, pageWidth - margin - 4, y + 7, { align: 'right' });
+  doc.text(`Generated: ${genDate}`, pageWidth - margin, y + 7, { align: 'right' });
 
   y += 18;
 
@@ -91,7 +92,7 @@ export async function generatePaymentSlipPDF(slip) {
   doc.text('Employee Details', margin, y);
   y += 2;
 
-  doc.setDrawColor(22, 100, 192);
+  doc.setDrawColor(47, 122, 244);
   doc.setLineWidth(0.5);
   doc.line(margin, y, pageWidth - margin, y);
   y += 8;
@@ -142,7 +143,7 @@ export async function generatePaymentSlipPDF(slip) {
   doc.setFont('helvetica', 'bold');
   doc.text('Salary Breakdown', margin, y);
   y += 2;
-  doc.setDrawColor(22, 100, 192);
+  doc.setDrawColor(47, 122, 244);
   doc.line(margin, y, pageWidth - margin, y);
   y += 4;
 
@@ -172,7 +173,7 @@ export async function generatePaymentSlipPDF(slip) {
     ],
     theme: 'grid',
     headStyles: {
-      fillColor: [22, 100, 192],
+      fillColor: [47, 122, 244],
       textColor: [255, 255, 255],
       fontStyle: 'bold',
       fontSize: 9,
@@ -187,7 +188,7 @@ export async function generatePaymentSlipPDF(slip) {
   y = doc.lastAutoTable.finalY + 6;
 
   // --- Net Salary Box ---
-  doc.setFillColor(22, 100, 192);
+  doc.setFillColor(47, 122, 244);
   doc.rect(margin, y, pageWidth - 2 * margin, 16, 'F');
   doc.setTextColor(255, 255, 255);
   doc.setFontSize(12);

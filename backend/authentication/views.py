@@ -673,7 +673,9 @@ class AllPaymentSlipsView(generics.ListAPIView):
         if not hasattr(self.request.user, 'role') or self.request.user.role.role not in ['admin', 'hr_head']:
             return PaymentSlip.objects.none()
 
-        queryset = PaymentSlip.objects.all().order_by('-year', '-month', 'user__username')
+        queryset = PaymentSlip.objects.exclude(
+            user__role__role__in=['admin', 'hr_head']
+        ).order_by('-year', '-month', 'user__username')
         
         # Optional filters
         month = self.request.query_params.get('month', None)
@@ -1005,6 +1007,58 @@ class UploadAllOvertimeHoursView(APIView):
             'message': f'Updated {updated_count} payment slip(s)',
             'updated_count': updated_count,
             'errors': errors if errors else None
+        }, status=status.HTTP_200_OK)
+
+
+class SyncOvertimeFromAttendanceView(APIView):
+    """Sync overtime hours from attendance records to payment slips for a given month/year"""
+    permission_classes = (IsAuthenticated,)
+
+    def post(self, request):
+        if not hasattr(request.user, 'role') or request.user.role.role not in ['admin', 'hr_head']:
+            return Response({
+                'error': 'Only admins and HR Head can sync overtime hours'
+            }, status=status.HTTP_403_FORBIDDEN)
+
+        month = request.data.get('month')
+        year = request.data.get('year')
+
+        if not month or not year:
+            return Response({
+                'error': 'month and year are required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            month = int(month)
+            year = int(year)
+        except (ValueError, TypeError):
+            return Response({
+                'error': 'Invalid month or year'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        slips = PaymentSlip.objects.filter(month=month, year=year)
+
+        if not slips.exists():
+            return Response({
+                'error': f'No payment slips found for {month}/{year}'
+            }, status=status.HTTP_404_NOT_FOUND)
+
+        updated_count = 0
+        for slip in slips:
+            overtime_hours = PaymentSlip.get_monthly_overtime_hours(slip.user, month, year)
+            overtime_hours_decimal = Decimal(str(overtime_hours))
+
+            slip.overtime_hours = overtime_hours_decimal
+            basic_salary = float(slip.salary)
+            slip.overtime_pay = Decimal(str(PaymentSlip.calculate_overtime_pay(float(overtime_hours_decimal), basic_salary)))
+            slip.net_salary = slip.salary - slip.epf_contribution + slip.allowances + slip.overtime_pay
+            slip.save()
+            updated_count += 1
+
+        return Response({
+            'success': True,
+            'message': f'Synced overtime for {updated_count} payment slip(s) from attendance records',
+            'updated_count': updated_count
         }, status=status.HTTP_200_OK)
 
 

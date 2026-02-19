@@ -2,9 +2,9 @@ import { useState, useEffect } from 'react';
 import {
   Box, Typography, Table, TableBody, TableCell, TableContainer,
   TableHead, TableRow, Paper, Button, Alert, TextField, Grid, Card, CardContent,
-  Dialog, DialogTitle, DialogContent, DialogActions, MenuItem, InputAdornment
+  MenuItem, InputAdornment
 } from '@mui/material';
-import { Add, Upload, PictureAsPdf, Visibility, Download, AccessTime, Search } from '@mui/icons-material';
+import { Add, Upload, PictureAsPdf, Visibility, Download, Search } from '@mui/icons-material';
 import paymentService from '../../services/paymentService';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import { formatCurrency } from '../../utils/helpers';
@@ -19,8 +19,6 @@ export default function PaymentManagement() {
   const [publishing, setPublishing] = useState(false);
   const [genMonth, setGenMonth] = useState(new Date().getMonth() + 1);
   const [genYear, setGenYear] = useState(new Date().getFullYear().toString());
-  const [overtimeDialog, setOvertimeDialog] = useState(null);
-  const [overtimeHours, setOvertimeHours] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [filterMonth, setFilterMonth] = useState('');
   const [filterYear, setFilterYear] = useState('');
@@ -65,20 +63,6 @@ export default function PaymentManagement() {
       setError(err.response?.data?.error || 'Failed to publish slips');
     } finally {
       setPublishing(false);
-    }
-  };
-
-  const handleOvertimeUpload = async () => {
-    if (!overtimeDialog || !overtimeHours) return;
-    setError('');
-    try {
-      await paymentService.uploadOvertime(overtimeDialog, { overtime_hours: parseFloat(overtimeHours) });
-      setSuccess('Overtime uploaded');
-      setOvertimeDialog(null);
-      setOvertimeHours('');
-      fetchSlips();
-    } catch (err) {
-      setError(err.response?.data?.error || 'Failed to upload overtime');
     }
   };
 
@@ -181,35 +165,36 @@ export default function PaymentManagement() {
       )}
 
       <TableContainer component={Paper}>
-        <Table size="small">
+        <Table size="small" sx={{ tableLayout: 'fixed' }}>
           <TableHead>
             <TableRow>
-              <TableCell>Employee</TableCell>
-              <TableCell>Month</TableCell>
-              <TableCell>Basic</TableCell>
-              <TableCell>Overtime</TableCell>
-              <TableCell>Net Salary</TableCell>
-              <TableCell>Actions</TableCell>
+              <TableCell sx={{ width: '18%' }}>Employee</TableCell>
+              <TableCell sx={{ width: '8%' }}>Month</TableCell>
+              <TableCell sx={{ width: '14%' }}>Basic</TableCell>
+              <TableCell sx={{ width: '10%' }}>OT Hours</TableCell>
+              <TableCell sx={{ width: '14%' }}>OT Pay</TableCell>
+              <TableCell sx={{ width: '14%' }}>Net Salary</TableCell>
+              <TableCell sx={{ width: '22%' }}>Actions</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
             {filteredSlips.length === 0 ? (
-              <TableRow><TableCell colSpan={6} align="center">{searchQuery || filterMonth || filterYear ? 'No matching payment slips found' : 'No payment slips found'}</TableCell></TableRow>
+              <TableRow><TableCell colSpan={7} align="center">{searchQuery || filterMonth || filterYear ? 'No matching payment slips found' : 'No payment slips found'}</TableCell></TableRow>
             ) : (
               filteredSlips.map((s) => (
                 <TableRow key={s.id}>
-                  <TableCell sx={{ fontWeight: 600 }}>{s.user_username || s.employee_name || '-'}</TableCell>
+                  <TableCell sx={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.user_username || s.employee_name || '-'}</TableCell>
                   <TableCell>{s.month || '-'}</TableCell>
-                  <TableCell>{formatCurrency(s.basic_salary)}</TableCell>
+                  <TableCell>{formatCurrency(s.salary)}</TableCell>
+                  <TableCell>{s.overtime_hours || 0}</TableCell>
                   <TableCell>{formatCurrency(s.overtime_pay)}</TableCell>
                   <TableCell sx={{ fontWeight: 700, color: 'primary.main' }}>{formatCurrency(s.net_salary)}</TableCell>
                   <TableCell>
                     <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center' }}>
-                      <Button size="small" startIcon={<AccessTime />} onClick={() => setOvertimeDialog(s.id)}>Overtime</Button>
-                      <Box sx={{ width: 40 }} />
-                      <Button size="small" color="primary" startIcon={<Visibility />} onClick={() => viewPaymentSlipPDF(s)}>View</Button>
-                      <Box sx={{ width: 40 }} />
-                      <Button size="small" color="primary" startIcon={<Download />} onClick={() => downloadPaymentSlipPDF(s)}>Download</Button>
+                      <Button size="small" variant="outlined" color="primary" startIcon={<Visibility />} onClick={() => viewPaymentSlipPDF(s)}
+                        sx={{ textTransform: 'none', whiteSpace: 'nowrap', minWidth: 0, px: 1 }}>View</Button>
+                      <Button size="small" variant="outlined" color="primary" startIcon={<Download />} onClick={() => downloadPaymentSlipPDF(s)}
+                        sx={{ textTransform: 'none', whiteSpace: 'nowrap', minWidth: 0, px: 1 }}>Download</Button>
                     </Box>
                   </TableCell>
                 </TableRow>
@@ -218,18 +203,6 @@ export default function PaymentManagement() {
           </TableBody>
         </Table>
       </TableContainer>
-
-      <Dialog open={!!overtimeDialog} onClose={() => setOvertimeDialog(null)} maxWidth="xs" fullWidth>
-        <DialogTitle>Upload Overtime Hours</DialogTitle>
-        <DialogContent>
-          <TextField fullWidth label="Overtime Hours" type="number" value={overtimeHours}
-            onChange={(e) => setOvertimeHours(e.target.value)} sx={{ mt: 1 }} />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setOvertimeDialog(null)}>Cancel</Button>
-          <Button variant="contained" onClick={handleOvertimeUpload}>Upload</Button>
-        </DialogActions>
-      </Dialog>
     </Box>
   );
 }

@@ -39,34 +39,33 @@ export default function MyPaymentSlips() {
         <Card><CardContent><Typography color="text.secondary" align="center">No payment slips found</Typography></CardContent></Card>
       ) : (
         <TableContainer component={Paper}>
-          <Table size="small">
+          <Table size="small" sx={{ tableLayout: 'fixed' }}>
             <TableHead>
               <TableRow>
-                <TableCell>Month</TableCell>
-                <TableCell>Basic Salary</TableCell>
-                <TableCell>Allowances</TableCell>
-                <TableCell>Overtime</TableCell>
-                <TableCell>Deductions</TableCell>
-                <TableCell>EPF</TableCell>
-                <TableCell>Net Salary</TableCell>
-                <TableCell>Actions</TableCell>
+                <TableCell sx={{ width: '10%' }}>Month</TableCell>
+                <TableCell sx={{ width: '15%' }}>Basic Salary</TableCell>
+                <TableCell sx={{ width: '13%' }}>Allowances</TableCell>
+                <TableCell sx={{ width: '13%' }}>Overtime</TableCell>
+                <TableCell sx={{ width: '12%' }}>EPF</TableCell>
+                <TableCell sx={{ width: '15%' }}>Net Salary</TableCell>
+                <TableCell sx={{ width: '22%' }}>Actions</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {slips.map((s) => (
                 <TableRow key={s.id}>
                   <TableCell>{s.month || formatDate(s.created_at)}</TableCell>
-                  <TableCell>{formatCurrency(s.basic_salary)}</TableCell>
+                  <TableCell>{formatCurrency(s.salary)}</TableCell>
                   <TableCell>{formatCurrency(s.allowances)}</TableCell>
                   <TableCell>{formatCurrency(s.overtime_pay)}</TableCell>
-                  <TableCell>{formatCurrency(s.deductions)}</TableCell>
                   <TableCell>{formatCurrency(s.epf_contribution)}</TableCell>
                   <TableCell sx={{ fontWeight: 700, color: 'primary.main' }}>{formatCurrency(s.net_salary)}</TableCell>
                   <TableCell>
-                    <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
-                      <Button size="small" variant="outlined" color="primary" startIcon={<Visibility />} onClick={() => viewPaymentSlipPDF(s)}>View</Button>
-                      <Box sx={{ width: 40 }} />
-                      <Button size="small" variant="outlined" color="primary" startIcon={<Download />} onClick={() => downloadPaymentSlipPDF(s)}>Download</Button>
+                    <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center' }}>
+                      <Button size="small" variant="outlined" color="primary" startIcon={<Visibility />} onClick={() => viewPaymentSlipPDF(s)}
+                        sx={{ textTransform: 'none', whiteSpace: 'nowrap', minWidth: 0, px: 1 }}>View</Button>
+                      <Button size="small" variant="outlined" color="primary" startIcon={<Download />} onClick={() => downloadPaymentSlipPDF(s)}
+                        sx={{ textTransform: 'none', whiteSpace: 'nowrap', minWidth: 0, px: 1 }}>Download</Button>
                     </Box>
                   </TableCell>
                 </TableRow>
