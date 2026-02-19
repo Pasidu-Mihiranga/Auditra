@@ -97,3 +97,20 @@ Thumbs.db
 *.o
 *.so
 
+# Node modules
+node_modules/
+
+# Vite cache
+.vite/
+
+# Claude temp files
+tmpclaude-*
+**/tmpclaude-*
+
+# Backup files
+*.bak
+*_new_views.py
+_fix.py
+update_urls.py
+update_views.py
+readmetheme.md
