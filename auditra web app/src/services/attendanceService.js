@@ -25,6 +25,9 @@ const attendanceService = {
   getWeeklySummary: () =>
     axiosClient.get('/attendance/summary/weekly/'),
 
+  getHRAttendanceSummary: (period = 'daily') =>
+    axiosClient.get('/attendance/summary/hr/', { params: { period } }),
+
   getMyAttendances: () =>
     axiosClient.get('/attendance/my-attendances/'),
 };

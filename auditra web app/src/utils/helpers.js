@@ -1,6 +1,7 @@
 export const getStatusColor = (status) => {
   const colors = {
     pending: '#1E88E5',
+    pending: '#1E88E5',
     active: '#2563EB',
     in_progress: '#2563EB',
     completed: '#1565C0',
@@ -16,6 +17,7 @@ export const getStatusColor = (status) => {
     half_day: '#1E88E5',
   };
   return colors[status] || '#90CAF9';
+  return colors[status] || '#90CAF9';
 };
 
 export const getPriorityColor = (priority) => {
@@ -24,7 +26,12 @@ export const getPriorityColor = (priority) => {
     medium: '#1E88E5',
     low: '#1565C0',
   };
-  return colors[priority] || '#64748B';
+  return colors[priority] || '#90CAF9';
+};
+
+export const capitalize = (str) => {
+  if (!str) return '';
+  return str.toUpperCase();
 };
 
 export const capitalize = (str) => {

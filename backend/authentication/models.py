@@ -237,9 +237,9 @@ class PaymentSlip(models.Model):
         
         generated_count = 0
         updated_count = 0
-        # Only generate for these roles (exclude client, agent, unassigned)
+        # Only generate for these roles (exclude admin, hr_head, client, agent, unassigned)
         allowed_roles = [
-            'admin', 'coordinator', 'field_officer', 'accessor', 
+            'coordinator', 'field_officer', 'accessor',
             'senior_valuer', 'md_gm', 'general_employee'
         ]
         users_with_roles = User.objects.filter(role__role__in=allowed_roles)

@@ -7,6 +7,7 @@ import {
 import { Send, History } from '@mui/icons-material';
 import authService from '../../services/authService';
 import removalService from '../../services/removalService';
+import StatusChip from '../../components/StatusChip';
 import { formatDate } from '../../utils/helpers';
 
 export default function RemovalRequest() {
@@ -21,11 +22,12 @@ export default function RemovalRequest() {
     const load = async () => {
       try {
         const [usersRes, requestsRes] = await Promise.all([
-          authService.getAllUsers(),
-          removalService.getRemovalRequests(),
+          authService.getAllUsers().catch(() => ({ data: [] })),
+          removalService.getRemovalRequests().catch(() => ({ data: [] })),
         ]);
         const allUsers = Array.isArray(usersRes.data) ? usersRes.data : usersRes.data?.results || [];
-        setUsers(allUsers.filter((u) => u.role && u.role !== 'admin' && u.role !== 'hr_head'));
+        const excludedRoles = ['admin', 'hr_head', 'client', 'agent', 'unassigned'];
+        setUsers(allUsers.filter((u) => u.role && !excludedRoles.includes(u.role)));
         setRequests(Array.isArray(requestsRes.data) ? requestsRes.data : requestsRes.data?.results || []);
       } catch (err) {
         setSnackbar({ open: true, message: 'Failed to load data', severity: 'error' });
@@ -45,27 +47,17 @@ export default function RemovalRequest() {
     try {
       setSubmitting(true);
       await removalService.createRemovalRequest({
-        employee: form.employee,
-        reason: form.reason,
-        details: form.details,
+        user_id: form.employee,
+        reason: form.details ? `${form.reason} - ${form.details}` : form.reason,
       });
       setSnackbar({ open: true, message: 'Removal request submitted successfully', severity: 'success' });
       setForm({ employee: '', reason: '', details: '' });
       const res = await removalService.getRemovalRequests();
       setRequests(Array.isArray(res.data) ? res.data : res.data?.results || []);
     } catch (err) {
-      setSnackbar({ open: true, message: err.response?.data?.detail || 'Failed to submit request', severity: 'error' });
+      setSnackbar({ open: true, message: err.response?.data?.error || 'Failed to submit request', severity: 'error' });
     } finally {
       setSubmitting(false);
-    }
-  };
-
-  const getStatusColor = (status) => {
-    switch (status) {
-      case 'approved': return 'success';
-      case 'rejected': return 'error';
-      case 'pending': return 'warning';
-      default: return 'default';
     }
   };
 
@@ -95,7 +87,7 @@ export default function RemovalRequest() {
               >
                 {users.map((user) => (
                   <MenuItem key={user.id} value={user.id}>
-                    {user.first_name} {user.last_name} ({user.username}) — {user.role_display || user.role}
+                    {user.first_name} {user.last_name} — {user.role_display || user.role}
                   </MenuItem>
                 ))}
               </TextField>
@@ -121,7 +113,7 @@ export default function RemovalRequest() {
                 rows={4}
                 fullWidth
               />
-              <Button type="submit" variant="contained" disabled={submitting} startIcon={submitting ? <CircularProgress size={20} /> : <Send />}>
+              <Button type="submit" variant="contained" color="primary" disabled={submitting} startIcon={submitting ? <CircularProgress size={20} /> : <Send />}>
                 {submitting ? 'Submitting...' : 'Submit Request'}
               </Button>
             </Box>
@@ -137,13 +129,13 @@ export default function RemovalRequest() {
       </Box>
 
       <TableContainer component={Paper}>
-        <Table>
+        <Table sx={{ tableLayout: 'fixed' }}>
           <TableHead>
             <TableRow>
-              <TableCell>Employee</TableCell>
-              <TableCell>Reason</TableCell>
-              <TableCell>Date Submitted</TableCell>
-              <TableCell>Status</TableCell>
+              <TableCell sx={{ width: '25%' }}>Employee</TableCell>
+              <TableCell sx={{ width: '30%' }}>Reason</TableCell>
+              <TableCell sx={{ width: '25%' }}>Date Submitted</TableCell>
+              <TableCell sx={{ width: '20%' }}>Status</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
@@ -156,10 +148,10 @@ export default function RemovalRequest() {
             ) : (
               requests.map((req) => (
                 <TableRow key={req.id} hover>
-                  <TableCell>{req.employee_name || 'N/A'}</TableCell>
-                  <TableCell sx={{ textTransform: 'capitalize' }}>{req.reason?.replace('_', ' ') || 'N/A'}</TableCell>
+                  <TableCell sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{req.employee_name || 'N/A'}</TableCell>
+                  <TableCell sx={{ textTransform: 'capitalize', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{req.reason?.replace('_', ' ') || 'N/A'}</TableCell>
                   <TableCell>{formatDate(req.created_at)}</TableCell>
-                  <TableCell><Chip label={req.status} color={getStatusColor(req.status)} size="small" /></TableCell>
+                  <TableCell><StatusChip status={req.status} /></TableCell>
                 </TableRow>
               ))
             )}

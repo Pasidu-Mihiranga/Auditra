@@ -673,7 +673,9 @@ class AllPaymentSlipsView(generics.ListAPIView):
         if not hasattr(self.request.user, 'role') or self.request.user.role.role not in ['admin', 'hr_head']:
             return PaymentSlip.objects.none()
 
-        queryset = PaymentSlip.objects.all().order_by('-year', '-month', 'user__username')
+        queryset = PaymentSlip.objects.exclude(
+            user__role__role__in=['admin', 'hr_head']
+        ).order_by('-year', '-month', 'user__username')
         
         # Optional filters
         month = self.request.query_params.get('month', None)
@@ -1008,6 +1010,58 @@ class UploadAllOvertimeHoursView(APIView):
         }, status=status.HTTP_200_OK)
 
 
+class SyncOvertimeFromAttendanceView(APIView):
+    """Sync overtime hours from attendance records to payment slips for a given month/year"""
+    permission_classes = (IsAuthenticated,)
+
+    def post(self, request):
+        if not hasattr(request.user, 'role') or request.user.role.role not in ['admin', 'hr_head']:
+            return Response({
+                'error': 'Only admins and HR Head can sync overtime hours'
+            }, status=status.HTTP_403_FORBIDDEN)
+
+        month = request.data.get('month')
+        year = request.data.get('year')
+
+        if not month or not year:
+            return Response({
+                'error': 'month and year are required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            month = int(month)
+            year = int(year)
+        except (ValueError, TypeError):
+            return Response({
+                'error': 'Invalid month or year'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        slips = PaymentSlip.objects.filter(month=month, year=year)
+
+        if not slips.exists():
+            return Response({
+                'error': f'No payment slips found for {month}/{year}'
+            }, status=status.HTTP_404_NOT_FOUND)
+
+        updated_count = 0
+        for slip in slips:
+            overtime_hours = PaymentSlip.get_monthly_overtime_hours(slip.user, month, year)
+            overtime_hours_decimal = Decimal(str(overtime_hours))
+
+            slip.overtime_hours = overtime_hours_decimal
+            basic_salary = float(slip.salary)
+            slip.overtime_pay = Decimal(str(PaymentSlip.calculate_overtime_pay(float(overtime_hours_decimal), basic_salary)))
+            slip.net_salary = slip.salary - slip.epf_contribution + slip.allowances + slip.overtime_pay
+            slip.save()
+            updated_count += 1
+
+        return Response({
+            'success': True,
+            'message': f'Synced overtime for {updated_count} payment slip(s) from attendance records',
+            'updated_count': updated_count
+        }, status=status.HTTP_200_OK)
+
+
 class ClientRegistrationView(APIView):
     """API endpoint for client registration form submission"""
     permission_classes = (AllowAny,)
@@ -1247,16 +1301,22 @@ class MyLeaveStatisticsView(APIView):
             # Calculate days
             approved_days = sum(leave.days for leave in approved_leaves)
             pending_days = sum(leave.days for leave in pending_leaves)
-            
+
+            # Count requests
+            approved_count = approved_leaves.count()
+            pending_count = pending_leaves.count()
+
             # Calculate remaining leaves: Total leaves (45) - Approved days
             remaining_leaves = max(0, TOTAL_LEAVES - approved_days)
-            
+
             return Response({
                 'success': True,
                 'data': {
                     'total_leave_days': TOTAL_LEAVES,
                     'approved_days': approved_days,
                     'pending_days': pending_days,
+                    'approved_count': approved_count,
+                    'pending_count': pending_count,
                     'remaining_leaves': remaining_leaves,
                     'year': current_year,
                 }
@@ -1486,24 +1546,28 @@ class CreateEmployeeRemovalRequestView(APIView):
 
 
 class AllRemovalRequestsView(generics.ListAPIView):
-    """Admin endpoint to view all employee removal requests"""
+    """Admin and HR Head endpoint to view employee removal requests"""
     permission_classes = (IsAuthenticated,)
     serializer_class = EmployeeRemovalRequestSerializer
-    
+
     def get_queryset(self):
-        # Check if user is admin
-        if not hasattr(self.request.user, 'role') or self.request.user.role.role != 'admin':
+        if not hasattr(self.request.user, 'role'):
             return EmployeeRemovalRequest.objects.none()
-        
-        return EmployeeRemovalRequest.objects.all()
-    
+
+        user_role = self.request.user.role.role
+        if user_role == 'admin':
+            return EmployeeRemovalRequest.objects.all()
+        elif user_role == 'hr_head':
+            return EmployeeRemovalRequest.objects.filter(requested_by=self.request.user)
+
+        return EmployeeRemovalRequest.objects.none()
+
     def list(self, request, *args, **kwargs):
-        # Check if user is admin
-        if not hasattr(request.user, 'role') or request.user.role.role != 'admin':
+        if not hasattr(request.user, 'role') or request.user.role.role not in ('admin', 'hr_head'):
             return Response({
-                'error': 'Only admins can view removal requests'
+                'error': 'Only admins and HR Head can view removal requests'
             }, status=status.HTTP_403_FORBIDDEN)
-        
+
         return super().list(request, *args, **kwargs)
 
 

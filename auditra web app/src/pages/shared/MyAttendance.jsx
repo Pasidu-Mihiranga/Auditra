@@ -92,7 +92,11 @@ export default function MyAttendance() {
           </Grid>
           <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
             {today?.flags?.can_check_in && (
+<<<<<<< HEAD
               <Button variant="contained" color="error" startIcon={<Login />} disabled={actionLoading}
+=======
+              <Button variant="outlined" color="primary" startIcon={<Login />} disabled={actionLoading}
+>>>>>>> 1749c05d62ffe2026123418e3cc93c1b5ffd575b
                 onClick={() => handleAction(attendanceService.markAttendance, 'Check-in')}>
                 Check In
               </Button>
@@ -104,19 +108,23 @@ export default function MyAttendance() {
               </Button>
             )}
             {today?.flags?.can_checkout && (
+<<<<<<< HEAD
               <Button variant="contained" color="primary" startIcon={<Logout />} disabled={actionLoading}
+=======
+              <Button variant="outlined" color="primary" startIcon={<Logout />} disabled={actionLoading}
+>>>>>>> 1749c05d62ffe2026123418e3cc93c1b5ffd575b
                 onClick={() => handleAction(attendanceService.checkout, 'Check-out')}>
                 Check Out
               </Button>
             )}
             {today?.flags?.can_start_overtime && (
-              <Button variant="outlined" startIcon={<Timer />} disabled={actionLoading}
+              <Button variant="outlined" color="primary" startIcon={<Timer />} disabled={actionLoading}
                 onClick={() => handleAction(attendanceService.startOvertime, 'Start overtime')}>
                 Start Overtime
               </Button>
             )}
             {isOvertimeActive && (
-              <Button variant="contained" color="error" startIcon={<TimerOff />} disabled={actionLoading}
+              <Button variant="outlined" color="error" startIcon={<TimerOff />} disabled={actionLoading}
                 onClick={() => handleAction(attendanceService.endOvertime, 'End overtime')}>
                 End Overtime
               </Button>
@@ -135,15 +143,15 @@ export default function MyAttendance() {
         </ToggleButtonGroup>
       </Box>
       <TableContainer component={Paper}>
-        <Table size="small">
+        <Table size="small" sx={{ tableLayout: 'fixed' }}>
           <TableHead>
             <TableRow>
-              <TableCell>Date</TableCell>
-              <TableCell>Status</TableCell>
-              <TableCell>Check In</TableCell>
-              <TableCell>Check Out</TableCell>
-              <TableCell>Hours</TableCell>
-              <TableCell>Overtime</TableCell>
+              <TableCell sx={{ width: '18%' }}>Date</TableCell>
+              <TableCell sx={{ width: '14%' }}>Status</TableCell>
+              <TableCell sx={{ width: '18%' }}>Check In</TableCell>
+              <TableCell sx={{ width: '18%' }}>Check Out</TableCell>
+              <TableCell sx={{ width: '16%' }}>Hours</TableCell>
+              <TableCell sx={{ width: '16%' }}>Overtime</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>

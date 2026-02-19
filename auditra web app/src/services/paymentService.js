@@ -27,6 +27,9 @@ const paymentService = {
 
   uploadAllOvertime: (data) =>
     axiosClient.post('/auth/payment-slips/upload-all-overtime/', data),
+
+  syncOvertime: (data) =>
+    axiosClient.post('/auth/payment-slips/sync-overtime/', data),
 };
 
 export default paymentService;

@@ -645,3 +645,134 @@ class WeeklyAttendanceSummaryView(APIView):
             'week_end': week_end.isoformat(),
             'working_days': working_days,
         }, status=status.HTTP_200_OK)
+
+
+class HRAttendanceSummaryView(APIView):
+    """Get attendance summary for all employees - daily, weekly, or monthly (HR Head only)"""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from authentication.models import UserRole
+        try:
+            user_role = UserRole.objects.get(user=request.user)
+            if user_role.role != 'hr_head':
+                return Response({
+                    'error': 'Only HR Head can access this endpoint'
+                }, status=status.HTTP_403_FORBIDDEN)
+        except UserRole.DoesNotExist:
+            if not request.user.is_staff:
+                return Response({
+                    'error': 'User role not found and user is not a staff member'
+                }, status=status.HTTP_403_FORBIDDEN)
+
+        period = request.query_params.get('period', 'daily')
+        today = timezone.now().date()
+
+        if period == 'daily':
+            start_date = today
+            end_date = today
+        elif period == 'weekly':
+            start_date = today - timedelta(days=today.weekday())
+            end_date = start_date + timedelta(days=6)
+        elif period == 'monthly':
+            start_date = today.replace(day=1)
+            if today.month == 12:
+                end_date = today.replace(year=today.year + 1, month=1, day=1) - timedelta(days=1)
+            else:
+                end_date = today.replace(month=today.month + 1, day=1) - timedelta(days=1)
+        else:
+            return Response({
+                'error': 'Invalid period. Use: daily, weekly, monthly'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        employee_roles = [
+            'coordinator', 'field_officer', 'senior_valuer',
+            'accessor', 'md_gm', 'general_employee'
+        ]
+        employee_users = User.objects.filter(
+            role__role__in=employee_roles
+        ).select_related('role')
+
+        holidays = set(Holiday.objects.filter(
+            date__range=[start_date, end_date],
+            is_active=True
+        ).values_list('date', flat=True))
+
+        working_days = 0
+        current_date = start_date
+        while current_date <= end_date:
+            if current_date.weekday() != 6 and current_date not in holidays:
+                working_days += 1
+            current_date += timedelta(days=1)
+
+        attendances = Attendance.objects.filter(
+            date__range=[start_date, end_date]
+        ).select_related('user')
+
+        summary_data = []
+
+        if period == 'daily':
+            for user in employee_users:
+                user_att = attendances.filter(user=user, date=today).first()
+                employee_name = user.get_full_name() or user.username
+                employee_number = str(user.id)
+
+                if user_att:
+                    summary_data.append({
+                        'employee_name': employee_name,
+                        'employee_number': employee_number,
+                        'status': user_att.status,
+                        'check_in': user_att.check_in.isoformat() if user_att.check_in else None,
+                        'check_out': user_att.check_out.isoformat() if user_att.check_out else None,
+                        'working_hours': round(float(user_att.working_hours), 2),
+                        'overtime_hours': round(float(user_att.overtime_hours), 2),
+                    })
+                else:
+                    is_working = today.weekday() != 6 and today not in holidays
+                    summary_data.append({
+                        'employee_name': employee_name,
+                        'employee_number': employee_number,
+                        'status': 'absent' if is_working else 'N/A',
+                        'check_in': None,
+                        'check_out': None,
+                        'working_hours': 0.0,
+                        'overtime_hours': 0.0,
+                    })
+        else:
+            for user in employee_users:
+                user_attendances = attendances.filter(user=user)
+                present_count = user_attendances.filter(status='present').count()
+                half_day_count = user_attendances.filter(status='half_day').count()
+                absent_count = max(0, working_days - present_count - half_day_count)
+
+                total_overtime = user_attendances.aggregate(
+                    total=Sum('overtime_hours')
+                )['total'] or 0.0
+
+                attendance_percentage = 0.0
+                if working_days > 0:
+                    attendance_percentage = ((present_count + half_day_count * 0.5) / working_days) * 100
+
+                employee_name = user.get_full_name() or user.username
+                employee_number = str(user.id)
+
+                summary_data.append({
+                    'employee_name': employee_name,
+                    'employee_number': employee_number,
+                    'present_days': present_count,
+                    'absent_days': absent_count,
+                    'half_days': half_day_count,
+                    'overtime_hours': round(float(total_overtime), 2),
+                    'attendance_percentage': round(float(attendance_percentage), 2),
+                })
+
+        summary_data.sort(key=lambda x: x['employee_name'])
+
+        return Response({
+            'success': True,
+            'data': summary_data,
+            'period': period,
+            'start_date': start_date.isoformat(),
+            'end_date': end_date.isoformat(),
+            'working_days': working_days,
+        }, status=status.HTTP_200_OK)
