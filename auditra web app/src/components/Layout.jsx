@@ -58,7 +58,7 @@ export default function Layout() {
           alt="Auditra"
           sx={{
             width: '100%',
-            maxWidth: collapsed && !isMobile ? 40 : 180,
+            maxWidth: collapsed && !isMobile ? 36 : 140,
             height: (collapsed && !isMobile) ? 40 : 'auto',
             objectFit: (collapsed && !isMobile) ? 'cover' : 'contain',
             objectPosition: 'left',

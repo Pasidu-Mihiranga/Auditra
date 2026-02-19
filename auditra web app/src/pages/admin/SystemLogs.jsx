@@ -358,8 +358,11 @@ export default function SystemLogs() {
         <TextField
           select
           size="small"
+          label="Category"
           value={categoryFilter}
           onChange={(e) => { setCategoryFilter(e.target.value); setPage(0); }}
+          SelectProps={{ displayEmpty: true }}
+          InputLabelProps={{ shrink: true }}
           sx={{ minWidth: 170 }}
         >
           {CATEGORY_OPTIONS.map((opt) => (
@@ -369,8 +372,11 @@ export default function SystemLogs() {
         <TextField
           select
           size="small"
+          label="Action"
           value={actionFilter}
           onChange={(e) => { setActionFilter(e.target.value); setPage(0); }}
+          SelectProps={{ displayEmpty: true }}
+          InputLabelProps={{ shrink: true }}
           sx={{ minWidth: 200 }}
         >
           {ACTION_OPTIONS.map((opt) => (

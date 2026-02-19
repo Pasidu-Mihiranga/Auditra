@@ -359,11 +359,14 @@ export default function EmployeeSubmissions() {
         <TextField
           select
           size="small"
+          label="Status"
           value={statusFilter}
           onChange={(e) => {
             setStatusFilter(e.target.value);
             setPage(0);
           }}
+          SelectProps={{ displayEmpty: true }}
+          InputLabelProps={{ shrink: true }}
           sx={{ minWidth: 160 }}
         >
           {STATUS_OPTIONS.map((opt) => (
