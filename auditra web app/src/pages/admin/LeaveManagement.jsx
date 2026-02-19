@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
 import {
   Box, Typography, Table, TableBody, TableCell, TableContainer,
-  TableHead, TableRow, Paper, Button, Alert, Tabs, Tab,
+  TableHead, TableRow, Paper, Button, Alert, Tabs, Tab, TextField, InputAdornment,
 } from '@mui/material';
-import { Check, Close } from '@mui/icons-material';
+import { Check, Close, Search } from '@mui/icons-material';
 import leaveService from '../../services/leaveService';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import StatusChip from '../../components/StatusChip';
@@ -15,6 +15,7 @@ export default function LeaveManagement() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [tab, setTab] = useState(0);
+  const [searchQuery, setSearchQuery] = useState('');
 
   const fetchData = async () => {
     try {
@@ -41,10 +42,17 @@ export default function LeaveManagement() {
     }
   };
 
-  const filtered = tab === 0 ? requests :
-    tab === 1 ? requests.filter(r => r.status === 'pending') :
-      tab === 2 ? requests.filter(r => r.status === 'approved') :
-        requests.filter(r => r.status === 'rejected');
+  const filtered = requests.filter(r => {
+    const tabMatch = tab === 0 ||
+      (tab === 1 && r.status === 'pending') ||
+      (tab === 2 && r.status === 'approved') ||
+      (tab === 3 && r.status === 'rejected');
+    const q = searchQuery.toLowerCase().trim();
+    const searchMatch = !q ||
+      (r.user_username || r.user_name || r.employee_name || '').toLowerCase().includes(q) ||
+      (r.employee_id || r.employee_number || '').toString().toLowerCase().includes(q);
+    return tabMatch && searchMatch;
+  });
 
   if (loading) return <LoadingSpinner />;
 
@@ -60,6 +68,18 @@ export default function LeaveManagement() {
         <Tab label="Approved" />
         <Tab label="Rejected" />
       </Tabs>
+
+      <TextField
+        placeholder="Search by employee name or employee ID..."
+        value={searchQuery}
+        onChange={(e) => setSearchQuery(e.target.value)}
+        fullWidth
+        size="small"
+        sx={{ mb: 2 }}
+        InputProps={{
+          startAdornment: <InputAdornment position="start"><Search color="action" /></InputAdornment>,
+        }}
+      />
 
       <TableContainer component={Paper}>
         <Table size="small">
@@ -89,7 +109,7 @@ export default function LeaveManagement() {
                   <TableCell>
                     {r.status === 'pending' && (
                       <Box sx={{ display: 'flex', gap: 0.5 }}>
-                        <Button size="small" variant="contained" color="success" startIcon={<Check />}
+                        <Button size="small" variant="outlined" color="primary" startIcon={<Check />}
                           sx={{ minWidth: 100 }}
                           onClick={() => handleAction(r.id, 'approved')}>Approve</Button>
                         <Button size="small" variant="outlined" color="error" startIcon={<Close />}

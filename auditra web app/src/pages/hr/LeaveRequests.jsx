@@ -5,8 +5,9 @@ import {
   Tabs, Tab, Alert, Snackbar, Dialog, DialogTitle, DialogContent,
   DialogActions, Button, CircularProgress
 } from '@mui/material';
-import { Search, CheckCircle, Cancel, Visibility } from '@mui/icons-material';
+import { Search, Check, Close, Visibility } from '@mui/icons-material';
 import leaveService from '../../services/leaveService';
+import StatusChip from '../../components/StatusChip';
 import { formatDate } from '../../utils/helpers';
 
 export default function LeaveRequests() {
@@ -43,20 +44,13 @@ export default function LeaveRequests() {
     }
   };
 
-  const getStatusColor = (status) => {
-    switch (status) {
-      case 'approved': return 'success';
-      case 'rejected': return 'error';
-      case 'pending': return 'warning';
-      default: return 'default';
-    }
-  };
-
   const filteredRequests = requests.filter(r => {
     const statusMatch = tabValue === 0 || r.status === statusFilters[tabValue];
+    const q = searchQuery.toLowerCase();
     const searchMatch = !searchQuery ||
-      (r.user_name || r.employee_name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (r.leave_type || '').toLowerCase().includes(searchQuery.toLowerCase());
+      (r.user_name || r.employee_name || '').toLowerCase().includes(q) ||
+      (r.employee_id || '').toString().toLowerCase().includes(q) ||
+      (r.leave_type || '').toLowerCase().includes(q);
     return statusMatch && searchMatch;
   });
 
@@ -79,7 +73,7 @@ export default function LeaveRequests() {
       </Paper>
 
       <TextField
-        placeholder="Search by employee name or leave type..."
+        placeholder="Search by employee name, employee ID, or leave type..."
         value={searchQuery}
         onChange={(e) => setSearchQuery(e.target.value)}
         fullWidth
@@ -99,7 +93,7 @@ export default function LeaveRequests() {
               <TableCell>End Date</TableCell>
               <TableCell>Reason</TableCell>
               <TableCell>Status</TableCell>
-              <TableCell align="right">Actions</TableCell>
+              <TableCell>Actions</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
@@ -120,22 +114,38 @@ export default function LeaveRequests() {
                     {req.reason || '-'}
                   </TableCell>
                   <TableCell>
-                    <Chip label={req.status} color={getStatusColor(req.status)} size="small" />
+                    <StatusChip status={req.status} />
                   </TableCell>
-                  <TableCell align="right">
-                    <IconButton size="small" onClick={() => setDetailDialog({ open: true, request: req })}>
-                      <Visibility fontSize="small" />
-                    </IconButton>
-                    {req.status === 'pending' && (
-                      <>
-                        <IconButton size="small" color="success" onClick={() => handleAction(req.id, 'approved')}>
-                          <CheckCircle fontSize="small" />
-                        </IconButton>
-                        <IconButton size="small" color="error" onClick={() => handleAction(req.id, 'rejected')}>
-                          <Cancel fontSize="small" />
-                        </IconButton>
-                      </>
-                    )}
+                  <TableCell>
+                    <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                      <IconButton size="small" color="primary" onClick={() => setDetailDialog({ open: true, request: req })}>
+                        <Visibility fontSize="small" />
+                      </IconButton>
+                      {req.status === 'pending' && (
+                        <Box sx={{ display: 'flex', gap: 0.5 }}>
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            color="primary"
+                            startIcon={<Check />}
+                            onClick={() => handleAction(req.id, 'approved')}
+                            sx={{ minWidth: 100 }}
+                          >
+                            Approve
+                          </Button>
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            color="error"
+                            startIcon={<Close />}
+                            onClick={() => handleAction(req.id, 'rejected')}
+                            sx={{ minWidth: 100 }}
+                          >
+                            Reject
+                          </Button>
+                        </Box>
+                      )}
+                    </Box>
                   </TableCell>
                 </TableRow>
               ))
@@ -153,7 +163,7 @@ export default function LeaveRequests() {
               <Box><Typography variant="subtitle2" color="text.secondary">Leave Type</Typography><Typography sx={{ textTransform: 'capitalize' }}>{detailDialog.request.leave_type}</Typography></Box>
               <Box><Typography variant="subtitle2" color="text.secondary">Period</Typography><Typography>{formatDate(detailDialog.request.start_date)} - {formatDate(detailDialog.request.end_date)}</Typography></Box>
               <Box><Typography variant="subtitle2" color="text.secondary">Reason</Typography><Typography>{detailDialog.request.reason || 'No reason provided'}</Typography></Box>
-              <Box><Typography variant="subtitle2" color="text.secondary">Status</Typography><Chip label={detailDialog.request.status} color={getStatusColor(detailDialog.request.status)} size="small" /></Box>
+              <Box><Typography variant="subtitle2" color="text.secondary">Status</Typography><StatusChip status={detailDialog.request.status} /></Box>
               {detailDialog.request.admin_remarks && (
                 <Box><Typography variant="subtitle2" color="text.secondary">Admin Remarks</Typography><Typography>{detailDialog.request.admin_remarks}</Typography></Box>
               )}
@@ -163,8 +173,8 @@ export default function LeaveRequests() {
         <DialogActions>
           {detailDialog.request?.status === 'pending' && (
             <>
-              <Button color="error" onClick={() => { handleAction(detailDialog.request.id, 'rejected'); setDetailDialog({ open: false, request: null }); }}>Reject</Button>
-              <Button color="success" variant="contained" onClick={() => { handleAction(detailDialog.request.id, 'approved'); setDetailDialog({ open: false, request: null }); }}>Approve</Button>
+              <Button color="error" variant="outlined" startIcon={<Close />} onClick={() => { handleAction(detailDialog.request.id, 'rejected'); setDetailDialog({ open: false, request: null }); }}>Reject</Button>
+              <Button color="primary" variant="outlined" startIcon={<Check />} onClick={() => { handleAction(detailDialog.request.id, 'approved'); setDetailDialog({ open: false, request: null }); }}>Approve</Button>
             </>
           )}
           <Button onClick={() => setDetailDialog({ open: false, request: null })}>Close</Button>

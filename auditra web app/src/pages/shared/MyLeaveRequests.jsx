@@ -24,7 +24,6 @@ const LEAVE_TYPES = [
 
 export default function MyLeaveRequests() {
   const [requests, setRequests] = useState([]);
-  const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [error, setError] = useState('');
@@ -33,14 +32,12 @@ export default function MyLeaveRequests() {
   const [form, setForm] = useState({ leave_type: 'annual', start_date: '', end_date: '', reason: '' });
   const [submitting, setSubmitting] = useState(false);
 
+  const TOTAL_LEAVE_DAYS = 45;
+
   const fetchData = async () => {
     try {
-      const [reqRes, statsRes] = await Promise.all([
-        leaveService.getMyRequests(),
-        leaveService.getStatistics().catch(() => ({ data: null })),
-      ]);
+      const reqRes = await leaveService.getMyRequests();
       setRequests(Array.isArray(reqRes.data.data) ? reqRes.data.data : []);
-      setStats(statsRes.data.data);
     } catch (err) {
       setError('Failed to load data');
     } finally {
@@ -77,25 +74,23 @@ export default function MyLeaveRequests() {
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
         <Typography variant="h5" sx={{ fontWeight: 700 }}>My Leave Requests</Typography>
-        <Button variant="contained" startIcon={<Add />} onClick={() => setDialogOpen(true)}>New Request</Button>
+        <Button variant="outlined" color="primary" startIcon={<Add />} onClick={() => setDialogOpen(true)}>New Request</Button>
       </Box>
 
       {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
       {success && <Alert severity="success" sx={{ mb: 2 }} onClose={() => setSuccess('')}>{success}</Alert>}
 
-      {stats && (
-        <Grid container spacing={2} sx={{ mb: 3 }}>
-          <Grid item xs={12} sm={4}>
-            <StatsCard title="Total Leave Days" value={stats.total_leave_days || 0} icon={EventNoteIcon} color="#1565C0" />
-          </Grid>
-          <Grid item xs={12} sm={4}>
-            <StatsCard title="Approved" value={stats.approved_days || 0} icon={CheckCircleIcon} color="#16A34A" />
-          </Grid>
-          <Grid item xs={12} sm={4}>
-            <StatsCard title="Pending" value={stats.pending_days || 0} icon={PendingIcon} color="#D97706" />
-          </Grid>
+      <Grid container spacing={2} sx={{ mb: 3 }}>
+        <Grid item xs={12} sm={4}>
+          <StatsCard title="Total Leave Days" value={TOTAL_LEAVE_DAYS} icon={EventNoteIcon} color="#1565C0" />
         </Grid>
-      )}
+        <Grid item xs={12} sm={4}>
+          <StatsCard title="Approved Leave Requests" value={requests.filter(r => r.status === 'approved').length} icon={CheckCircleIcon} color="#1565C0" />
+        </Grid>
+        <Grid item xs={12} sm={4}>
+          <StatsCard title="Pending Leave Requests" value={requests.filter(r => r.status === 'pending').length} icon={PendingIcon} color="#1E88E5" />
+        </Grid>
+      </Grid>
 
       <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 2 }}>
         <Tab label="All" />
@@ -160,7 +155,7 @@ export default function MyLeaveRequests() {
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
           <Button onClick={() => setDialogOpen(false)} variant="outlined">Cancel</Button>
-          <Button onClick={handleSubmit} variant="contained" disabled={submitting}>
+          <Button onClick={handleSubmit} variant="outlined" color="primary" disabled={submitting}>
             {submitting ? 'Submitting...' : 'Submit'}
           </Button>
         </DialogActions>

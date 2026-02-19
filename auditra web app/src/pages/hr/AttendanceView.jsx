@@ -1,104 +1,165 @@
 import { useState, useEffect } from 'react';
 import {
   Box, Typography, Paper, Table, TableBody, TableCell, TableContainer,
-  TableHead, TableRow, TextField, MenuItem, CircularProgress, Alert, Snackbar, Chip
+  TableHead, TableRow, Tabs, Tab, Chip, CircularProgress, Alert, Snackbar
 } from '@mui/material';
 import attendanceService from '../../services/attendanceService';
-import { formatDate } from '../../utils/helpers';
+
+const PERIODS = ['daily', 'weekly', 'monthly'];
 
 export default function AttendanceView() {
-  const [summary, setSummary] = useState([]);
+  const [data, setData] = useState([]);
+  const [meta, setMeta] = useState({});
+  const [period, setPeriod] = useState('daily');
   const [loading, setLoading] = useState(true);
-  const [period, setPeriod] = useState('weekly');
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'error' });
 
-  useEffect(() => { fetchSummary(); }, [period]);
-
-  const fetchSummary = async () => {
-    try {
-      setLoading(true);
-      const res = period === 'weekly'
-        ? await attendanceService.getWeeklySummary()
-        : await attendanceService.getSummary({ period });
-
-      const data = res.data?.data;
-      if (period === 'weekly') {
-        setSummary(Array.isArray(data) ? data : []);
-      } else {
-        setSummary(data?.daily_data || []);
+  useEffect(() => {
+    const fetchSummary = async () => {
+      try {
+        setLoading(true);
+        const res = await attendanceService.getHRAttendanceSummary(period);
+        const resData = res.data;
+        setData(Array.isArray(resData?.data) ? resData.data : []);
+        setMeta({
+          period: resData?.period,
+          startDate: resData?.start_date,
+          endDate: resData?.end_date,
+          workingDays: resData?.working_days,
+        });
+      } catch {
+        setSnackbar({ open: true, message: 'Failed to load attendance summary', severity: 'error' });
+      } finally {
+        setLoading(false);
       }
-    } catch (err) {
-      setSnackbar({ open: true, message: 'Failed to load attendance summary', severity: 'error' });
-    } finally {
-      setLoading(false);
+    };
+    fetchSummary();
+  }, [period]);
+
+  const getStatusColor = (status) => {
+    switch (status) {
+      case 'present': return 'success';
+      case 'half_day': return 'warning';
+      case 'absent': case 'leave': return 'error';
+      default: return 'default';
     }
   };
 
-  if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}><CircularProgress /></Box>;
+  const getAttendanceColor = (pct) => {
+    if (pct >= 90) return 'success';
+    if (pct >= 70) return 'warning';
+    return 'error';
+  };
+
+  const isDaily = period === 'daily';
 
   return (
     <Box>
-      <Typography variant="h4" fontWeight="bold" gutterBottom>Attendance Overview</Typography>
+      <Typography variant="h4" fontWeight="bold" gutterBottom>Attendance Summary</Typography>
       <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
-        View employee attendance summaries
+        View employee attendance summaries across different periods
       </Typography>
 
-      <Box sx={{ display: 'flex', gap: 2, mb: 3 }}>
-        <TextField
-          select
-          label="Period"
-          value={period}
-          onChange={(e) => setPeriod(e.target.value)}
-          sx={{ minWidth: 200 }}
+      <Paper sx={{ mb: 2 }}>
+        <Tabs
+          value={PERIODS.indexOf(period)}
+          onChange={(_, idx) => setPeriod(PERIODS[idx])}
+          sx={{ borderBottom: 1, borderColor: 'divider' }}
         >
-          <MenuItem value="weekly">Weekly</MenuItem>
-          <MenuItem value="monthly">Monthly</MenuItem>
-          <MenuItem value="daily">Daily</MenuItem>
-        </TextField>
-      </Box>
+          <Tab label="Daily" />
+          <Tab label="Weekly" />
+          <Tab label="Monthly" />
+        </Tabs>
+      </Paper>
 
-      <TableContainer component={Paper}>
-        <Table>
-          <TableHead>
-            <TableRow>
-              <TableCell>Employee</TableCell>
-              <TableCell>Date / Period</TableCell>
-              <TableCell>Check In</TableCell>
-              <TableCell>Check Out</TableCell>
-              <TableCell>Total Hours</TableCell>
-              <TableCell>Status</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {summary.length === 0 ? (
+      {meta.startDate && (
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          {meta.startDate === meta.endDate
+            ? meta.startDate
+            : `${meta.startDate} — ${meta.endDate}`}
+          {meta.workingDays != null && ` • ${meta.workingDays} working day${meta.workingDays !== 1 ? 's' : ''}`}
+        </Typography>
+      )}
+
+      {loading ? (
+        <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
+          <CircularProgress />
+        </Box>
+      ) : (
+        <TableContainer component={Paper}>
+          <Table size="small">
+            <TableHead>
               <TableRow>
-                <TableCell colSpan={6} align="center" sx={{ py: 4 }}>
-                  <Typography color="text.secondary">No records found for this period</Typography>
-                </TableCell>
+                <TableCell>Employee</TableCell>
+                <TableCell>Employee ID</TableCell>
+                {isDaily ? (
+                  <>
+                    <TableCell>Status</TableCell>
+                    <TableCell>Check In</TableCell>
+                    <TableCell>Check Out</TableCell>
+                    <TableCell>Working Hrs</TableCell>
+                    <TableCell>Overtime Hrs</TableCell>
+                  </>
+                ) : (
+                  <>
+                    <TableCell>Present</TableCell>
+                    <TableCell>Absent</TableCell>
+                    <TableCell>Half Days</TableCell>
+                    <TableCell>Overtime Hrs</TableCell>
+                    <TableCell>Attendance %</TableCell>
+                  </>
+                )}
               </TableRow>
-            ) : (
-              summary.map((record, idx) => (
-                <TableRow key={idx} hover>
-                  <TableCell>
-                    {record.employee_name || record.username || (record.user_username) || 'N/A'}
-                  </TableCell>
-                  <TableCell>{formatDate(record.date || record.week_start)}</TableCell>
-                  <TableCell>{record.check_in ? new Date(record.check_in).toLocaleTimeString() : '-'}</TableCell>
-                  <TableCell>{record.check_out ? new Date(record.check_out).toLocaleTimeString() : '-'}</TableCell>
-                  <TableCell>{record.working_hours || record.hours_worked || record.total_working_hours || '0.00'}</TableCell>
-                  <TableCell>
-                    <Chip
-                      label={record.status || (record.check_in ? 'Present' : 'Absent')}
-                      color={record.status === 'present' ? 'success' : record.status === 'half_day' ? 'warning' : 'default'}
-                      size="small"
-                    />
+            </TableHead>
+            <TableBody>
+              {data.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={isDaily ? 7 : 7} align="center" sx={{ py: 4 }}>
+                    <Typography color="text.secondary">No records found for this period</Typography>
                   </TableCell>
                 </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </TableContainer>
+              ) : (
+                data.map((row, idx) => (
+                  <TableRow key={idx} hover>
+                    <TableCell sx={{ fontWeight: 600 }}>{row.employee_name || 'N/A'}</TableCell>
+                    <TableCell>{row.employee_id || '-'}</TableCell>
+                    {isDaily ? (
+                      <>
+                        <TableCell>
+                          <Chip
+                            label={row.status?.replace('_', ' ') || 'N/A'}
+                            color={getStatusColor(row.status)}
+                            size="small"
+                            sx={{ textTransform: 'capitalize' }}
+                          />
+                        </TableCell>
+                        <TableCell>{row.check_in || '-'}</TableCell>
+                        <TableCell>{row.check_out || '-'}</TableCell>
+                        <TableCell>{row.working_hours ?? '0.00'}</TableCell>
+                        <TableCell>{row.overtime_hours ?? '0.00'}</TableCell>
+                      </>
+                    ) : (
+                      <>
+                        <TableCell>{row.present_days ?? 0}</TableCell>
+                        <TableCell>{row.absent_days ?? 0}</TableCell>
+                        <TableCell>{row.half_days ?? 0}</TableCell>
+                        <TableCell>{row.overtime_hours ?? '0.00'}</TableCell>
+                        <TableCell>
+                          <Chip
+                            label={`${parseFloat(row.attendance_percentage ?? 0).toFixed(1)}%`}
+                            color={getAttendanceColor(parseFloat(row.attendance_percentage ?? 0))}
+                            size="small"
+                          />
+                        </TableCell>
+                      </>
+                    )}
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      )}
 
       <Snackbar open={snackbar.open} autoHideDuration={4000} onClose={() => setSnackbar({ ...snackbar, open: false })}>
         <Alert severity={snackbar.severity} onClose={() => setSnackbar({ ...snackbar, open: false })}>{snackbar.message}</Alert>

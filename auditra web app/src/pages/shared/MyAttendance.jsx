@@ -92,31 +92,31 @@ export default function MyAttendance() {
           </Grid>
           <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
             {today?.flags?.can_check_in && (
-              <Button variant="contained" startIcon={<Login />} disabled={actionLoading}
+              <Button variant="outlined" color="primary" startIcon={<Login />} disabled={actionLoading}
                 onClick={() => handleAction(attendanceService.markAttendance, 'Check-in')}>
                 Check In
               </Button>
             )}
             {today?.flags?.can_leave_early && (
-              <Button variant="outlined" color="warning" startIcon={<Logout />} disabled={actionLoading}
+              <Button variant="outlined" color="primary" startIcon={<Logout />} disabled={actionLoading}
                 onClick={() => handleAction(attendanceService.leaveEarly, 'Leave early')}>
                 Leave Early
               </Button>
             )}
             {today?.flags?.can_checkout && (
-              <Button variant="contained" color="warning" startIcon={<Logout />} disabled={actionLoading}
+              <Button variant="outlined" color="primary" startIcon={<Logout />} disabled={actionLoading}
                 onClick={() => handleAction(attendanceService.checkout, 'Check-out')}>
                 Check Out
               </Button>
             )}
             {today?.flags?.can_start_overtime && (
-              <Button variant="outlined" startIcon={<Timer />} disabled={actionLoading}
+              <Button variant="outlined" color="primary" startIcon={<Timer />} disabled={actionLoading}
                 onClick={() => handleAction(attendanceService.startOvertime, 'Start overtime')}>
                 Start Overtime
               </Button>
             )}
             {isOvertimeActive && (
-              <Button variant="contained" color="error" startIcon={<TimerOff />} disabled={actionLoading}
+              <Button variant="outlined" color="error" startIcon={<TimerOff />} disabled={actionLoading}
                 onClick={() => handleAction(attendanceService.endOvertime, 'End overtime')}>
                 End Overtime
               </Button>

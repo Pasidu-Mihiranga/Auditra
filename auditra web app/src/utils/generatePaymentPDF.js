@@ -2,6 +2,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
+import logoUrl from '../assets/logo.png';
 
 const MONTH_NAMES = [
   '', 'January', 'February', 'March', 'April', 'May', 'June',
@@ -13,43 +14,66 @@ const formatLKR = (amount) => {
   return `LKR ${Number(amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 };
 
+// Pre-load logo as base64 for PDF embedding
+let logoBase64 = null;
+const logoReady = new Promise((resolve) => {
+  const img = new Image();
+  img.crossOrigin = 'anonymous';
+  img.onload = () => {
+    const canvas = document.createElement('canvas');
+    canvas.width = img.width;
+    canvas.height = img.height;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(img, 0, 0);
+    logoBase64 = canvas.toDataURL('image/png');
+    resolve(logoBase64);
+  };
+  img.onerror = () => resolve(null);
+  img.src = logoUrl;
+});
+
 /**
  * Generate a professional PDF payment slip for a single employee.
  */
-export function generatePaymentSlipPDF(slip) {
+export async function generatePaymentSlipPDF(slip) {
+  if (!logoBase64) await logoReady;
+
   const doc = new jsPDF('p', 'mm', 'a4');
   const pageWidth = doc.internal.pageSize.getWidth();
   const margin = 20;
   let y = 20;
 
   // --- Header ---
-  doc.setFillColor(30, 58, 138);
-  doc.rect(0, 0, pageWidth, 40, 'F');
+  // White area with logo
+  if (logoBase64) {
+    doc.addImage(logoBase64, 'PNG', margin, 6, 50, 25);
+  }
+
+  // Blue band below the logo
+  doc.setFillColor(22, 100, 192);
+  doc.rect(0, 34, pageWidth, 18, 'F');
 
   doc.setTextColor(255, 255, 255);
-  doc.setFontSize(22);
-  doc.setFont('helvetica', 'bold');
-  doc.text('AUDITRA', margin, 18);
-
   doc.setFontSize(10);
   doc.setFont('helvetica', 'normal');
-  doc.text('Valuation & Property Consultants', margin, 26);
+  doc.text('Valuation & Property Consultants', margin, 45);
 
-  doc.setFontSize(12);
+  // Right side - document title
+  doc.setFontSize(14);
   doc.setFont('helvetica', 'bold');
-  doc.text('PAYMENT SLIP', pageWidth - margin, 18, { align: 'right' });
+  doc.text('PAYMENT SLIP', pageWidth - margin, 43, { align: 'right' });
 
   doc.setFontSize(9);
   doc.setFont('helvetica', 'normal');
   const monthName = slip.month_display || MONTH_NAMES[slip.month] || String(slip.month);
-  doc.text(`${monthName} ${slip.year}`, pageWidth - margin, 26, { align: 'right' });
+  doc.text(`${monthName} ${slip.year}`, pageWidth - margin, 49, { align: 'right' });
 
-  y = 50;
+  y = 58;
 
   // --- Slip Info Bar ---
   doc.setFillColor(241, 245, 249);
   doc.rect(margin, y, pageWidth - 2 * margin, 10, 'F');
-  doc.setTextColor(30, 58, 138);
+  doc.setTextColor(22, 100, 192);
   doc.setFontSize(9);
   doc.setFont('helvetica', 'bold');
   doc.text(`Pay Slip No: ${slip.pay_slip_number || '-'}`, margin + 4, y + 7);
@@ -67,7 +91,7 @@ export function generatePaymentSlipPDF(slip) {
   doc.text('Employee Details', margin, y);
   y += 2;
 
-  doc.setDrawColor(30, 58, 138);
+  doc.setDrawColor(22, 100, 192);
   doc.setLineWidth(0.5);
   doc.line(margin, y, pageWidth - margin, y);
   y += 8;
@@ -118,7 +142,7 @@ export function generatePaymentSlipPDF(slip) {
   doc.setFont('helvetica', 'bold');
   doc.text('Salary Breakdown', margin, y);
   y += 2;
-  doc.setDrawColor(30, 58, 138);
+  doc.setDrawColor(22, 100, 192);
   doc.line(margin, y, pageWidth - margin, y);
   y += 4;
 
@@ -148,7 +172,7 @@ export function generatePaymentSlipPDF(slip) {
     ],
     theme: 'grid',
     headStyles: {
-      fillColor: [30, 58, 138],
+      fillColor: [22, 100, 192],
       textColor: [255, 255, 255],
       fontStyle: 'bold',
       fontSize: 9,
@@ -163,7 +187,7 @@ export function generatePaymentSlipPDF(slip) {
   y = doc.lastAutoTable.finalY + 6;
 
   // --- Net Salary Box ---
-  doc.setFillColor(30, 58, 138);
+  doc.setFillColor(22, 100, 192);
   doc.rect(margin, y, pageWidth - 2 * margin, 16, 'F');
   doc.setTextColor(255, 255, 255);
   doc.setFontSize(12);
@@ -193,9 +217,9 @@ export function generatePaymentSlipPDF(slip) {
 /**
  * Download a payment slip as a PDF file.
  */
-export function downloadPaymentSlipPDF(slip) {
+export async function downloadPaymentSlipPDF(slip) {
   try {
-    const doc = generatePaymentSlipPDF(slip);
+    const doc = await generatePaymentSlipPDF(slip);
     const monthName = slip.month_display || MONTH_NAMES[slip.month] || String(slip.month);
     const fileName = `PaySlip_${slip.user_username || slip.employee_number || 'employee'}_${monthName}_${slip.year}.pdf`;
     doc.save(fileName);
@@ -208,9 +232,9 @@ export function downloadPaymentSlipPDF(slip) {
 /**
  * Open a payment slip PDF in a new browser tab for viewing.
  */
-export function viewPaymentSlipPDF(slip) {
+export async function viewPaymentSlipPDF(slip) {
   try {
-    const doc = generatePaymentSlipPDF(slip);
+    const doc = await generatePaymentSlipPDF(slip);
     const blobUrl = doc.output('bloburl');
     window.open(blobUrl, '_blank');
   } catch (err) {
@@ -230,13 +254,13 @@ export async function downloadAllPaymentSlipPDFs(slips) {
     const firstSlip = slips[0];
     const monthName = firstSlip.month_display || MONTH_NAMES[firstSlip.month] || String(firstSlip.month);
 
-    slips.forEach((slip) => {
-      const doc = generatePaymentSlipPDF(slip);
+    for (const slip of slips) {
+      const doc = await generatePaymentSlipPDF(slip);
       const pdfBlob = doc.output('blob');
       const slipMonth = slip.month_display || MONTH_NAMES[slip.month] || String(slip.month);
       const fileName = `PaySlip_${slip.user_username || slip.employee_number || 'employee'}_${slipMonth}_${slip.year}.pdf`;
       zip.file(fileName, pdfBlob);
-    });
+    }
 
     const zipBlob = await zip.generateAsync({ type: 'blob' });
     saveAs(zipBlob, `PaymentSlips_${monthName}_${firstSlip.year}.zip`);

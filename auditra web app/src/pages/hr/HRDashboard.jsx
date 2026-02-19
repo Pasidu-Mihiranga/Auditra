@@ -11,7 +11,6 @@ import PersonRemoveIcon from '@mui/icons-material/PersonRemove';
 import PaymentIcon from '@mui/icons-material/Payment';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import { Check, Close } from '@mui/icons-material';
-import { useAuth } from '../../contexts/AuthContext';
 import leaveService from '../../services/leaveService';
 import attendanceService from '../../services/attendanceService';
 import paymentService from '../../services/paymentService';
@@ -22,7 +21,6 @@ import LoadingSpinner from '../../components/LoadingSpinner';
 import { formatDate } from '../../utils/helpers';
 
 export default function HRDashboard() {
-  const { user } = useAuth();
   const [stats, setStats] = useState({ pendingLeaves: 0, attendance: 0, payments: 0, pendingRemovals: 0 });
   const [recentLeaves, setRecentLeaves] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -33,21 +31,28 @@ export default function HRDashboard() {
   const fetchData = async () => {
     try {
       const [leavesRes, attRes, paymentsRes, removalRes] = await Promise.all([
-        leaveService.getAllRequests().catch(() => ({ data: [] })),
-        attendanceService.getWeeklySummary().catch(() => ({ data: [] })),
+        leaveService.getAllRequests().catch(() => ({ data: { data: [] } })),
+        attendanceService.getWeeklySummary().catch(() => ({ data: { data: [] } })),
         paymentService.getAllSlips().catch(() => ({ data: { data: [] } })),
         removalService.getAllRequests().catch(() => ({ data: [] })),
       ]);
 
-      const leaves = Array.isArray(leavesRes.data) ? leavesRes.data : [];
+      const leaves = Array.isArray(leavesRes.data?.data)
+        ? leavesRes.data.data
+        : (Array.isArray(leavesRes.data) ? leavesRes.data : []);
+      const attendance = Array.isArray(attRes.data?.data)
+        ? attRes.data.data
+        : (Array.isArray(attRes.data) ? attRes.data : []);
       const payments = Array.isArray(paymentsRes.data?.data)
         ? paymentsRes.data.data
         : (Array.isArray(paymentsRes.data) ? paymentsRes.data : []);
-      const removals = Array.isArray(removalRes.data) ? removalRes.data : [];
+      const removals = Array.isArray(removalRes.data?.results)
+        ? removalRes.data.results
+        : (Array.isArray(removalRes.data) ? removalRes.data : []);
 
       setStats({
         pendingLeaves: leaves.filter(l => l.status === 'pending').length,
-        attendance: Array.isArray(attRes.data) ? attRes.data.length : 0,
+        attendance: attendance.length,
         payments: payments.length,
         pendingRemovals: removals.filter(r => r.status === 'pending').length,
       });
@@ -87,9 +92,6 @@ export default function HRDashboard() {
       <Typography variant="h5" sx={{ fontWeight: 700 }} gutterBottom>
         HR Head Dashboard
       </Typography>
-      <Typography variant="body1" color="text.secondary" sx={{ mb: 4 }}>
-        Welcome back{user?.first_name ? `, ${user.first_name}` : ''}! Here is an overview of employee management.
-      </Typography>
 
       {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
       {success && <Alert severity="success" sx={{ mb: 2 }} onClose={() => setSuccess('')}>{success}</Alert>}
@@ -101,8 +103,7 @@ export default function HRDashboard() {
             title="Pending Leave Requests"
             value={stats.pendingLeaves}
             icon={BeachAccessIcon}
-            color="#D97706"
-            onClick={() => navigate('/dashboard/leave-management')}
+            color="#1E88E5"
           />
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
@@ -110,8 +111,7 @@ export default function HRDashboard() {
             title="Payment Slips"
             value={stats.payments}
             icon={PaymentIcon}
-            color="#16A34A"
-            onClick={() => navigate('/dashboard/payments')}
+            color="#1565C0"
           />
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
@@ -120,7 +120,6 @@ export default function HRDashboard() {
             value={stats.attendance}
             icon={EventNoteIcon}
             color="#2563EB"
-            onClick={() => navigate('/dashboard/attendance-summary')}
           />
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
@@ -128,8 +127,7 @@ export default function HRDashboard() {
             title="Pending Removals"
             value={stats.pendingRemovals}
             icon={PersonRemoveIcon}
-            color="#DC2626"
-            onClick={() => navigate('/dashboard/request-removal')}
+            color="#0D47A1"
           />
         </Grid>
       </Grid>
@@ -149,6 +147,7 @@ export default function HRDashboard() {
             <TableHead>
               <TableRow>
                 <TableCell>Employee</TableCell>
+                <TableCell>Employee ID</TableCell>
                 <TableCell>Type</TableCell>
                 <TableCell>From</TableCell>
                 <TableCell>To</TableCell>
@@ -160,7 +159,10 @@ export default function HRDashboard() {
               {recentLeaves.map((leave) => (
                 <TableRow key={leave.id} hover>
                   <TableCell sx={{ fontWeight: 600 }}>
-                    {leave.user_display || leave.user_name || leave.user_username || `User #${leave.user}`}
+                    {leave.employee_name || `User #${leave.user}`}
+                  </TableCell>
+                  <TableCell>
+                    {leave.employee_id || '-'}
                   </TableCell>
                   <TableCell>
                     {leave.leave_type || leave.type || '-'}
@@ -175,8 +177,8 @@ export default function HRDashboard() {
                       <Box sx={{ display: 'flex', gap: 0.5 }}>
                         <Button
                           size="small"
-                          variant="contained"
-                          color="success"
+                          variant="outlined"
+                          color="primary"
                           startIcon={<Check />}
                           onClick={() => handleLeaveAction(leave.id, 'approved')}
                           sx={{ minWidth: 100 }}
@@ -230,7 +232,7 @@ export default function HRDashboard() {
             },
           }} onClick={() => navigate('/dashboard/leave-management')}>
             <CardContent>
-              <BeachAccessIcon sx={{ fontSize: 40, mb: 1, color: '#D97706' }} />
+              <BeachAccessIcon sx={{ fontSize: 40, mb: 1, color: '#1E88E5' }} />
               <Typography variant="subtitle1" fontWeight={600}>Leave Management</Typography>
               <Typography variant="body2" color="text.secondary">
                 Approve or reject employee leave requests
@@ -254,7 +256,7 @@ export default function HRDashboard() {
             },
           }} onClick={() => navigate('/dashboard/payments')}>
             <CardContent>
-              <PaymentIcon sx={{ fontSize: 40, mb: 1, color: '#16A34A' }} />
+              <PaymentIcon sx={{ fontSize: 40, mb: 1, color: '#1565C0' }} />
               <Typography variant="subtitle1" fontWeight={600}>Payments</Typography>
               <Typography variant="body2" color="text.secondary">
                 Generate and manage employee payment slips
@@ -302,7 +304,7 @@ export default function HRDashboard() {
             },
           }} onClick={() => navigate('/dashboard/request-removal')}>
             <CardContent>
-              <PersonRemoveIcon sx={{ fontSize: 40, mb: 1, color: '#DC2626' }} />
+              <PersonRemoveIcon sx={{ fontSize: 40, mb: 1, color: '#0D47A1' }} />
               <Typography variant="subtitle1" fontWeight={600}>Request Removal</Typography>
               <Typography variant="body2" color="text.secondary">
                 Submit employee removal requests for admin approval

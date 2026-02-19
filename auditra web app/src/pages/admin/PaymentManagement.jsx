@@ -22,6 +22,8 @@ export default function PaymentManagement() {
   const [overtimeDialog, setOvertimeDialog] = useState(null);
   const [overtimeHours, setOvertimeHours] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [filterMonth, setFilterMonth] = useState('');
+  const [filterYear, setFilterYear] = useState('');
 
   const fetchSlips = async () => {
     try {
@@ -80,6 +82,23 @@ export default function PaymentManagement() {
     }
   };
 
+  const MONTHS = [
+    { v: 1, l: 'January' }, { v: 2, l: 'February' }, { v: 3, l: 'March' },
+    { v: 4, l: 'April' }, { v: 5, l: 'May' }, { v: 6, l: 'June' },
+    { v: 7, l: 'July' }, { v: 8, l: 'August' }, { v: 9, l: 'September' },
+    { v: 10, l: 'October' }, { v: 11, l: 'November' }, { v: 12, l: 'December' }
+  ];
+
+  const filteredSlips = slips.filter(s => {
+    const monthMatch = !filterMonth || s.month === filterMonth;
+    const yearMatch = !filterYear || String(s.year) === String(filterYear);
+    const q = searchQuery.toLowerCase().trim();
+    const searchMatch = !q ||
+      (s.user_full_name || s.user_username || s.employee_name || '').toLowerCase().includes(q) ||
+      String(s.employee_number || s.user || '').toLowerCase().includes(q);
+    return monthMatch && yearMatch && searchMatch;
+  });
+
   if (loading) return <LoadingSpinner />;
 
   return (
@@ -95,12 +114,7 @@ export default function PaymentManagement() {
             <Grid item xs={4}>
               <TextField select fullWidth label="Month" value={genMonth} onChange={(e) => setGenMonth(e.target.value)}
                 size="small">
-                {[
-                  { v: 1, l: 'January' }, { v: 2, l: 'February' }, { v: 3, l: 'March' },
-                  { v: 4, l: 'April' }, { v: 5, l: 'May' }, { v: 6, l: 'June' },
-                  { v: 7, l: 'July' }, { v: 8, l: 'August' }, { v: 9, l: 'September' },
-                  { v: 10, l: 'October' }, { v: 11, l: 'November' }, { v: 12, l: 'December' }
-                ].map((m) => <MenuItem key={m.v} value={m.v}>{m.l}</MenuItem>)}
+                {MONTHS.map((m) => <MenuItem key={m.v} value={m.v}>{m.l}</MenuItem>)}
               </TextField>
             </Grid>
             <Grid item xs={4}>
@@ -112,7 +126,7 @@ export default function PaymentManagement() {
               </Button>
             </Grid>
             <Grid item xs={2}>
-              <Button variant="outlined" color="secondary" startIcon={<Upload />} onClick={handlePublish} disabled={publishing} fullWidth>
+              <Button variant="outlined" color="primary" startIcon={<Upload />} onClick={handlePublish} disabled={publishing} fullWidth>
                 {publishing ? 'Publishing...' : 'Publish'}
               </Button>
             </Grid>
@@ -121,13 +135,31 @@ export default function PaymentManagement() {
       </Card>
 
       {slips.length > 0 && (
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+        <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', mb: 2, flexWrap: 'wrap' }}>
+          <TextField
+            select
+            size="small"
+            label="Filter Month"
+            value={filterMonth}
+            onChange={(e) => setFilterMonth(e.target.value)}
+            sx={{ minWidth: 160 }}
+          >
+            <MenuItem value="">All Months</MenuItem>
+            {MONTHS.map((m) => <MenuItem key={m.v} value={m.v}>{m.l}</MenuItem>)}
+          </TextField>
+          <TextField
+            size="small"
+            label="Filter Year"
+            value={filterYear}
+            onChange={(e) => setFilterYear(e.target.value)}
+            sx={{ width: 120 }}
+          />
           <TextField
             size="small"
             placeholder="Search by employee name or ID"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            sx={{ width: 320 }}
+            sx={{ flex: 1, minWidth: 200 }}
             InputProps={{
               startAdornment: (
                 <InputAdornment position="start">
@@ -138,11 +170,12 @@ export default function PaymentManagement() {
           />
           <Button
             variant="outlined"
-            color="error"
+            color="primary"
             startIcon={<PictureAsPdf />}
-            onClick={() => downloadAllPaymentSlipPDFs(slips)}
+            onClick={() => downloadAllPaymentSlipPDFs(filteredSlips)}
+            disabled={filteredSlips.length === 0}
           >
-            Download All PDFs
+            Download All PDFs{filterMonth ? ` (${MONTHS.find(m => m.v === filterMonth)?.l || ''})` : ''}
           </Button>
         </Box>
       )}
@@ -160,19 +193,10 @@ export default function PaymentManagement() {
             </TableRow>
           </TableHead>
           <TableBody>
-            {(() => {
-              const query = searchQuery.toLowerCase().trim();
-              const filtered = query
-                ? slips.filter((s) => {
-                    const name = (s.user_full_name || s.user_username || s.employee_name || '').toLowerCase();
-                    const empId = String(s.employee_number || s.user || '').toLowerCase();
-                    return name.includes(query) || empId.includes(query);
-                  })
-                : slips;
-              return filtered.length === 0 ? (
-                <TableRow><TableCell colSpan={6} align="center">{query ? 'No matching employees found' : 'No payment slips found'}</TableCell></TableRow>
-              ) : (
-                filtered.map((s) => (
+            {filteredSlips.length === 0 ? (
+              <TableRow><TableCell colSpan={6} align="center">{searchQuery || filterMonth || filterYear ? 'No matching payment slips found' : 'No payment slips found'}</TableCell></TableRow>
+            ) : (
+              filteredSlips.map((s) => (
                 <TableRow key={s.id}>
                   <TableCell sx={{ fontWeight: 600 }}>{s.user_username || s.employee_name || '-'}</TableCell>
                   <TableCell>{s.month || '-'}</TableCell>
@@ -185,13 +209,12 @@ export default function PaymentManagement() {
                       <Box sx={{ width: 40 }} />
                       <Button size="small" color="primary" startIcon={<Visibility />} onClick={() => viewPaymentSlipPDF(s)}>View</Button>
                       <Box sx={{ width: 40 }} />
-                      <Button size="small" color="error" startIcon={<Download />} onClick={() => downloadPaymentSlipPDF(s)}>Download</Button>
+                      <Button size="small" color="primary" startIcon={<Download />} onClick={() => downloadPaymentSlipPDF(s)}>Download</Button>
                     </Box>
                   </TableCell>
                 </TableRow>
               ))
-              );
-            })()}
+            )}
           </TableBody>
         </Table>
       </TableContainer>

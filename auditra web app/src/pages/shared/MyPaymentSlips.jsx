@@ -64,9 +64,9 @@ export default function MyPaymentSlips() {
                   <TableCell sx={{ fontWeight: 700, color: 'primary.main' }}>{formatCurrency(s.net_salary)}</TableCell>
                   <TableCell>
                     <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
-                      <Button size="small" color="primary" startIcon={<Visibility />} onClick={() => viewPaymentSlipPDF(s)}>View</Button>
+                      <Button size="small" variant="outlined" color="primary" startIcon={<Visibility />} onClick={() => viewPaymentSlipPDF(s)}>View</Button>
                       <Box sx={{ width: 40 }} />
-                      <Button size="small" color="error" startIcon={<Download />} onClick={() => downloadPaymentSlipPDF(s)}>Download</Button>
+                      <Button size="small" variant="outlined" color="primary" startIcon={<Download />} onClick={() => downloadPaymentSlipPDF(s)}>Download</Button>
                     </Box>
                   </TableCell>
                 </TableRow>

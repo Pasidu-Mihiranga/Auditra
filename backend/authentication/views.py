@@ -1247,16 +1247,22 @@ class MyLeaveStatisticsView(APIView):
             # Calculate days
             approved_days = sum(leave.days for leave in approved_leaves)
             pending_days = sum(leave.days for leave in pending_leaves)
-            
+
+            # Count requests
+            approved_count = approved_leaves.count()
+            pending_count = pending_leaves.count()
+
             # Calculate remaining leaves: Total leaves (45) - Approved days
             remaining_leaves = max(0, TOTAL_LEAVES - approved_days)
-            
+
             return Response({
                 'success': True,
                 'data': {
                     'total_leave_days': TOTAL_LEAVES,
                     'approved_days': approved_days,
                     'pending_days': pending_days,
+                    'approved_count': approved_count,
+                    'pending_count': pending_count,
                     'remaining_leaves': remaining_leaves,
                     'year': current_year,
                 }
@@ -1486,24 +1492,28 @@ class CreateEmployeeRemovalRequestView(APIView):
 
 
 class AllRemovalRequestsView(generics.ListAPIView):
-    """Admin endpoint to view all employee removal requests"""
+    """Admin and HR Head endpoint to view employee removal requests"""
     permission_classes = (IsAuthenticated,)
     serializer_class = EmployeeRemovalRequestSerializer
-    
+
     def get_queryset(self):
-        # Check if user is admin
-        if not hasattr(self.request.user, 'role') or self.request.user.role.role != 'admin':
+        if not hasattr(self.request.user, 'role'):
             return EmployeeRemovalRequest.objects.none()
-        
-        return EmployeeRemovalRequest.objects.all()
-    
+
+        user_role = self.request.user.role.role
+        if user_role == 'admin':
+            return EmployeeRemovalRequest.objects.all()
+        elif user_role == 'hr_head':
+            return EmployeeRemovalRequest.objects.filter(requested_by=self.request.user)
+
+        return EmployeeRemovalRequest.objects.none()
+
     def list(self, request, *args, **kwargs):
-        # Check if user is admin
-        if not hasattr(request.user, 'role') or request.user.role.role != 'admin':
+        if not hasattr(request.user, 'role') or request.user.role.role not in ('admin', 'hr_head'):
             return Response({
-                'error': 'Only admins can view removal requests'
+                'error': 'Only admins and HR Head can view removal requests'
             }, status=status.HTTP_403_FORBIDDEN)
-        
+
         return super().list(request, *args, **kwargs)
 
 
