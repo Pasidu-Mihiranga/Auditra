@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Box, Typography, Card, CardContent, TextField, Button, Grid, Alert, MenuItem,
   CircularProgress, InputAdornment,
@@ -7,16 +7,37 @@ import {
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import ErrorIcon from '@mui/icons-material/Error';
 import InfoIcon from '@mui/icons-material/Info';
+import AssignmentIcon from '@mui/icons-material/Assignment';
 import projectService from '../../services/projectService';
 
 export default function CreateProject() {
   const navigate = useNavigate();
+  const location = useLocation();
+
+  // Pre-fill from assigned submission (passed via route state from AssignedSubmissions)
+  const submissionData = location.state?.submissionData || null;
+  const submissionId = location.state?.submissionId || null;
+
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState({
-    title: '', description: '', priority: 'medium', start_date: '', end_date: '',
-    client_name: '', client_email: '', client_phone: '', client_address: '', client_company: '',
-    agent_name: '', agent_email: '', agent_phone: '', agent_address: '', agent_license_number: '',
+    title: submissionData?.project_title || '',
+    description: submissionData?.project_description || '',
+    priority: 'medium',
+    start_date: '',
+    end_date: '',
+    client_name: submissionData
+      ? [submissionData.first_name, submissionData.last_name].filter(Boolean).join(' ')
+      : '',
+    client_email: submissionData?.email || '',
+    client_phone: submissionData?.phone || '',
+    client_address: submissionData?.address || '',
+    client_company: submissionData?.company_name || '',
+    agent_name: submissionData?.agent_name || '',
+    agent_email: submissionData?.agent_email || '',
+    agent_phone: submissionData?.agent_phone || '',
+    agent_address: '',
+    agent_license_number: '',
   });
 
   // Email check states
@@ -97,6 +118,11 @@ export default function CreateProject() {
       end_date: form.end_date || null,
     };
 
+    // Include submission_id if creating from an assigned submission
+    if (submissionId) {
+      payload.submission_id = submissionId;
+    }
+
     // Build client_info if email is provided
     if (form.client_email) {
       payload.client_info = {
@@ -138,6 +164,15 @@ export default function CreateProject() {
   return (
     <Box>
       <Typography variant="h5" sx={{ fontWeight: 700, mb: 3 }}>Create New Project</Typography>
+      {submissionData && (
+        <Alert icon={<AssignmentIcon />} severity="info" sx={{ mb: 2 }}>
+          Creating project from client submission by{' '}
+          <strong>
+            {[submissionData.first_name, submissionData.last_name].filter(Boolean).join(' ') || submissionData.email}
+          </strong>
+          . Client and agent fields have been pre-filled from the submission.
+        </Alert>
+      )}
       {error && <Alert severity="error" sx={{ mb: 2, whiteSpace: 'pre-line' }}>{error}</Alert>}
       <form onSubmit={handleSubmit}>
         <Card sx={{ mb: 3 }}>

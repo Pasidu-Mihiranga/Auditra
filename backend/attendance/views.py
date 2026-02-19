@@ -59,6 +59,19 @@ class MarkAttendanceView(APIView):
             attendance.save()
         
         serializer = AttendanceSerializer(attendance)
+
+        try:
+            from system_logs.utils import log_action, get_client_ip
+            log_action(
+                action='ATTENDANCE_CHECK_IN',
+                user=user,
+                description=f"Attendance marked (check-in) for {today}",
+                category='attendance',
+                ip_address=get_client_ip(request),
+            )
+        except Exception:
+            pass
+
         return Response({
             'message': 'Attendance marked successfully',
             'data': serializer.data
@@ -88,7 +101,19 @@ class LeaveEarlyView(APIView):
         # Mark check-out
         attendance.check_out = timezone.now()
         attendance.save()  # This will calculate working hours and update status
-        
+
+        try:
+            from system_logs.utils import log_action, get_client_ip
+            log_action(
+                action='ATTENDANCE_CHECK_OUT',
+                user=user,
+                description=f"Early leave marked for {today} (working hours: {attendance.working_hours})",
+                category='attendance',
+                ip_address=get_client_ip(request),
+            )
+        except Exception:
+            pass
+
         serializer = AttendanceSerializer(attendance)
         return Response({
             'message': 'Early leave marked successfully',
@@ -126,7 +151,19 @@ class CheckOutView(APIView):
         
         attendance.check_out = min(now, five_pm)
         attendance.save()
-        
+
+        try:
+            from system_logs.utils import log_action, get_client_ip
+            log_action(
+                action='ATTENDANCE_CHECK_OUT',
+                user=user,
+                description=f"Checked out for {today}",
+                category='attendance',
+                ip_address=get_client_ip(request),
+            )
+        except Exception:
+            pass
+
         serializer = AttendanceSerializer(attendance)
         return Response({
             'message': 'Checked out successfully',
@@ -181,7 +218,19 @@ class StartOvertimeView(APIView):
         
         attendance.overtime_start = now
         attendance.save()
-        
+
+        try:
+            from system_logs.utils import log_action, get_client_ip
+            log_action(
+                action='ATTENDANCE_OVERTIME_START',
+                user=user,
+                description=f"Overtime started for {today}",
+                category='attendance',
+                ip_address=get_client_ip(request),
+            )
+        except Exception:
+            pass
+
         serializer = AttendanceSerializer(attendance)
         return Response({
             'message': 'Overtime started successfully',
@@ -216,7 +265,19 @@ class EndOvertimeView(APIView):
         
         attendance.overtime_end = timezone.now()
         attendance.save()
-        
+
+        try:
+            from system_logs.utils import log_action, get_client_ip
+            log_action(
+                action='ATTENDANCE_OVERTIME_END',
+                user=user,
+                description=f"Overtime ended for {today} (overtime hours: {attendance.overtime_hours})",
+                category='attendance',
+                ip_address=get_client_ip(request),
+            )
+        except Exception:
+            pass
+
         serializer = AttendanceSerializer(attendance)
         return Response({
             'message': 'Overtime ended successfully',

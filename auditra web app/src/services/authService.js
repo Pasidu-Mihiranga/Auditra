@@ -31,10 +31,10 @@ const authService = {
   registerEmployee: (data) => {
     const formData = new FormData();
     Object.entries(data).forEach(([key, value]) => {
-      if (value != null) formData.append(key, value);
+      if (value != null && value !== '') formData.append(key, value);
     });
     return axiosClient.post('/employees/register/', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
+      headers: { 'Content-Type': undefined },
     });
   },
 };

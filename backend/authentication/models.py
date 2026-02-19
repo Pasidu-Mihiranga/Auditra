@@ -52,8 +52,12 @@ class UserRole(models.Model):
     assigned_at = models.DateTimeField(auto_now=True)
     created_at = models.DateTimeField(auto_now_add=True)
     password_changed = models.BooleanField(
-        default=False,
-        help_text='Whether the user has changed their password (for clients/agents)'
+        default=True,
+        help_text='Whether the user has changed their password (False only for auto-created accounts)'
+    )
+    custom_salary = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True,
+        help_text='Custom salary override; if set, takes precedence over the role default'
     )
     
     class Meta:
@@ -70,7 +74,9 @@ class UserRole(models.Model):
     
     @property
     def salary(self):
-        """Get the salary for this role"""
+        """Get the salary for this role (custom override takes precedence)"""
+        if self.custom_salary is not None:
+            return self.custom_salary
         return self.ROLE_SALARIES.get(self.role, 0)
     
     @classmethod
@@ -402,6 +408,7 @@ class ClientFormSubmission(models.Model):
     STATUS_CHOICES = [
         ('pending', 'Pending'),
         ('reviewed', 'Reviewed'),
+        ('assigned', 'Assigned'),
         ('approved', 'Approved'),
         ('rejected', 'Rejected'),
     ]
@@ -415,9 +422,9 @@ class ClientFormSubmission(models.Model):
     company_name = models.CharField(max_length=200, blank=True, null=True)
     project_title = models.CharField(max_length=200)
     project_description = models.TextField()
-    agent_name = models.CharField(max_length=200)
-    agent_phone = models.CharField(max_length=20)
-    agent_email = models.EmailField()
+    agent_name = models.CharField(max_length=200, blank=True, null=True)
+    agent_phone = models.CharField(max_length=20, blank=True, null=True)
+    agent_email = models.EmailField(blank=True, null=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
     submitted_at = models.DateTimeField(auto_now_add=True)
     reviewed_at = models.DateTimeField(blank=True, null=True)
@@ -429,6 +436,14 @@ class ClientFormSubmission(models.Model):
         blank=True,
         related_name='reviewed_client_submissions'
     )
+    coordinator = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='coordinated_client_submissions'
+    )
+    assigned_at = models.DateTimeField(null=True, blank=True)
     
     class Meta:
         db_table = 'client_form_submissions'

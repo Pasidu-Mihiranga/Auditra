@@ -41,7 +41,20 @@ class ValuationListCreateView(generics.ListCreateAPIView):
         return ValuationSerializer
     
     def perform_create(self, serializer):
-        serializer.save(field_officer=self.request.user)
+        instance = serializer.save(field_officer=self.request.user)
+
+        try:
+            from system_logs.utils import log_action, get_client_ip
+            log_action(
+                action='VALUATION_CREATED',
+                user=self.request.user,
+                description=f"Valuation created for project: {instance.project.title} (category: {instance.get_category_display()})",
+                category='valuation',
+                ip_address=get_client_ip(self.request),
+                metadata={'valuation_id': instance.id, 'project_id': instance.project.id},
+            )
+        except Exception:
+            pass
     
     def create(self, request, *args, **kwargs):
         """Override create to provide better error messages and return full object with id"""
@@ -131,6 +144,20 @@ def submit_valuation(request, pk):
         )
     
     valuation.submit()
+
+    try:
+        from system_logs.utils import log_action, get_client_ip
+        log_action(
+            action='VALUATION_SUBMITTED',
+            user=request.user,
+            description=f"Valuation submitted for project: {valuation.project.title} (category: {valuation.get_category_display()})",
+            category='valuation',
+            ip_address=get_client_ip(request),
+            metadata={'valuation_id': valuation.id, 'project_id': valuation.project.id},
+        )
+    except Exception:
+        pass
+
     serializer = ValuationSerializer(valuation, context={'request': request})
     return Response(serializer.data, status=status.HTTP_200_OK)
 
@@ -227,7 +254,20 @@ def accept_valuation(request, pk):
         notes=f"Valuation ({valuation.get_category_display()}) accepted by Accessor and sent to Senior Valuer for approval.",
         created_by=request.user
     )
-    
+
+    try:
+        from system_logs.utils import log_action, get_client_ip
+        log_action(
+            action='VALUATION_ACCEPTED',
+            user=request.user,
+            description=f"Valuation accepted for project: {valuation.project.title} (sent to senior valuer {senior_valuer_name})",
+            category='valuation',
+            ip_address=get_client_ip(request),
+            metadata={'valuation_id': valuation.id, 'project_id': valuation.project.id},
+        )
+    except Exception:
+        pass
+
     serializer = ValuationSerializer(valuation, context={'request': request})
     return Response({
         **serializer.data,
@@ -284,7 +324,20 @@ def reject_valuation(request, pk):
         notes=f"Valuation ({valuation.get_category_display()}) rejected by Accessor. Reason: {rejection_reason}",
         created_by=request.user
     )
-    
+
+    try:
+        from system_logs.utils import log_action, get_client_ip
+        log_action(
+            action='VALUATION_REJECTED',
+            user=request.user,
+            description=f"Valuation rejected by accessor for project: {valuation.project.title}. Reason: {rejection_reason}",
+            category='valuation',
+            ip_address=get_client_ip(request),
+            metadata={'valuation_id': valuation.id, 'project_id': valuation.project.id, 'reason': rejection_reason},
+        )
+    except Exception:
+        pass
+
     serializer = ValuationSerializer(valuation, context={'request': request})
     return Response(serializer.data, status=status.HTTP_200_OK)
 
@@ -400,7 +453,20 @@ def senior_valuer_approve_valuation(request, pk):
         notes=f"Valuation ({valuation.get_category_display()}) approved by Senior Valuer.",
         created_by=request.user
     )
-    
+
+    try:
+        from system_logs.utils import log_action, get_client_ip
+        log_action(
+            action='VALUATION_APPROVED',
+            user=request.user,
+            description=f"Valuation approved by senior valuer for project: {valuation.project.title}",
+            category='valuation',
+            ip_address=get_client_ip(request),
+            metadata={'valuation_id': valuation.id, 'project_id': valuation.project.id},
+        )
+    except Exception:
+        pass
+
     serializer = ValuationSerializer(valuation, context={'request': request})
     return Response(serializer.data, status=status.HTTP_200_OK)
 
@@ -454,6 +520,19 @@ def senior_valuer_reject_valuation(request, pk):
         notes=f"Valuation ({valuation.get_category_display()}) rejected by Senior Valuer. Reason: {rejection_reason}",
         created_by=request.user
     )
-    
+
+    try:
+        from system_logs.utils import log_action, get_client_ip
+        log_action(
+            action='VALUATION_REJECTED',
+            user=request.user,
+            description=f"Valuation rejected by senior valuer for project: {valuation.project.title}. Reason: {rejection_reason}",
+            category='valuation',
+            ip_address=get_client_ip(request),
+            metadata={'valuation_id': valuation.id, 'project_id': valuation.project.id, 'reason': rejection_reason},
+        )
+    except Exception:
+        pass
+
     serializer = ValuationSerializer(valuation, context={'request': request})
     return Response(serializer.data, status=status.HTTP_200_OK)

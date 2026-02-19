@@ -218,17 +218,25 @@ class PaymentSlipSerializer(serializers.ModelSerializer):
 
 class ClientFormSubmissionSerializer(serializers.ModelSerializer):
     """Serializer for Client Form Submission"""
-    
+    coordinator_name = serializers.SerializerMethodField()
+
     class Meta:
         model = ClientFormSubmission
         fields = (
-            'id', 'first_name', 'last_name', 'email', 'address', 
-            'phone', 'nic', 'company_name', 'project_title', 
-            'project_description', 'agent_name', 'agent_phone', 
-            'agent_email', 'status', 'submitted_at', 'reviewed_at', 
-            'notes', 'reviewed_by'
+            'id', 'first_name', 'last_name', 'email', 'address',
+            'phone', 'nic', 'company_name', 'project_title',
+            'project_description', 'agent_name', 'agent_phone',
+            'agent_email', 'status', 'submitted_at', 'reviewed_at',
+            'notes', 'reviewed_by', 'coordinator', 'coordinator_name',
+            'assigned_at'
         )
-        read_only_fields = ('status', 'submitted_at', 'reviewed_at', 'reviewed_by')
+        read_only_fields = ('status', 'submitted_at', 'reviewed_at', 'reviewed_by', 'coordinator', 'assigned_at')
+
+    def get_coordinator_name(self, obj):
+        if obj.coordinator:
+            name = f"{obj.coordinator.first_name} {obj.coordinator.last_name}".strip()
+            return name if name else obj.coordinator.username
+        return None
 
 
 class EmployeeFormSubmissionSerializer(serializers.ModelSerializer):

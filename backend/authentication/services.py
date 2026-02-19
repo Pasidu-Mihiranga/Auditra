@@ -103,3 +103,57 @@ This is an automated message. Please do not reply to this email.
             traceback.print_exc()
             return False
 
+    @staticmethod
+    def send_status_update(submission, new_status, coordinator_name=None):
+        """Send status update email to client and agent when submission status changes."""
+        status_display = dict(submission.STATUS_CHOICES).get(new_status, new_status).title()
+        recipients = [submission.email]
+        if submission.agent_email:
+            recipients.append(submission.agent_email)
+
+        subject = f'Auditra - Submission Status Update: {status_display}'
+
+        coordinator_line = ''
+        if new_status == 'assigned' and coordinator_name:
+            coordinator_line = f'<p style="margin: 10px 0;"><strong>Assigned Coordinator:</strong> {coordinator_name}</p>'
+
+        client_name = submission.first_name or 'Client'
+
+        html_message = f"""
+        <html>
+        <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+            <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+                <div style="background-color: #4A90E2; color: white; padding: 20px; text-align: center; border-radius: 5px 5px 0 0;">
+                    <h1 style="margin: 0;">Submission Status Update</h1>
+                </div>
+                <div style="background-color: #f9f9f9; padding: 30px; border-radius: 0 0 5px 5px;">
+                    <p>Dear {client_name},</p>
+                    <p>Your submission for project <strong>{submission.project_title}</strong> has been updated.</p>
+                    <div style="background-color: white; padding: 20px; border-left: 4px solid #4A90E2; margin: 20px 0;">
+                        <p style="margin: 10px 0;"><strong>New Status:</strong> {status_display}</p>
+                        {coordinator_line}
+                    </div>
+                    <p style="margin-top: 30px;">Best regards,<br>The Auditra Team</p>
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+
+        plain_message = f'Your submission for {submission.project_title} status: {status_display}'
+
+        try:
+            logger.info(f'Sending status update email to {recipients}')
+            send_mail(
+                subject=subject,
+                message=plain_message,
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                recipient_list=recipients,
+                html_message=html_message,
+                fail_silently=False,
+            )
+            return True
+        except Exception as e:
+            logger.error(f'Error sending status update email: {str(e)}', exc_info=True)
+            return False
+

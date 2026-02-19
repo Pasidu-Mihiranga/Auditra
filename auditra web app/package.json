@@ -9,16 +9,17 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@emotion/react": "^11.13.3",
+    "@emotion/styled": "^11.13.0",
+    "@mui/icons-material": "^6.1.6",
+    "@mui/material": "^6.1.6",
+    "axios": "^1.7.7",
+    "framer-motion": "^12.34.0",
+    "jwt-decode": "^4.0.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^6.28.0",
-    "axios": "^1.7.7",
-    "@mui/material": "^6.1.6",
-    "@mui/icons-material": "^6.1.6",
-    "@emotion/react": "^11.13.3",
-    "@emotion/styled": "^11.13.0",
-    "recharts": "^2.13.3",
-    "jwt-decode": "^4.0.0"
+    "recharts": "^2.13.3"
   },
   "devDependencies": {
     "@types/react": "^18.3.12",

@@ -182,6 +182,54 @@ class ProjectListView(generics.ListCreateAPIView):
                     created_by=self.request.user
                 )
 
+        try:
+            from system_logs.utils import log_action, get_client_ip
+            log_action(
+                action='PROJECT_CREATED',
+                user=self.request.user,
+                description=f"Project created: {project.title} (ID: {project.id})",
+                category='project',
+                ip_address=get_client_ip(self.request),
+                metadata={'project_id': project.id, 'project_title': project.title},
+            )
+        except Exception:
+            pass
+
+        # If created from a client submission, update submission status to approved
+        submission_id = self.request.data.get('submission_id', None)
+        if submission_id:
+            try:
+                from authentication.models import ClientFormSubmission
+                from django.utils import timezone as tz
+                submission = ClientFormSubmission.objects.get(
+                    id=submission_id,
+                    coordinator=self.request.user,
+                    status='assigned'
+                )
+                submission.status = 'approved'
+                submission.reviewed_at = tz.now()
+                submission.save()
+
+                try:
+                    from authentication.services import EmailService
+                    EmailService.send_status_update(submission, 'approved')
+                except Exception:
+                    pass
+
+                try:
+                    from system_logs.utils import log_action, get_client_ip
+                    log_action(
+                        action='SUBMISSION_STATUS_UPDATED',
+                        user=self.request.user,
+                        description=f'Submission from {submission.first_name} {submission.last_name} approved via project creation: {project.title}',
+                        category='submission',
+                        ip_address=get_client_ip(self.request),
+                    )
+                except Exception:
+                    pass
+            except ClientFormSubmission.DoesNotExist:
+                logger.warning(f"Submission {submission_id} not found or not assigned to coordinator")
+
 
 class ProjectDetailView(generics.RetrieveUpdateDestroyAPIView):
     """Retrieve, update or delete a project"""
@@ -267,6 +315,22 @@ class ProjectDetailView(generics.RetrieveUpdateDestroyAPIView):
 
         serializer.save()
 
+        try:
+            from system_logs.utils import log_action, get_client_ip
+            description = f"Project updated: {project.title} (ID: {project.id})"
+            if new_status != project.status:
+                description = f"Project status changed to {dict(Project.STATUS_CHOICES).get(new_status, new_status)}: {project.title}"
+            log_action(
+                action='PROJECT_UPDATED',
+                user=self.request.user,
+                description=description,
+                category='project',
+                ip_address=get_client_ip(self.request),
+                metadata={'project_id': project.id, 'project_title': project.title, 'new_status': new_status},
+            )
+        except Exception:
+            pass
+
 
 class AssignFieldOfficerView(APIView):
     """Assign a field officer to a project"""
@@ -302,7 +366,22 @@ class AssignFieldOfficerView(APIView):
             notes=f"Field Officer assigned: {field_officer.first_name} {field_officer.last_name}".strip() or field_officer.username,
             created_by=request.user
         )
-        
+
+        try:
+            from system_logs.utils import log_action, get_client_ip
+            fo_name = f"{field_officer.first_name} {field_officer.last_name}".strip() or field_officer.username
+            log_action(
+                action='FIELD_OFFICER_ASSIGNED',
+                user=request.user,
+                target_user=field_officer,
+                description=f"Field officer {fo_name} assigned to project: {project.title}",
+                category='project',
+                ip_address=get_client_ip(request),
+                metadata={'project_id': project.id, 'field_officer_id': field_officer.id},
+            )
+        except Exception:
+            pass
+
         return Response({
             'message': 'Field officer assigned successfully',
             'project': ProjectSerializer(project, context={'request': request}).data
@@ -458,7 +537,22 @@ class AssignClientView(APIView):
             notes=f"Client assigned: {client.first_name} {client.last_name}".strip() or client.username,
             created_by=request.user
         )
-        
+
+        try:
+            from system_logs.utils import log_action, get_client_ip
+            client_name = f"{client.first_name} {client.last_name}".strip() or client.username
+            log_action(
+                action='CLIENT_ASSIGNED',
+                user=request.user,
+                target_user=client,
+                description=f"Client {client_name} assigned to project: {project.title}",
+                category='project',
+                ip_address=get_client_ip(request),
+                metadata={'project_id': project.id, 'client_id': client.id},
+            )
+        except Exception:
+            pass
+
         return Response({
             'message': 'Client assigned successfully',
             'project': ProjectSerializer(project, context={'request': request}).data
@@ -499,7 +593,22 @@ class AssignAgentView(APIView):
             notes=f"Agent assigned: {agent.first_name} {agent.last_name}".strip() or agent.username,
             created_by=request.user
         )
-        
+
+        try:
+            from system_logs.utils import log_action, get_client_ip
+            agent_name = f"{agent.first_name} {agent.last_name}".strip() or agent.username
+            log_action(
+                action='AGENT_ASSIGNED',
+                user=request.user,
+                target_user=agent,
+                description=f"Agent {agent_name} assigned to project: {project.title}",
+                category='project',
+                ip_address=get_client_ip(request),
+                metadata={'project_id': project.id, 'agent_id': agent.id},
+            )
+        except Exception:
+            pass
+
         return Response({
             'message': 'Agent assigned successfully',
             'project': ProjectSerializer(project, context={'request': request}).data
@@ -540,7 +649,22 @@ class AssignAccessorView(APIView):
             notes=f"Accessor assigned: {accessor.first_name} {accessor.last_name}".strip() or accessor.username,
             created_by=request.user
         )
-        
+
+        try:
+            from system_logs.utils import log_action, get_client_ip
+            accessor_name = f"{accessor.first_name} {accessor.last_name}".strip() or accessor.username
+            log_action(
+                action='ACCESSOR_ASSIGNED',
+                user=request.user,
+                target_user=accessor,
+                description=f"Accessor {accessor_name} assigned to project: {project.title}",
+                category='project',
+                ip_address=get_client_ip(request),
+                metadata={'project_id': project.id, 'accessor_id': accessor.id},
+            )
+        except Exception:
+            pass
+
         return Response({
             'message': 'Accessor assigned successfully',
             'project': ProjectSerializer(project, context={'request': request}).data
@@ -581,7 +705,22 @@ class AssignSeniorValuerView(APIView):
             notes=f"Senior Valuer assigned: {senior_valuer.first_name} {senior_valuer.last_name}".strip() or senior_valuer.username,
             created_by=request.user
         )
-        
+
+        try:
+            from system_logs.utils import log_action, get_client_ip
+            sv_name = f"{senior_valuer.first_name} {senior_valuer.last_name}".strip() or senior_valuer.username
+            log_action(
+                action='SENIOR_VALUER_ASSIGNED',
+                user=request.user,
+                target_user=senior_valuer,
+                description=f"Senior valuer {sv_name} assigned to project: {project.title}",
+                category='project',
+                ip_address=get_client_ip(request),
+                metadata={'project_id': project.id, 'senior_valuer_id': senior_valuer.id},
+            )
+        except Exception:
+            pass
+
         return Response({
             'message': 'Senior valuer assigned successfully',
             'project': ProjectSerializer(project, context={'request': request}).data
@@ -705,12 +844,25 @@ class ProjectDocumentView(generics.CreateAPIView):
             assigned_to=assigned_to
         )
 
+        try:
+            from system_logs.utils import log_action, get_client_ip
+            log_action(
+                action='DOCUMENT_UPLOADED',
+                user=self.request.user,
+                description=f"Document uploaded to project: {project.title} (ID: {project.id})",
+                category='project',
+                ip_address=get_client_ip(self.request),
+                metadata={'project_id': project.id, 'project_title': project.title},
+            )
+        except Exception:
+            pass
+
 
 class ProjectDocumentDeleteView(generics.DestroyAPIView):
     """Delete a project document"""
     permission_classes = [IsAuthenticated]
     queryset = ProjectDocument.objects.all()
-    
+
     def get_queryset(self):
         user = self.request.user
         user_role = get_user_role(user)
@@ -721,6 +873,24 @@ class ProjectDocumentDeleteView(generics.DestroyAPIView):
         elif user_role == 'field_officer':
             return ProjectDocument.objects.filter(project__assigned_field_officer=user)
         return ProjectDocument.objects.none()
+
+    def perform_destroy(self, instance):
+        project = instance.project
+        doc_name = instance.title if hasattr(instance, 'title') else str(instance.id)
+        instance.delete()
+
+        try:
+            from system_logs.utils import log_action, get_client_ip
+            log_action(
+                action='DOCUMENT_UPLOADED',
+                user=self.request.user,
+                description=f"Document deleted from project: {project.title} (ID: {project.id})",
+                category='project',
+                ip_address=get_client_ip(self.request),
+                metadata={'project_id': project.id, 'document': doc_name},
+            )
+        except Exception:
+            pass
 
 
 from rest_framework.decorators import api_view, permission_classes as perm_classes
@@ -750,6 +920,19 @@ def md_gm_approve_project(request, pk):
     project.md_gm_approved_at = timezone.now()
     project.md_gm_rejection_reason = None
     project.save()
+
+    try:
+        from system_logs.utils import log_action, get_client_ip
+        log_action(
+            action='PROJECT_APPROVED',
+            user=request.user,
+            description=f"Project approved by MD/GM: {project.title} (ID: {project.id})",
+            category='project',
+            ip_address=get_client_ip(request),
+            metadata={'project_id': project.id, 'project_title': project.title},
+        )
+    except Exception:
+        pass
 
     return Response({
         'message': 'Project approved successfully',
@@ -781,6 +964,19 @@ def md_gm_reject_project(request, pk):
     project.md_gm_rejected_at = timezone.now()
     project.md_gm_rejection_reason = reason
     project.save()
+
+    try:
+        from system_logs.utils import log_action, get_client_ip
+        log_action(
+            action='PROJECT_REJECTED',
+            user=request.user,
+            description=f"Project rejected by MD/GM: {project.title} (ID: {project.id}). Reason: {reason or 'No reason provided'}",
+            category='project',
+            ip_address=get_client_ip(request),
+            metadata={'project_id': project.id, 'project_title': project.title, 'reason': reason},
+        )
+    except Exception:
+        pass
 
     return Response({
         'message': 'Project rejected',

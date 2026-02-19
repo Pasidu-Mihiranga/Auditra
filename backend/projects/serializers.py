@@ -207,10 +207,11 @@ class ProjectCreateSerializer(serializers.ModelSerializer):
     """Serializer for creating projects"""
     client_info = serializers.JSONField(required=False, allow_null=True)
     agent_info = serializers.JSONField(required=False, allow_null=True)
+    submission_id = serializers.IntegerField(required=False, allow_null=True, write_only=True)
     
     class Meta:
         model = Project
-        fields = ('title', 'description', 'start_date', 'end_date', 'has_agent', 'priority', 'client_info', 'agent_info')
+        fields = ('title', 'description', 'start_date', 'end_date', 'has_agent', 'priority', 'client_info', 'agent_info', 'submission_id')
         extra_kwargs = {
             'title': {'required': True},
             'description': {'required': False, 'allow_blank': True},
@@ -233,6 +234,7 @@ class ProjectCreateSerializer(serializers.ModelSerializer):
         return super().to_internal_value(data)
     
     def create(self, validated_data):
+        validated_data.pop('submission_id', None)
         validated_data['coordinator'] = self.context['request'].user
         return super().create(validated_data)
 

@@ -1,11 +1,15 @@
+import secrets
+import string
 from rest_framework import status, generics
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.permissions import AllowAny, IsAuthenticated, IsAdminUser
+from rest_framework.pagination import PageNumberPagination
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
 from django.utils import timezone
+from django.db.models import Q
 from decimal import Decimal, InvalidOperation
 from .models import UserRole, PaymentSlip, ClientFormSubmission, EmployeeFormSubmission, LeaveRequest, EmployeeRemovalRequest
 from .serializers import (
@@ -39,6 +43,18 @@ class RegisterView(generics.CreateAPIView):
         # Get user with role info
         user_data = UserSerializer(user).data
         
+        try:
+            from system_logs.utils import log_action, get_client_ip
+            log_action(
+                action='USER_REGISTER',
+                user=user,
+                description=f"New user registered: {user.username}",
+                category='auth',
+                ip_address=get_client_ip(request),
+            )
+        except Exception:
+            pass
+
         return Response({
             'user': user_data,
             'refresh': str(refresh),
@@ -63,7 +79,7 @@ class LoginView(APIView):
         if user is not None:
             refresh = RefreshToken.for_user(user)
             user_data = UserSerializer(user).data
-            
+
             return Response({
                 'user': user_data,
                 'refresh': str(refresh),
@@ -71,6 +87,20 @@ class LoginView(APIView):
                 'message': 'Login successful'
             }, status=status.HTTP_200_OK)
         else:
+            # Log failed login attempt with the attempted username
+            try:
+                from system_logs.utils import log_action, get_client_ip
+                log_action(
+                    action='USER_LOGIN',
+                    user=None,
+                    description=f"Failed login attempt for username '{username}'",
+                    category='auth',
+                    ip_address=get_client_ip(request),
+                    metadata={'attempted_username': username, 'success': False},
+                )
+            except Exception:
+                pass
+
             return Response({
                 'error': 'Invalid credentials'
             }, status=status.HTTP_401_UNAUTHORIZED)
@@ -119,6 +149,18 @@ class ChangePasswordView(APIView):
 
         user.save()
 
+        try:
+            from system_logs.utils import log_action, get_client_ip
+            log_action(
+                action='PASSWORD_CHANGED',
+                user=user,
+                description=f"User {user.username} changed their password",
+                category='auth',
+                ip_address=get_client_ip(request),
+            )
+        except Exception:
+            pass
+
         return Response(
             {'message': 'Password changed successfully'},
             status=status.HTTP_200_OK,
@@ -161,7 +203,20 @@ class AssignRoleView(APIView):
             user_role.role = role
             user_role.assigned_by = request.user
             user_role.save()
-            
+
+            try:
+                from system_logs.utils import log_action, get_client_ip
+                log_action(
+                    action='ROLE_ASSIGNED',
+                    user=request.user,
+                    target_user=user,
+                    description=f"Assigned role '{role}' to user {user.username}",
+                    category='user',
+                    ip_address=get_client_ip(request),
+                )
+            except Exception:
+                pass
+
             return Response({
                 'message': 'Role assigned successfully',
                 'user': UserDetailSerializer(user).data
@@ -201,9 +256,23 @@ class DeleteUserView(APIView):
             # Get user info before deletion
             user_name = user_to_delete.get_full_name() or user_to_delete.username
             user_role = user_to_delete.role.role if hasattr(user_to_delete, 'role') else 'unknown'
-            
+            user_id_val = user_to_delete.id
+
             # Delete the user (this will cascade delete related records like UserRole, PaymentSlips, etc.)
             user_to_delete.delete()
+
+            try:
+                from system_logs.utils import log_action, get_client_ip
+                log_action(
+                    action='USER_DELETE',
+                    user=request.user,
+                    description=f"Deleted user {user_name} ({user_role}), ID: {user_id_val}",
+                    category='user',
+                    ip_address=get_client_ip(request),
+                    metadata={'deleted_user_name': user_name, 'deleted_user_role': user_role, 'deleted_user_id': user_id_val},
+                )
+            except Exception:
+                pass
             
             return Response({
                 'message': f'User {user_name} ({user_role}) has been deleted successfully from the database'
@@ -337,6 +406,19 @@ class GeneratePaymentSlipsView(APIView):
             message = f'Payment slips processed successfully: {generated_count} created, {updated_count} updated (Total: {total_count} users)'
             if total_count == 0:
                 message = 'No payment slips generated. All eligible users may already have payment slips for this month/year, or no users match the criteria.'
+
+            try:
+                from system_logs.utils import log_action, get_client_ip
+                log_action(
+                    action='PAYMENT_GENERATED',
+                    user=request.user,
+                    description=f"Generated payment slips for {month}/{year}: {generated_count} created, {updated_count} updated",
+                    category='payment',
+                    ip_address=get_client_ip(request),
+                    metadata={'month': month, 'year': year, 'generated': generated_count, 'updated': updated_count, 'total': total_count},
+                )
+            except Exception:
+                pass
             
             return Response({
                 'success': True,
@@ -406,6 +488,19 @@ class UploadPaymentSlipsView(APIView):
                 is_uploaded=True,
                 uploaded_at=timezone.now()
             )
+
+            try:
+                from system_logs.utils import log_action, get_client_ip
+                log_action(
+                    action='PAYMENT_UPLOADED',
+                    user=request.user,
+                    description=f"Uploaded/published payment slips for {month}/{year}: {updated_count} employees",
+                    category='payment',
+                    ip_address=get_client_ip(request),
+                    metadata={'month': month, 'year': year, 'uploaded_count': updated_count},
+                )
+            except Exception:
+                pass
             
             return Response({
                 'success': True,
@@ -826,12 +921,24 @@ class UploadAllOvertimeHoursView(APIView):
 class ClientRegistrationView(APIView):
     """API endpoint for client registration form submission"""
     permission_classes = (AllowAny,)
-    
+
     def post(self, request):
         try:
             serializer = ClientFormSubmissionSerializer(data=request.data)
             if serializer.is_valid():
                 submission = serializer.save()
+                try:
+                    from system_logs.utils import log_action, get_client_ip
+                    log_action(
+                        action='CLIENT_FORM_SUBMITTED',
+                        user=None,
+                        description=f"New client registration from {submission.first_name} {submission.last_name} ({submission.email})",
+                        category='submission',
+                        ip_address=get_client_ip(request),
+                        metadata={'submission_id': submission.id, 'company': submission.company_name, 'project': submission.project_title},
+                    )
+                except Exception:
+                    pass
                 return Response({
                     'success': True,
                     'message': 'Client registration submitted successfully. An administrator will review your application.',
@@ -853,12 +960,24 @@ class ClientRegistrationView(APIView):
 class EmployeeRegistrationView(APIView):
     """API endpoint for employee registration form submission"""
     permission_classes = (AllowAny,)
-    
+
     def post(self, request):
         try:
             serializer = EmployeeFormSubmissionSerializer(data=request.data)
             if serializer.is_valid():
                 submission = serializer.save()
+                try:
+                    from system_logs.utils import log_action, get_client_ip
+                    log_action(
+                        action='EMPLOYEE_FORM_SUBMITTED',
+                        user=None,
+                        description=f"New employee application from {submission.first_name} {submission.last_name} ({submission.email})",
+                        category='submission',
+                        ip_address=get_client_ip(request),
+                        metadata={'submission_id': submission.id},
+                    )
+                except Exception:
+                    pass
                 return Response({
                     'success': True,
                     'message': 'Employee registration submitted successfully. An administrator will review your application.',
@@ -888,6 +1007,18 @@ class CreateLeaveRequestView(APIView):
             serializer = LeaveRequestSerializer(data=data)
             if serializer.is_valid():
                 leave_request = serializer.save(user=request.user)
+                try:
+                    from system_logs.utils import log_action, get_client_ip
+                    log_action(
+                        action='LEAVE_CREATED',
+                        user=request.user,
+                        description=f"Leave request created: {leave_request.get_leave_type_display()} from {leave_request.start_date} to {leave_request.end_date} ({leave_request.days} days)",
+                        category='leave',
+                        ip_address=get_client_ip(request),
+                        metadata={'leave_id': leave_request.id, 'leave_type': leave_request.leave_type, 'days': leave_request.days},
+                    )
+                except Exception:
+                    pass
                 return Response({
                     'success': True,
                     'message': 'Leave request submitted successfully',
@@ -1089,7 +1220,23 @@ class UpdateLeaveRequestView(APIView):
             if request.data.get('notes'):
                 leave_request.notes = request.data.get('notes')
             leave_request.save()
-            
+
+            try:
+                from system_logs.utils import log_action, get_client_ip
+                action_type = 'LEAVE_APPROVED' if new_status == 'approved' else 'LEAVE_REJECTED'
+                employee_name = leave_request.user.get_full_name() or leave_request.user.username
+                log_action(
+                    action=action_type,
+                    user=request.user,
+                    target_user=leave_request.user,
+                    description=f"Leave request {new_status} for {employee_name}: {leave_request.get_leave_type_display()} ({leave_request.days} days)",
+                    category='leave',
+                    ip_address=get_client_ip(request),
+                    metadata={'leave_id': leave_request.id, 'status': new_status},
+                )
+            except Exception:
+                pass
+
             return Response({
                 'success': True,
                 'message': f'Leave request {new_status} successfully',
@@ -1166,7 +1313,21 @@ class CreateEmployeeRemovalRequestView(APIView):
             )
             
             serializer = EmployeeRemovalRequestSerializer(removal_request)
-            
+
+            try:
+                from system_logs.utils import log_action, get_client_ip
+                log_action(
+                    action='REMOVAL_CREATED',
+                    user=request.user,
+                    target_user=user_to_remove,
+                    description=f"Removal request created for {user_to_remove.get_full_name() or user_to_remove.username} by HR staff {request.user.username}",
+                    category='removal',
+                    ip_address=get_client_ip(request),
+                    metadata={'reason': reason},
+                )
+            except Exception:
+                pass
+
             return Response({
                 'success': True,
                 'message': f'Removal request for {user_to_remove.get_full_name() or user_to_remove.username} has been submitted and is pending admin approval',
@@ -1242,7 +1403,21 @@ class ApproveRemovalRequestView(APIView):
             # Delete the user
             user_to_delete = removal_request.user
             user_name = user_to_delete.get_full_name() or user_to_delete.username
+            user_id_val = user_to_delete.id
             user_to_delete.delete()
+
+            try:
+                from system_logs.utils import log_action, get_client_ip
+                log_action(
+                    action='REMOVAL_APPROVED',
+                    user=request.user,
+                    description=f"Removal request approved for {user_name} (ID: {user_id_val}). User deleted from system.",
+                    category='removal',
+                    ip_address=get_client_ip(request),
+                    metadata={'removed_user_name': user_name, 'removed_user_id': user_id_val, 'admin_notes': admin_notes},
+                )
+            except Exception:
+                pass
             
             serializer = EmployeeRemovalRequestSerializer(removal_request)
             
@@ -1289,10 +1464,24 @@ class RejectRemovalRequestView(APIView):
             removal_request.reviewed_at = timezone.now()
             removal_request.admin_notes = admin_notes
             removal_request.save()
-            
+
             serializer = EmployeeRemovalRequestSerializer(removal_request)
-            
+
             user_name = removal_request.user.get_full_name() or removal_request.user.username
+
+            try:
+                from system_logs.utils import log_action, get_client_ip
+                log_action(
+                    action='REMOVAL_REJECTED',
+                    user=request.user,
+                    target_user=removal_request.user,
+                    description=f"Removal request rejected for {user_name}",
+                    category='removal',
+                    ip_address=get_client_ip(request),
+                    metadata={'admin_notes': admin_notes},
+                )
+            except Exception:
+                pass
             
             return Response({
                 'success': True,
@@ -1309,3 +1498,532 @@ class RejectRemovalRequestView(APIView):
                 'error': f'Error rejecting removal request: {str(e)}'
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+
+
+def generate_password(length=10):
+    """Generate a secure random password"""
+    chars = string.ascii_letters + string.digits + '!@#$%'
+    return ''.join(secrets.choice(chars) for _ in range(length))
+
+
+class SubmissionPagination(PageNumberPagination):
+    page_size = 20
+    page_size_query_param = 'page_size'
+    max_page_size = 100
+
+
+class AllClientSubmissionsView(APIView):
+    """Admin and Coordinator endpoint to view and manage client form submissions"""
+    permission_classes = (IsAuthenticated,)
+
+    def get(self, request):
+        if not hasattr(request.user, 'role') or request.user.role.role not in ['admin', 'coordinator']:
+            return Response({'error': 'Only admins and coordinators can view submissions'}, status=status.HTTP_403_FORBIDDEN)
+
+        user_role = request.user.role.role
+
+        # Base queryset depending on role
+        if user_role == 'admin':
+            queryset = ClientFormSubmission.objects.select_related('coordinator').all().order_by('-submitted_at')
+        else:
+            # Coordinator sees only submissions assigned to them
+            queryset = ClientFormSubmission.objects.select_related('coordinator').filter(coordinator=request.user).order_by('-submitted_at')
+
+        # Summary counts BEFORE applying search/status filters
+        summary = {
+            'total': queryset.count(),
+            'pending': queryset.filter(status='pending').count(),
+            'assigned': queryset.filter(status='assigned').count(),
+            'approved': queryset.filter(status='approved').count(),
+            'rejected': queryset.filter(status='rejected').count(),
+            'reviewed': queryset.filter(status='reviewed').count(),
+        }
+
+        # Filters
+        status_filter = request.query_params.get('status', None)
+        search = request.query_params.get('search', None)
+
+        if status_filter:
+            queryset = queryset.filter(status=status_filter)
+        if search:
+            queryset = queryset.filter(
+                Q(first_name__icontains=search) |
+                Q(last_name__icontains=search) |
+                Q(email__icontains=search) |
+                Q(company_name__icontains=search) |
+                Q(project_title__icontains=search) |
+                Q(agent_name__icontains=search)
+            )
+
+        # Pagination
+        paginator = SubmissionPagination()
+        page = paginator.paginate_queryset(queryset, request)
+        serializer = ClientFormSubmissionSerializer(page, many=True)
+        response = paginator.get_paginated_response(serializer.data)
+        response.data['summary'] = summary
+        return response
+
+
+class ClientSubmissionDetailView(APIView):
+    """Admin and Coordinator endpoint to view and update a single client submission"""
+    permission_classes = (IsAuthenticated,)
+
+    def get(self, request, pk):
+        if not hasattr(request.user, 'role') or request.user.role.role not in ['admin', 'coordinator']:
+            return Response({'error': 'Only admins and coordinators can view submissions'}, status=status.HTTP_403_FORBIDDEN)
+        try:
+            submission = ClientFormSubmission.objects.get(pk=pk)
+            # Coordinator can only view submissions assigned to them
+            if request.user.role.role == 'coordinator' and submission.coordinator != request.user:
+                return Response({'error': 'You can only view submissions assigned to you'}, status=status.HTTP_403_FORBIDDEN)
+            serializer = ClientFormSubmissionSerializer(submission)
+            return Response(serializer.data)
+        except ClientFormSubmission.DoesNotExist:
+            return Response({'error': 'Submission not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    def patch(self, request, pk):
+        """Update submission status and notes"""
+        if not hasattr(request.user, 'role') or request.user.role.role not in ['admin', 'coordinator']:
+            return Response({'error': 'Only admins and coordinators can update submissions'}, status=status.HTTP_403_FORBIDDEN)
+        try:
+            submission = ClientFormSubmission.objects.get(pk=pk)
+            # Coordinator can only update submissions assigned to them
+            if request.user.role.role == 'coordinator' and submission.coordinator != request.user:
+                return Response({'error': 'You can only update submissions assigned to you'}, status=status.HTTP_403_FORBIDDEN)
+            new_status = request.data.get('status', None)
+            notes = request.data.get('notes', None)
+
+            if new_status:
+                submission.status = new_status
+            if notes is not None:
+                submission.notes = notes
+            submission.reviewed_by = request.user
+            submission.reviewed_at = timezone.now()
+            submission.save()
+
+            try:
+                from system_logs.utils import log_action, get_client_ip
+                log_action(
+                    action='SUBMISSION_STATUS_UPDATED',
+                    user=request.user,
+                    description=f'Client submission from {submission.first_name} {submission.last_name} updated to {new_status}',
+                    category='submission',
+                    ip_address=get_client_ip(request),
+                )
+            except Exception:
+                pass
+
+            serializer = ClientFormSubmissionSerializer(submission)
+            return Response({'success': True, 'data': serializer.data})
+        except ClientFormSubmission.DoesNotExist:
+            return Response({'error': 'Submission not found'}, status=status.HTTP_404_NOT_FOUND)
+
+
+
+class AssignCoordinatorView(APIView):
+    """Admin endpoint to assign a coordinator to a client submission"""
+    permission_classes = (IsAuthenticated,)
+
+    def post(self, request, pk):
+        if not hasattr(request.user, 'role') or request.user.role.role != 'admin':
+            return Response({'error': 'Only admins can assign coordinators'}, status=status.HTTP_403_FORBIDDEN)
+
+        coordinator_id = request.data.get('coordinator_id')
+        if not coordinator_id:
+            return Response({'error': 'coordinator_id is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            submission = ClientFormSubmission.objects.get(pk=pk)
+        except ClientFormSubmission.DoesNotExist:
+            return Response({'error': 'Submission not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        try:
+            coordinator = User.objects.get(id=coordinator_id)
+            if not hasattr(coordinator, 'role') or coordinator.role.role != 'coordinator':
+                return Response({'error': 'Selected user is not a coordinator'}, status=status.HTTP_400_BAD_REQUEST)
+        except User.DoesNotExist:
+            return Response({'error': 'Coordinator not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        submission.coordinator = coordinator
+        # Only change status to 'assigned' if not already approved
+        if submission.status != 'approved':
+            submission.status = 'assigned'
+        submission.assigned_at = timezone.now()
+        submission.save()
+
+        coord_name = f"{coordinator.first_name} {coordinator.last_name}".strip() or coordinator.username
+
+        try:
+            from .services import EmailService
+            EmailService.send_status_update(submission, 'assigned', coordinator_name=coord_name)
+        except Exception:
+            pass
+
+        try:
+            from system_logs.utils import log_action, get_client_ip
+            log_action(
+                action='COORDINATOR_ASSIGNED',
+                user=request.user,
+                description=f'Assigned coordinator {coord_name} to submission from {submission.first_name} {submission.last_name}',
+                category='submission',
+                ip_address=get_client_ip(request),
+            )
+        except Exception:
+            pass
+
+        serializer = ClientFormSubmissionSerializer(submission)
+        return Response({'success': True, 'data': serializer.data}, status=status.HTTP_200_OK)
+
+
+class AvailableCoordinatorsView(APIView):
+    """Admin endpoint to get list of available coordinators"""
+    permission_classes = (IsAuthenticated,)
+
+    def get(self, request):
+        if not hasattr(request.user, 'role') or request.user.role.role != 'admin':
+            return Response({'error': 'Only admins can view coordinators'}, status=status.HTTP_403_FORBIDDEN)
+
+        coordinators = User.objects.filter(role__role='coordinator', is_active=True).select_related('role')
+
+        data = []
+        for coord in coordinators:
+            assigned_count = ClientFormSubmission.objects.filter(coordinator=coord).count()
+            data.append({
+                'id': coord.id,
+                'username': coord.username,
+                'full_name': f"{coord.first_name} {coord.last_name}".strip() or coord.username,
+                'email': coord.email,
+                'assigned_count': assigned_count,
+            })
+
+        return Response({'coordinators': data}, status=status.HTTP_200_OK)
+
+
+class ApproveClientSubmissionView(APIView):
+    """Admin endpoint to approve a client submission and create client + agent accounts"""
+    permission_classes = (IsAuthenticated,)
+
+    def post(self, request, pk):
+        if not hasattr(request.user, 'role') or request.user.role.role != 'admin':
+            return Response({'error': 'Only admins can approve submissions'}, status=status.HTTP_403_FORBIDDEN)
+
+        try:
+            submission = ClientFormSubmission.objects.get(pk=pk)
+
+            if submission.status == 'approved':
+                return Response({'error': 'This submission has already been approved'}, status=status.HTTP_400_BAD_REQUEST)
+
+            created_accounts = []
+
+            # Create client account
+            client_username = submission.email.split('@')[0] + '_client'
+            if User.objects.filter(username=client_username).exists():
+                client_username = f'{client_username}_{submission.id}'
+            client_password = generate_password()
+            client_user = User.objects.create_user(
+                username=client_username,
+                email=submission.email,
+                password=client_password,
+                first_name=submission.first_name or '',
+                last_name=submission.last_name or '',
+            )
+            client_user.role.role = 'client'
+            client_user.role.assigned_by = request.user
+            client_user.role.password_changed = False
+            client_user.role.save()
+            created_accounts.append({
+                'type': 'client',
+                'username': client_username,
+                'password': client_password,
+                'email': submission.email,
+                'name': f'{submission.first_name} {submission.last_name}'.strip(),
+            })
+
+            # Send email to client
+            try:
+                from .services import EmailService
+                EmailService.send_account_credentials(
+                    email=submission.email,
+                    username=client_username,
+                    password=client_password,
+                    user_type='client',
+                    name=f'{submission.first_name} {submission.last_name}'.strip(),
+                )
+            except Exception:
+                pass
+
+            # Create agent account (only if agent email is provided)
+            if submission.agent_email:
+                agent_username = submission.agent_email.split('@')[0] + '_agent'
+                if User.objects.filter(username=agent_username).exists():
+                    agent_username = f'{agent_username}_{submission.id}'
+                agent_password = generate_password()
+                agent_user = User.objects.create_user(
+                    username=agent_username,
+                    email=submission.agent_email,
+                    password=agent_password,
+                    first_name=submission.agent_name.split()[0] if submission.agent_name else '',
+                    last_name=' '.join(submission.agent_name.split()[1:]) if submission.agent_name and len(submission.agent_name.split()) > 1 else '',
+                )
+                agent_user.role.role = 'agent'
+                agent_user.role.assigned_by = request.user
+                agent_user.role.password_changed = False
+                agent_user.role.save()
+                created_accounts.append({
+                    'type': 'agent',
+                    'username': agent_username,
+                    'password': agent_password,
+                    'email': submission.agent_email,
+                    'name': submission.agent_name or '',
+                })
+
+                # Send email to agent
+                try:
+                    from .services import EmailService
+                    EmailService.send_account_credentials(
+                        email=submission.agent_email,
+                        username=agent_username,
+                        password=agent_password,
+                        user_type='agent',
+                        name=submission.agent_name or '',
+                    )
+                except Exception:
+                    pass
+
+            # Update submission status
+            submission.status = 'approved'
+            submission.reviewed_by = request.user
+            submission.reviewed_at = timezone.now()
+            submission.save()
+
+            try:
+                from system_logs.utils import log_action, get_client_ip
+                log_action(
+                    action='CLIENT_FORM_SUBMITTED',
+                    user=request.user,
+                    description=f'Approved client submission from {submission.first_name} {submission.last_name}. Created client ({client_username}) and agent ({agent_username}) accounts.',
+                    category='submission',
+                    ip_address=get_client_ip(request),
+                )
+            except Exception:
+                pass
+
+            return Response({
+                'success': True,
+                'message': 'Submission approved. Client and agent accounts created.',
+                'created_accounts': created_accounts,
+            }, status=status.HTTP_200_OK)
+
+        except ClientFormSubmission.DoesNotExist:
+            return Response({'error': 'Submission not found'}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return Response({'error': f'Error approving submission: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class AllEmployeeSubmissionsView(APIView):
+    """Admin endpoint to view and manage all employee form submissions"""
+    permission_classes = (IsAuthenticated,)
+
+    def get(self, request):
+        if not hasattr(request.user, 'role') or request.user.role.role != 'admin':
+            return Response({'error': 'Only admins can view submissions'}, status=status.HTTP_403_FORBIDDEN)
+
+        queryset = EmployeeFormSubmission.objects.all().order_by('-submitted_at')
+
+        # Summary counts BEFORE applying search/status filters
+        summary = {
+            'total': queryset.count(),
+            'pending': queryset.filter(status='pending').count(),
+            'reviewed': queryset.filter(status='reviewed').count(),
+            'approved': queryset.filter(status='approved').count(),
+            'rejected': queryset.filter(status='rejected').count(),
+        }
+
+        # Filters
+        status_filter = request.query_params.get('status', None)
+        search = request.query_params.get('search', None)
+
+        if status_filter:
+            queryset = queryset.filter(status=status_filter)
+        if search:
+            queryset = queryset.filter(
+                Q(first_name__icontains=search) |
+                Q(last_name__icontains=search) |
+                Q(email__icontains=search) |
+                Q(nic__icontains=search)
+            )
+
+        paginator = SubmissionPagination()
+        page = paginator.paginate_queryset(queryset, request)
+        serializer = EmployeeFormSubmissionSerializer(page, many=True)
+        response = paginator.get_paginated_response(serializer.data)
+        response.data['summary'] = summary
+        return response
+
+
+class EmployeeSubmissionDetailView(APIView):
+    """Admin endpoint to view and update a single employee submission"""
+    permission_classes = (IsAuthenticated,)
+
+    def get(self, request, pk):
+        if not hasattr(request.user, 'role') or request.user.role.role != 'admin':
+            return Response({'error': 'Only admins can view submissions'}, status=status.HTTP_403_FORBIDDEN)
+        try:
+            submission = EmployeeFormSubmission.objects.get(pk=pk)
+            serializer = EmployeeFormSubmissionSerializer(submission)
+            return Response(serializer.data)
+        except EmployeeFormSubmission.DoesNotExist:
+            return Response({'error': 'Submission not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    def patch(self, request, pk):
+        if not hasattr(request.user, 'role') or request.user.role.role != 'admin':
+            return Response({'error': 'Only admins can update submissions'}, status=status.HTTP_403_FORBIDDEN)
+        try:
+            submission = EmployeeFormSubmission.objects.get(pk=pk)
+            new_status = request.data.get('status', None)
+            notes = request.data.get('notes', None)
+
+            if new_status:
+                submission.status = new_status
+            if notes is not None:
+                submission.notes = notes
+            submission.reviewed_by = request.user
+            submission.reviewed_at = timezone.now()
+            submission.save()
+
+            try:
+                from system_logs.utils import log_action, get_client_ip
+                log_action(
+                    action='SUBMISSION_STATUS_UPDATED',
+                    user=request.user,
+                    description=f'Employee submission from {submission.first_name} {submission.last_name} updated to {new_status}',
+                    category='submission',
+                    ip_address=get_client_ip(request),
+                )
+            except Exception:
+                pass
+
+            serializer = EmployeeFormSubmissionSerializer(submission)
+            return Response({'success': True, 'data': serializer.data})
+        except EmployeeFormSubmission.DoesNotExist:
+            return Response({'error': 'Submission not found'}, status=status.HTTP_404_NOT_FOUND)
+
+
+class RoleSalariesView(APIView):
+    """Return default salary mapping for each employee role"""
+    permission_classes = (IsAuthenticated,)
+
+    def get(self, request):
+        if not hasattr(request.user, 'role') or request.user.role.role != 'admin':
+            return Response({'error': 'Admin only'}, status=status.HTTP_403_FORBIDDEN)
+        # Only include hireable roles
+        hireable = [
+            'coordinator', 'field_officer', 'accessor',
+            'senior_valuer', 'md_gm', 'hr_staff', 'general_employee',
+        ]
+        salaries = {r: UserRole.ROLE_SALARIES.get(r, 0) for r in hireable}
+        return Response(salaries)
+
+
+class HireEmployeeSubmissionView(APIView):
+    """Admin endpoint to approve employee submission and create an employee account"""
+    permission_classes = (IsAuthenticated,)
+
+    def post(self, request, pk):
+        if not hasattr(request.user, 'role') or request.user.role.role != 'admin':
+            return Response({'error': 'Only admins can hire employees'}, status=status.HTTP_403_FORBIDDEN)
+
+        try:
+            submission = EmployeeFormSubmission.objects.get(pk=pk)
+
+            if submission.status == 'approved':
+                return Response({'error': 'This submission has already been approved'}, status=status.HTTP_400_BAD_REQUEST)
+
+            role = request.data.get('role', 'general_employee')
+            if role in ['admin', 'client', 'agent', 'unassigned']:
+                return Response({'error': f'Cannot assign role: {role}'}, status=status.HTTP_400_BAD_REQUEST)
+
+            # Generate username from email or name
+            if submission.email:
+                base_username = submission.email.split('@')[0]
+            else:
+                base_username = f'{submission.first_name}_{submission.last_name}'.lower().replace(' ', '_')
+            username = base_username
+            if User.objects.filter(username=username).exists():
+                username = f'{base_username}_{submission.id}'
+
+            password = generate_password()
+            user = User.objects.create_user(
+                username=username,
+                email=submission.email or '',
+                password=password,
+                first_name=submission.first_name or '',
+                last_name=submission.last_name or '',
+            )
+            user.role.role = role
+            user.role.assigned_by = request.user
+            user.role.password_changed = False
+
+            # Set custom salary if provided
+            salary = request.data.get('salary')
+            if salary is not None:
+                from decimal import Decimal, InvalidOperation
+                try:
+                    custom_salary = Decimal(str(salary))
+                    default_salary = Decimal(str(UserRole.ROLE_SALARIES.get(role, 0)))
+                    if custom_salary != default_salary:
+                        user.role.custom_salary = custom_salary
+                except (InvalidOperation, ValueError):
+                    pass
+
+            user.role.save()
+
+            # Send email if available
+            if submission.email:
+                try:
+                    from .services import EmailService
+                    EmailService.send_account_credentials(
+                        email=submission.email,
+                        username=username,
+                        password=password,
+                        user_type='employee',
+                        name=f'{submission.first_name} {submission.last_name}'.strip(),
+                    )
+                except Exception:
+                    pass
+
+            # Update submission
+            submission.status = 'approved'
+            submission.reviewed_by = request.user
+            submission.reviewed_at = timezone.now()
+            submission.save()
+
+            try:
+                from system_logs.utils import log_action, get_client_ip
+                log_action(
+                    action='EMPLOYEE_CREATED',
+                    user=request.user,
+                    target_user=user,
+                    description=f'Hired {submission.first_name} {submission.last_name} as {role}. Username: {username}',
+                    category='user',
+                    ip_address=get_client_ip(request),
+                )
+            except Exception:
+                pass
+
+            return Response({
+                'success': True,
+                'message': 'Employee account created successfully.',
+                'account': {
+                    'username': username,
+                    'password': password,
+                    'email': submission.email or '',
+                    'role': role,
+                    'name': f'{submission.first_name} {submission.last_name}'.strip(),
+                },
+            }, status=status.HTTP_201_CREATED)
+
+        except EmployeeFormSubmission.DoesNotExist:
+            return Response({'error': 'Submission not found'}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return Response({'error': f'Error hiring employee: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

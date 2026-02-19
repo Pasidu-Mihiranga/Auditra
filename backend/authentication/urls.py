@@ -27,7 +27,15 @@ from .views import (
     CreateEmployeeRemovalRequestView,
     AllRemovalRequestsView,
     ApproveRemovalRequestView,
-    RejectRemovalRequestView
+    RejectRemovalRequestView,
+    AllClientSubmissionsView,
+    ClientSubmissionDetailView,
+    AssignCoordinatorView,
+    AvailableCoordinatorsView,
+    AllEmployeeSubmissionsView,
+    EmployeeSubmissionDetailView,
+    HireEmployeeSubmissionView,
+    RoleSalariesView,
 )
 
 urlpatterns = [
@@ -58,5 +66,15 @@ urlpatterns = [
     path('removal-requests/', AllRemovalRequestsView.as_view(), name='all-removal-requests'),
     path('removal-requests/<int:request_id>/approve/', ApproveRemovalRequestView.as_view(), name='approve-removal-request'),
     path('removal-requests/<int:request_id>/reject/', RejectRemovalRequestView.as_view(), name='reject-removal-request'),
+    # Client submissions management
+    path('client-submissions/', AllClientSubmissionsView.as_view(), name='all-client-submissions'),
+    path('client-submissions/<int:pk>/', ClientSubmissionDetailView.as_view(), name='client-submission-detail'),
+    path('client-submissions/<int:pk>/assign-coordinator/', AssignCoordinatorView.as_view(), name='assign-coordinator'),
+    path('coordinators/', AvailableCoordinatorsView.as_view(), name='available-coordinators'),
+    # Employee submissions management
+    path('employee-submissions/', AllEmployeeSubmissionsView.as_view(), name='all-employee-submissions'),
+    path('employee-submissions/<int:pk>/', EmployeeSubmissionDetailView.as_view(), name='employee-submission-detail'),
+    path('employee-submissions/<int:pk>/hire/', HireEmployeeSubmissionView.as_view(), name='hire-employee-submission'),
+    path('role-salaries/', RoleSalariesView.as_view(), name='role-salaries'),
 ]
 

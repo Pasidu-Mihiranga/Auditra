@@ -14,7 +14,7 @@ export function AuthProvider({ children }) {
       const token = localStorage.getItem('access_token');
       if (!token) {
         setLoading(false);
-        return;
+        return { passwordChanged: true };
       }
 
       const [profileRes, roleRes] = await Promise.all([
@@ -22,15 +22,18 @@ export function AuthProvider({ children }) {
         axiosClient.get('/auth/my-role/'),
       ]);
 
+      const pwChanged = roleRes.data.password_changed ?? true;
       setUser(profileRes.data);
       setRole(roleRes.data.role);
-      setPasswordChanged(roleRes.data.password_changed ?? true);
+      setPasswordChanged(pwChanged);
+      return { passwordChanged: pwChanged };
     } catch (err) {
       localStorage.removeItem('access_token');
       localStorage.removeItem('refresh_token');
       setUser(null);
       setRole(null);
       setPasswordChanged(true);
+      return { passwordChanged: true };
     } finally {
       setLoading(false);
     }
@@ -44,8 +47,8 @@ export function AuthProvider({ children }) {
     const { data } = await axiosClient.post('/auth/login/', { username, password });
     localStorage.setItem('access_token', data.access);
     localStorage.setItem('refresh_token', data.refresh);
-    await fetchUserData();
-    return data;
+    const userData = await fetchUserData();
+    return { ...data, passwordChanged: userData.passwordChanged };
   };
 
   const logout = () => {

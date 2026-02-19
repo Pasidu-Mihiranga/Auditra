@@ -10,18 +10,25 @@ import PersonIcon from '@mui/icons-material/Person';
 import AssignmentIcon from '@mui/icons-material/Assignment';
 import RateReviewIcon from '@mui/icons-material/RateReview';
 import ApprovalIcon from '@mui/icons-material/Approval';
+import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
+import PersonAddIcon from '@mui/icons-material/PersonAdd';
 
 export const roleMenuConfig = {
   admin: [
     { label: 'Dashboard', path: '/dashboard', icon: DashboardIcon },
+    { label: 'System Logs', path: '/dashboard/system-logs', icon: ReceiptLongIcon },
+    { label: 'Client Submissions', path: '/dashboard/client-submissions', icon: AssignmentIcon },
+    { label: 'Employee Applications', path: '/dashboard/employee-submissions', icon: PersonAddIcon },
     { label: 'User Management', path: '/dashboard/users', icon: PeopleIcon },
     { label: 'Attendance Summary', path: '/dashboard/attendance-summary', icon: EventNoteIcon },
     { label: 'Leave Management', path: '/dashboard/leave-management', icon: BeachAccessIcon },
     { label: 'Payments', path: '/dashboard/payments', icon: PaymentIcon },
+    { label: 'Projects', path: '/dashboard/projects', icon: FolderIcon },
     { label: 'Removal Requests', path: '/dashboard/removal-requests', icon: PersonRemoveIcon },
   ],
   coordinator: [
     { label: 'Dashboard', path: '/dashboard', icon: DashboardIcon },
+    { label: 'Assigned Submissions', path: '/dashboard/assigned-submissions', icon: AssignmentIcon },
     { label: 'Projects', path: '/dashboard/projects', icon: FolderIcon },
     { label: 'Create Project', path: '/dashboard/projects/create', icon: AddCircleIcon },
     { label: 'My Attendance', path: '/dashboard/my-attendance', icon: EventNoteIcon },

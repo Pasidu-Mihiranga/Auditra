@@ -17,12 +17,16 @@ import AttendanceSummary from './pages/admin/AttendanceSummary';
 import LeaveManagement from './pages/admin/LeaveManagement';
 import PaymentManagement from './pages/admin/PaymentManagement';
 import RemovalRequests from './pages/admin/RemovalRequests';
+import SystemLogs from './pages/admin/SystemLogs';
+import ClientSubmissions from './pages/admin/ClientSubmissions';
+import EmployeeSubmissions from './pages/admin/EmployeeSubmissions';
 
 // Coordinator pages
 import CoordinatorDashboard from './pages/coordinator/CoordinatorDashboard';
 import ProjectList from './pages/coordinator/ProjectList';
 import CreateProject from './pages/coordinator/CreateProject';
 import ProjectDetail from './pages/coordinator/ProjectDetail';
+import AssignedSubmissions from './pages/coordinator/AssignedSubmissions';
 
 // HR pages
 import HRDashboard from './pages/hr/HRDashboard';
@@ -115,9 +119,13 @@ export default function App() {
         <Route path="leave-management" element={<ProtectedRoute allowedRoles={['admin']}><LeaveManagement /></ProtectedRoute>} />
         <Route path="payments" element={<ProtectedRoute allowedRoles={['admin']}><PaymentManagement /></ProtectedRoute>} />
         <Route path="removal-requests" element={<ProtectedRoute allowedRoles={['admin']}><RemovalRequests /></ProtectedRoute>} />
+        <Route path="system-logs" element={<ProtectedRoute allowedRoles={['admin']}><SystemLogs /></ProtectedRoute>} />
+        <Route path="client-submissions" element={<ProtectedRoute allowedRoles={['admin']}><ClientSubmissions /></ProtectedRoute>} />
+        <Route path="employee-submissions" element={<ProtectedRoute allowedRoles={['admin']}><EmployeeSubmissions /></ProtectedRoute>} />
 
         {/* Coordinator routes */}
-        <Route path="projects" element={<ProtectedRoute allowedRoles={['coordinator']}><ProjectList /></ProtectedRoute>} />
+        <Route path="assigned-submissions" element={<ProtectedRoute allowedRoles={['coordinator']}><AssignedSubmissions /></ProtectedRoute>} />
+        <Route path="projects" element={<ProtectedRoute allowedRoles={['admin', 'coordinator']}><ProjectList /></ProtectedRoute>} />
         <Route path="projects/create" element={<ProtectedRoute allowedRoles={['coordinator']}><CreateProject /></ProtectedRoute>} />
         <Route path="projects/:id" element={<ProjectDetail />} />
 
