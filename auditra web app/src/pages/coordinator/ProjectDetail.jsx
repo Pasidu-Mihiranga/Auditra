@@ -3,13 +3,14 @@ import { useParams, useNavigate } from 'react-router-dom';
 import {
   Box, Typography, Card, CardContent, Grid, Chip, Button, Alert,
   Select, MenuItem, Dialog, DialogTitle, DialogContent, DialogActions,
-  Divider, IconButton, Tooltip, FormControl, InputLabel, TextField
+  Divider, IconButton, Tooltip, FormControl, InputLabel, TextField,
+  LinearProgress
 } from '@mui/material';
 import {
-  ArrowBack, PersonAdd, PlayArrow, CheckCircle, Cancel, Lock,
-  Timeline as TimelineIcon, Update, Description, Download,
+  ArrowBack, PersonAdd, PlayArrow, CheckCircle, Cancel, Lock, Edit,
+  Timeline as TimelineIcon, Update, Description, Download, Delete,
   EventNote, AssignmentInd, FactCheck, Payment, Send, Receipt,
-  HourglassEmpty, AttachMoney, AssignmentTurnedIn, Block
+  HourglassEmpty, AttachMoney, AssignmentTurnedIn, Block, AttachFile
 } from '@mui/icons-material';
 import projectService from '../../services/projectService';
 import LoadingSpinner from '../../components/LoadingSpinner';
@@ -55,6 +56,10 @@ export default function ProjectDetail() {
   const [generatedReport, setGeneratedReport] = useState(null);
   const [sendingReport, setSendingReport] = useState(false);
   const [reportDialog, setReportDialog] = useState(false);
+
+  // Document management states
+  const [docUploading, setDocUploading] = useState(false);
+  const [deletingDocId, setDeletingDocId] = useState(null);
 
   const fetchProject = async () => {
     try {
@@ -301,6 +306,50 @@ export default function ProjectDetail() {
     }
   };
 
+  // Document handlers
+  const handleDocumentUpload = async (e) => {
+    const files = Array.from(e.target.files);
+    if (files.length === 0) return;
+    setDocUploading(true);
+    setError('');
+    for (const file of files) {
+      try {
+        await projectService.uploadDocument({
+          project: id,
+          file,
+          name: file.name.replace(/\.[^/.]+$/, ''),
+        });
+      } catch {
+        setError(`Failed to upload ${file.name}`);
+      }
+    }
+    e.target.value = '';
+    await fetchProject();
+    setDocUploading(false);
+    setSuccess('Document(s) uploaded successfully');
+  };
+
+  const handleDeleteDocument = async (docId) => {
+    setDeletingDocId(docId);
+    setError('');
+    try {
+      await projectService.deleteDocument(docId);
+      setSuccess('Document deleted');
+      await fetchProject();
+    } catch {
+      setError('Failed to delete document');
+    } finally {
+      setDeletingDocId(null);
+    }
+  };
+
+  const formatFileSize = (bytes) => {
+    if (!bytes) return '-';
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
   if (loading) return <LoadingSpinner />;
   if (!project) return <Alert severity="error">Project not found</Alert>;
 
@@ -363,6 +412,16 @@ export default function ProjectDetail() {
             </Box>
             {isCoordinator && (
               <Box sx={{ display: 'flex', gap: 1 }}>
+                {project.status !== 'cancelled' && (
+                  <Button
+                    variant="outlined"
+                    startIcon={<Edit />}
+                    onClick={() => navigate(`/dashboard/projects/${id}/edit`)}
+                    sx={{ fontWeight: 600 }}
+                  >
+                    Edit
+                  </Button>
+                )}
                 {isPending ? (
                   <Tooltip title={!canStartProject ? 'Please complete all requirements before starting the project' : ''}>
                     <span>
@@ -844,6 +903,88 @@ export default function ProjectDetail() {
           <Button variant="contained" onClick={handleAssign} disabled={!selectedUser}>Confirm Assignment</Button>
         </DialogActions>
       </Dialog>
+
+      {/* Project Documents */}
+      <Card sx={{ mb: 3 }}>
+        <CardContent sx={{ p: 3 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <AttachFile color="primary" />
+              <Typography variant="h6" sx={{ fontWeight: 600 }}>Project Documents</Typography>
+            </Box>
+            {isCoordinator && project.status !== 'cancelled' && (
+              <Button
+                variant="outlined"
+                component="label"
+                size="small"
+                startIcon={<Description />}
+                disabled={docUploading}
+              >
+                {docUploading ? 'Uploading...' : 'Upload Document'}
+                <input type="file" hidden multiple onChange={handleDocumentUpload} />
+              </Button>
+            )}
+          </Box>
+
+          {docUploading && <LinearProgress sx={{ mb: 2 }} />}
+
+          {project.documents && project.documents.length > 0 ? (
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+              {project.documents.map((doc) => (
+                <Box
+                  key={doc.id}
+                  sx={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    p: 2,
+                    bgcolor: (t) => t.palette.custom?.cardInner || (t.palette.mode === 'dark' ? 'rgba(255,255,255,0.05)' : '#f5f7fa'),
+                    borderRadius: 2,
+                    border: '1px solid',
+                    borderColor: 'divider',
+                  }}
+                >
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, minWidth: 0 }}>
+                    <Description sx={{ color: 'primary.main' }} />
+                    <Box sx={{ minWidth: 0 }}>
+                      <Typography variant="body2" sx={{ fontWeight: 600 }}>{doc.name}</Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {formatFileSize(doc.file_size)} &middot; Uploaded {formatDate(doc.uploaded_at)}
+                        {doc.uploaded_by_username ? ` by ${doc.uploaded_by_username}` : ''}
+                      </Typography>
+                    </Box>
+                  </Box>
+                  <Box sx={{ display: 'flex', gap: 0.5, flexShrink: 0 }}>
+                    <Tooltip title="Download">
+                      <IconButton size="small" href={doc.file_url} target="_blank" component="a">
+                        <Download fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                    {isCoordinator && (
+                      <Tooltip title="Delete">
+                        <IconButton
+                          size="small"
+                          color="error"
+                          onClick={() => handleDeleteDocument(doc.id)}
+                          disabled={deletingDocId === doc.id}
+                        >
+                          <Delete fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    )}
+                  </Box>
+                </Box>
+              ))}
+            </Box>
+          ) : (
+            <Box sx={{ py: 3, textAlign: 'center' }}>
+              <Description sx={{ fontSize: 48, color: 'text.disabled', mb: 1 }} />
+              <Typography color="text.secondary">No documents have been attached to this project.</Typography>
+            </Box>
+          )}
+        </CardContent>
+      </Card>
+
       {/* Project Timeline & Approved Reports */}
       <Grid container spacing={3} sx={{ mt: 1 }}>
         <Grid item xs={12} md={6}>

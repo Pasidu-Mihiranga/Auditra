@@ -5,7 +5,7 @@ import {
   Alert, Snackbar, Button, Dialog, DialogTitle, DialogContent,
   DialogActions, Tabs, Tab, Collapse, IconButton, Stack
 } from '@mui/material';
-import { Search, Visibility, Map, PictureAsPdf, KeyboardArrowDown, KeyboardArrowUp, Person, CalendarToday } from '@mui/icons-material';
+import { Search, Visibility, Map, PictureAsPdf, KeyboardArrowDown, KeyboardArrowUp, Person, CalendarToday, Description, Download } from '@mui/icons-material';
 import projectService from '../../services/projectService';
 import valuationService from '../../services/valuationService';
 import { viewValuationPDF } from '../../utils/generateValuationPDF';
@@ -375,6 +375,51 @@ export default function AccessorProjects() {
                                     )}
                                   </Box>
                                 ))}
+                              </Box>
+                            )}
+
+                            {/* Project Documents */}
+                            {project.documents && project.documents.length > 0 && (
+                              <Box sx={{ mt: 3 }}>
+                                <Typography variant="subtitle2" sx={{ fontWeight: 700, color: 'primary.main', mb: 2 }}>
+                                  Project Documents
+                                </Typography>
+                                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                                  {project.documents.map((doc) => (
+                                    <Box
+                                      key={doc.id}
+                                      sx={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'space-between',
+                                        p: 1.5,
+                                        bgcolor: (t) => t.palette.custom?.cardInner || (t.palette.mode === 'dark' ? 'rgba(255,255,255,0.05)' : '#f5f7fa'),
+                                        borderRadius: 1,
+                                        border: '1px solid',
+                                        borderColor: 'divider',
+                                      }}
+                                    >
+                                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                        <Description sx={{ color: 'primary.main', fontSize: 20 }} />
+                                        <Box>
+                                          <Typography variant="body2" sx={{ fontWeight: 600 }}>{doc.name}</Typography>
+                                          <Typography variant="caption" color="text.secondary">
+                                            {doc.file_size ? (doc.file_size < 1024 * 1024 ? `${(doc.file_size / 1024).toFixed(1)} KB` : `${(doc.file_size / (1024 * 1024)).toFixed(1)} MB`) : ''}
+                                          </Typography>
+                                        </Box>
+                                      </Box>
+                                      <Button
+                                        size="small"
+                                        startIcon={<Download />}
+                                        href={doc.file_url}
+                                        target="_blank"
+                                        sx={{ textTransform: 'none', fontWeight: 600, fontSize: '0.75rem' }}
+                                      >
+                                        Download
+                                      </Button>
+                                    </Box>
+                                  ))}
+                                </Box>
                               </Box>
                             )}
                           </Box>

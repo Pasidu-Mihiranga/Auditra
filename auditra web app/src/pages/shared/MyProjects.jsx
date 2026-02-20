@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Box, Typography, Card, CardContent, Grid, Chip, Alert, TextField, InputAdornment, Tabs, Tab,
 } from '@mui/material';
-import { Search, Folder } from '@mui/icons-material';
+import { Search, Folder, AttachFile } from '@mui/icons-material';
 import projectService from '../../services/projectService';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import StatusChip from '../../components/StatusChip';
@@ -80,6 +80,14 @@ export default function MyProjects() {
                     <StatusChip status={p.status} label={p.status_display || p.status} />
                     <Typography variant="caption" color="text.secondary">{formatDate(p.start_date)}</Typography>
                   </Box>
+                  {(p.documents_count > 0 || (p.documents && p.documents.length > 0)) && (
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 1 }}>
+                      <AttachFile sx={{ fontSize: 16, color: 'text.secondary' }} />
+                      <Typography variant="caption" color="text.secondary">
+                        {p.documents_count || p.documents?.length || 0} document(s) attached
+                      </Typography>
+                    </Box>
+                  )}
                 </CardContent>
               </Card>
             </Grid>

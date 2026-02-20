@@ -2,12 +2,15 @@ import { useState, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Box, Typography, Card, CardContent, TextField, Button, Grid, Alert, MenuItem,
-  CircularProgress, InputAdornment,
+  CircularProgress, InputAdornment, IconButton, LinearProgress,
 } from '@mui/material';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import ErrorIcon from '@mui/icons-material/Error';
 import InfoIcon from '@mui/icons-material/Info';
 import AssignmentIcon from '@mui/icons-material/Assignment';
+import CloudUploadIcon from '@mui/icons-material/CloudUpload';
+import DeleteIcon from '@mui/icons-material/Delete';
+import DescriptionIcon from '@mui/icons-material/Description';
 import projectService from '../../services/projectService';
 
 export default function CreateProject() {
@@ -46,6 +49,11 @@ export default function CreateProject() {
   const [clientEmailMessage, setClientEmailMessage] = useState('');
   const [agentEmailStatus, setAgentEmailStatus] = useState(null);
   const [agentEmailMessage, setAgentEmailMessage] = useState('');
+
+  // Document staging states
+  const [stagedDocuments, setStagedDocuments] = useState([]);
+  const [uploadingDocs, setUploadingDocs] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState('');
 
   const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
 
@@ -105,6 +113,28 @@ export default function CreateProject() {
     return undefined;
   };
 
+  // Document handlers
+  const handleAddDocument = (e) => {
+    const files = Array.from(e.target.files);
+    const newDocs = files.map(file => ({
+      file,
+      name: file.name.replace(/\.[^/.]+$/, ''),
+      id: crypto.randomUUID(),
+    }));
+    setStagedDocuments(prev => [...prev, ...newDocs]);
+    e.target.value = '';
+  };
+
+  const handleDocNameChange = (docId, newName) => {
+    setStagedDocuments(prev =>
+      prev.map(d => d.id === docId ? { ...d, name: newName } : d)
+    );
+  };
+
+  const handleRemoveStagedDoc = (docId) => {
+    setStagedDocuments(prev => prev.filter(d => d.id !== docId));
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -159,7 +189,29 @@ export default function CreateProject() {
     }
 
     try {
-      await projectService.createProject(payload);
+      const res = await projectService.createProject(payload);
+      const newProjectId = res.data.id;
+
+      // Upload staged documents sequentially
+      if (stagedDocuments.length > 0) {
+        setUploadingDocs(true);
+        for (let i = 0; i < stagedDocuments.length; i++) {
+          const doc = stagedDocuments[i];
+          setUploadProgress(`Uploading document ${i + 1} of ${stagedDocuments.length}: ${doc.name}`);
+          try {
+            await projectService.uploadDocument({
+              project: newProjectId,
+              file: doc.file,
+              name: doc.name,
+            });
+          } catch (uploadErr) {
+            console.error(`Failed to upload document: ${doc.name}`, uploadErr);
+          }
+        }
+        setUploadingDocs(false);
+        setUploadProgress('');
+      }
+
       navigate('/dashboard/projects');
     } catch (err) {
       const data = err.response?.data;
@@ -335,9 +387,72 @@ export default function CreateProject() {
             )}
           </CardContent>
         </Card>
+        <Card sx={{ mb: 3 }}>
+          <CardContent sx={{ p: 3 }}>
+            <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>Project Documents (Optional)</Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              Attach documents to this project. Files will be uploaded after the project is created.
+            </Typography>
+
+            <Button
+              variant="outlined"
+              component="label"
+              startIcon={<CloudUploadIcon />}
+              sx={{ mb: stagedDocuments.length > 0 ? 2 : 0 }}
+            >
+              Add Files
+              <input type="file" hidden multiple onChange={handleAddDocument} />
+            </Button>
+
+            {stagedDocuments.length > 0 && (
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                {stagedDocuments.map((doc) => (
+                  <Box
+                    key={doc.id}
+                    sx={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      p: 1.5,
+                      bgcolor: (t) => t.palette.custom?.cardInner || (t.palette.mode === 'dark' ? 'rgba(255,255,255,0.05)' : '#f5f7fa'),
+                      borderRadius: 1,
+                    }}
+                  >
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flex: 1, minWidth: 0 }}>
+                      <DescriptionIcon color="primary" fontSize="small" />
+                      <TextField
+                        variant="standard"
+                        value={doc.name}
+                        onChange={(e) => handleDocNameChange(doc.id, e.target.value)}
+                        placeholder="Document name"
+                        size="small"
+                        sx={{ maxWidth: 300 }}
+                      />
+                      <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: 'nowrap' }}>
+                        ({(doc.file.size / 1024).toFixed(1)} KB)
+                      </Typography>
+                    </Box>
+                    <IconButton size="small" onClick={() => handleRemoveStagedDoc(doc.id)}>
+                      <DeleteIcon fontSize="small" />
+                    </IconButton>
+                  </Box>
+                ))}
+              </Box>
+            )}
+
+            {uploadingDocs && (
+              <Box sx={{ mt: 2 }}>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>{uploadProgress}</Typography>
+                <LinearProgress />
+              </Box>
+            )}
+          </CardContent>
+        </Card>
         <Box sx={{ display: 'flex', gap: 2 }}>
           <Button variant="outlined" onClick={() => navigate('/dashboard/projects')}>Cancel</Button>
-          <Button type="submit" variant="contained" disabled={loading}>{loading ? 'Creating...' : 'Create Project'}</Button>
+          <Button type="submit" variant="contained" disabled={loading || uploadingDocs}>
+            {uploadingDocs ? 'Uploading Documents...' : loading ? 'Creating...' : 'Create Project'}
+          </Button>
         </Box>
       </form>
     </Box>

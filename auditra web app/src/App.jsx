@@ -27,6 +27,7 @@ import CoordinatorDashboard from './pages/coordinator/CoordinatorDashboard';
 import ProjectList from './pages/coordinator/ProjectList';
 import CreateProject from './pages/coordinator/CreateProject';
 import ProjectDetail from './pages/coordinator/ProjectDetail';
+import EditProject from './pages/coordinator/EditProject';
 import AssignedSubmissions from './pages/coordinator/AssignedSubmissions';
 
 // HR pages
@@ -143,6 +144,7 @@ export default function App() {
         <Route path="assigned-submissions" element={<ProtectedRoute allowedRoles={['coordinator']}><AssignedSubmissions /></ProtectedRoute>} />
         <Route path="projects" element={<ProtectedRoute allowedRoles={['admin', 'coordinator']}><ProjectList /></ProtectedRoute>} />
         <Route path="projects/create" element={<ProtectedRoute allowedRoles={['coordinator']}><CreateProject /></ProtectedRoute>} />
+        <Route path="projects/:id/edit" element={<ProtectedRoute allowedRoles={['coordinator']}><EditProject /></ProtectedRoute>} />
         <Route path="projects/:id" element={<ProjectDetail />} />
 
         {/* Accessor routes */}

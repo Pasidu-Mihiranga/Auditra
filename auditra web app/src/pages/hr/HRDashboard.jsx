@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Box, Typography, Grid, Alert } from '@mui/material';
+import {
+  Box, Typography, Grid, Alert, Button, Card, CardContent, CardActions,
+} from '@mui/material';
 import BeachAccessIcon from '@mui/icons-material/BeachAccess';
 import EventNoteIcon from '@mui/icons-material/EventNote';
 import PersonRemoveIcon from '@mui/icons-material/PersonRemove';
@@ -64,14 +66,14 @@ export default function HRDashboard() {
 
   return (
     <Box>
-      <Typography variant="h5" sx={{ fontWeight: 700 }} gutterBottom>
-        HR Head Dashboard
-      </Typography>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+        <Typography variant="h5" sx={{ fontWeight: 700 }}>HR Head Dashboard</Typography>
+      </Box>
 
-      {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
+      {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
       <Grid container spacing={3} sx={{ mb: 4 }}>
-        <Grid item xs={12} sm={6} md={3}>
+        <Grid item xs={6} sm={3}>
           <StatsCard
             title="Pending Leave Requests"
             value={stats.pendingLeaves}
@@ -80,7 +82,7 @@ export default function HRDashboard() {
             onClick={() => navigate('/dashboard/leave-management')}
           />
         </Grid>
-        <Grid item xs={12} sm={6} md={3}>
+        <Grid item xs={6} sm={3}>
           <StatsCard
             title="Payment Slips"
             value={stats.payments}
@@ -89,7 +91,7 @@ export default function HRDashboard() {
             onClick={() => navigate('/dashboard/payments')}
           />
         </Grid>
-        <Grid item xs={12} sm={6} md={3}>
+        <Grid item xs={6} sm={3}>
           <StatsCard
             title="Daily Attendance"
             value={stats.attendance}
@@ -98,7 +100,7 @@ export default function HRDashboard() {
             onClick={() => navigate('/dashboard/attendance-summary')}
           />
         </Grid>
-        <Grid item xs={12} sm={6} md={3}>
+        <Grid item xs={6} sm={3}>
           <StatsCard
             title="Pending Removals"
             value={stats.pendingRemovals}
@@ -109,92 +111,11 @@ export default function HRDashboard() {
         </Grid>
       </Grid>
 
-      {/* Recent Pending Leave Requests */}
-      <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
-        Recent Pending Leave Requests
-      </Typography>
-      {recentLeaves.length === 0 ? (
-        <Paper sx={{ p: 3, textAlign: 'center', borderRadius: 2, mb: 4 }}>
-          <CheckCircleIcon sx={{ fontSize: 40, color: 'text.disabled', mb: 1 }} />
-          <Typography color="text.secondary">No pending leave requests</Typography>
-        </Paper>
-      ) : (
-        <TableContainer component={Paper} sx={{ borderRadius: 2, mb: 4 }}>
-          <Table size="small">
-            <TableHead>
-              <TableRow>
-                <TableCell>Employee</TableCell>
-                <TableCell>Type</TableCell>
-                <TableCell>From</TableCell>
-                <TableCell>To</TableCell>
-                <TableCell>Status</TableCell>
-                <TableCell>Actions</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {recentLeaves.map((leave) => (
-                <TableRow key={leave.id} hover>
-                  <TableCell sx={{ fontWeight: 600 }}>
-                    {leave.user_display || leave.user_name || leave.user_username || `User #${leave.user}`}
-                  </TableCell>
-                  <TableCell>
-                    {leave.leave_type || leave.type || '-'}
-                  </TableCell>
-                  <TableCell>{formatDate(leave.start_date)}</TableCell>
-                  <TableCell>{formatDate(leave.end_date)}</TableCell>
-                  <TableCell>
-                    <StatusChip status={leave.status} />
-                  </TableCell>
-                  <TableCell>
-                    {leave.status === 'pending' && (
-                      <Box sx={{ display: 'flex', gap: 0.5 }}>
-                        <Button
-                          size="small"
-                          variant="contained"
-                          color="success"
-                          startIcon={<Check />}
-                          onClick={() => handleLeaveAction(leave.id, 'approved')}
-                          sx={{ minWidth: 100 }}
-                        >
-                          Approve
-                        </Button>
-                        <Button
-                          size="small"
-                          variant="outlined"
-                          color="error"
-                          startIcon={<Close />}
-                          onClick={() => handleLeaveAction(leave.id, 'rejected')}
-                          sx={{ minWidth: 100 }}
-                        >
-                          Reject
-                        </Button>
-                      </Box>
-                    )}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-          {stats.pendingLeaves > 5 && (
-            <Box sx={{ p: 1.5, textAlign: 'center' }}>
-              <Button
-                size="small"
-                onClick={() => navigate('/dashboard/leave-management')}
-                sx={{ textTransform: 'none' }}
-              >
-                View all {stats.pendingLeaves} pending requests
-              </Button>
-            </Box>
-          )}
-        </TableContainer>
-      )}
-
       {/* Quick Actions */}
       <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>Quick Actions</Typography>
       <Grid container spacing={2}>
-        <Grid item xs={12} sm={6} md={3}>
+        <Grid item xs={6} sm={3}>
           <Card sx={{
-            borderRadius: 2,
             cursor: 'pointer',
             transition: 'all 0.2s ease',
             '&:hover': {
@@ -205,7 +126,7 @@ export default function HRDashboard() {
             },
           }} onClick={() => navigate('/dashboard/leave-management')}>
             <CardContent>
-              <BeachAccessIcon sx={{ fontSize: 40, mb: 1, color: '#D97706' }} />
+              <BeachAccessIcon sx={{ fontSize: 40, mb: 1, color: '#1565C0' }} />
               <Typography variant="subtitle1" fontWeight={600}>Leave Management</Typography>
               <Typography variant="body2" color="text.secondary">
                 Approve or reject employee leave requests
@@ -216,9 +137,8 @@ export default function HRDashboard() {
             </CardActions>
           </Card>
         </Grid>
-        <Grid item xs={12} sm={6} md={3}>
+        <Grid item xs={6} sm={3}>
           <Card sx={{
-            borderRadius: 2,
             cursor: 'pointer',
             transition: 'all 0.2s ease',
             '&:hover': {
@@ -229,7 +149,7 @@ export default function HRDashboard() {
             },
           }} onClick={() => navigate('/dashboard/payments')}>
             <CardContent>
-              <PaymentIcon sx={{ fontSize: 40, mb: 1, color: '#16A34A' }} />
+              <PaymentIcon sx={{ fontSize: 40, mb: 1, color: '#1E88E5' }} />
               <Typography variant="subtitle1" fontWeight={600}>Payments</Typography>
               <Typography variant="body2" color="text.secondary">
                 Generate and manage employee payment slips
@@ -240,9 +160,8 @@ export default function HRDashboard() {
             </CardActions>
           </Card>
         </Grid>
-        <Grid item xs={12} sm={6} md={3}>
+        <Grid item xs={6} sm={3}>
           <Card sx={{
-            borderRadius: 2,
             cursor: 'pointer',
             transition: 'all 0.2s ease',
             '&:hover': {
@@ -264,9 +183,8 @@ export default function HRDashboard() {
             </CardActions>
           </Card>
         </Grid>
-        <Grid item xs={12} sm={6} md={3}>
+        <Grid item xs={6} sm={3}>
           <Card sx={{
-            borderRadius: 2,
             cursor: 'pointer',
             transition: 'all 0.2s ease',
             '&:hover': {
@@ -277,7 +195,7 @@ export default function HRDashboard() {
             },
           }} onClick={() => navigate('/dashboard/request-removal')}>
             <CardContent>
-              <PersonRemoveIcon sx={{ fontSize: 40, mb: 1, color: '#DC2626' }} />
+              <PersonRemoveIcon sx={{ fontSize: 40, mb: 1, color: '#1565C0' }} />
               <Typography variant="subtitle1" fontWeight={600}>Request Removal</Typography>
               <Typography variant="body2" color="text.secondary">
                 Submit employee removal requests for admin approval

@@ -26,12 +26,7 @@ export const getPriorityColor = (priority) => {
     medium: '#1E88E5',
     low: '#1565C0',
   };
-  return colors[priority] || '#90CAF9';
-};
-
-export const capitalize = (str) => {
-  if (!str) return '';
-  return str.toUpperCase();
+  return colors[priority] || '#64748B';
 };
 
 export const capitalize = (str) => {
