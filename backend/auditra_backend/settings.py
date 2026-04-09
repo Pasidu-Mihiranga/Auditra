@@ -22,12 +22,14 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/5.0/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-r)araqzfhx*5#jg&l4%5@gsq+@hw$c=8$)6#m8qlj_a+tizn6j'
+SECRET_KEY = config('SECRET_KEY', default='django-insecure-r)araqzfhx*5#jg&l4%5@gsq+@hw$c=8$)6#m8qlj_a+tizn6j')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = config('DEBUG', default=True, cast=bool)
 
-ALLOWED_HOSTS = ['*']  # For development only
+# Get allowed hosts from environment variable (comma-separated) or use default
+ALLOWED_HOSTS_ENV = config('ALLOWED_HOSTS', default='*')
+ALLOWED_HOSTS = ALLOWED_HOSTS_ENV.split(',') if ALLOWED_HOSTS_ENV else ['*']
 
 
 # Application definition
@@ -43,6 +45,10 @@ INSTALLED_APPS = [
     'rest_framework_simplejwt',
     'corsheaders',
     'authentication',
+    'attendance',
+    'projects',
+    'valuations',
+    'system_logs',
 ]
 
 MIDDLEWARE = [
@@ -54,6 +60,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'system_logs.middleware.SystemLogMiddleware',
 ]
 
 ROOT_URLCONF = 'auditra_backend.urls'
@@ -116,7 +123,7 @@ AUTH_PASSWORD_VALIDATORS = [
 
 LANGUAGE_CODE = 'en-us'
 
-TIME_ZONE = 'UTC'
+TIME_ZONE = 'Asia/Colombo'  # Sri Lankan timezone (UTC+5:30)
 
 USE_I18N = True
 
@@ -126,7 +133,12 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.0/howto/static-files/
 
-STATIC_URL = 'static/'
+STATIC_URL = '/static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+
+# Media files (User uploads)
+MEDIA_URL = '/media/'
+MEDIA_ROOT = BASE_DIR / 'media'
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.0/ref/settings/#default-auto-field
@@ -134,8 +146,25 @@ STATIC_URL = 'static/'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # CORS Settings
-CORS_ALLOW_ALL_ORIGINS = True  # For development only
+CORS_ALLOW_ALL_ORIGINS = config('CORS_ALLOW_ALL_ORIGINS', default=True, cast=bool)  # Set to False in production
 CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOWED_ORIGINS = [
+    "http://152.42.240.220",
+    "https://152.42.240.220",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://10.0.2.2:3000",
+] if not DEBUG else [
+    "http://152.42.240.220",
+    "https://152.42.240.220",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://10.0.2.2:3000",
+]
 
 # REST Framework Settings
 REST_FRAMEWORK = {
@@ -156,3 +185,18 @@ SIMPLE_JWT = {
     'UPDATE_LAST_LOGIN': True,
     'AUTH_HEADER_TYPES': ('Bearer',),
 }
+
+# Email Configuration
+# Using SendGrid API (works even when SMTP ports are blocked)
+EMAIL_BACKEND = 'sendgrid_backend.SendgridBackend'
+SENDGRID_API_KEY = config('SENDGRID_API_KEY', default='')
+DEFAULT_FROM_EMAIL = config('DEFAULT_FROM_EMAIL', default='auditra.auditing.erp@gmail.com')
+
+# SendGrid settings
+SENDGRID_SANDBOX_MODE_IN_DEBUG = False  # Set to True for testing without sending real emails
+
+# Email timeout settings (for SendGrid API calls)
+EMAIL_TIMEOUT = 30  # seconds
+
+# Frontend URL (used for login links in emails)
+FRONTEND_URL = config('FRONTEND_URL', default='http://localhost:5173')

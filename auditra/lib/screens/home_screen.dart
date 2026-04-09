@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 import 'login_screen.dart';
-import 'admin_dashboard.dart';
+import 'field_officer_dashboard.dart';
 
 class HomeScreen extends StatefulWidget {
   final String userRole;
-  
+
   const HomeScreen({super.key, required this.userRole});
 
   @override
@@ -21,15 +21,6 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _loadUserData();
-    
-    // Route to admin dashboard if user is admin
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (widget.userRole == 'admin') {
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const AdminDashboard()),
-        );
-      }
-    });
   }
 
   Future<void> _loadUserData() async {
@@ -37,35 +28,160 @@ class _HomeScreenState extends State<HomeScreen> {
     final profileResult = await ApiService.getProfile();
     final roleResult = await ApiService.getMyRole();
 
-    setState(() {
-      _username = username;
-      if (profileResult['success']) {
-        _profile = profileResult['data'];
+    if (mounted) {
+      setState(() {
+        _username = username;
+        if (profileResult['success']) {
+          _profile = profileResult['data'];
+        }
+        if (roleResult['success']) {
+          _profile?['role'] = roleResult['data']['role'];
+          _profile?['role_display'] = roleResult['data']['role_display'];
+        }
+        _isLoading = false;
+      });
+
+      // Only Field Officers use the mobile app
+      if (widget.userRole == 'field_officer') {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => const FieldOfficerDashboard()),
+        );
       }
-      if (roleResult['success']) {
-        _profile?['role'] = roleResult['data']['role'];
-        _profile?['role_display'] = roleResult['data']['role_display'];
-      }
-      _isLoading = false;
-    });
+      // All other roles stay on this screen with a "use web app" message
+    }
   }
 
   Future<void> _logout() async {
     final confirm = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Logout'),
-        content: const Text('Are you sure you want to logout?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
+      barrierDismissible: false,
+      builder: (context) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        child: Container(
+          width: MediaQuery.of(context).size.width * 0.85,
+          constraints: const BoxConstraints(maxHeight: 400),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [Colors.orange[600]!, Colors.orange[400]!],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(20),
+                    topRight: Radius.circular(20),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(Icons.logout, color: Colors.white, size: 24),
+                    ),
+                    const SizedBox(width: 16),
+                    const Expanded(
+                      child: Text(
+                        'Logout',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  children: [
+                    Icon(
+                      Icons.exit_to_app_rounded,
+                      size: 64,
+                      color: Colors.orange[300],
+                    ),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'Are you sure?',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      'You are about to logout from your account.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.grey[700],
+                        height: 1.5,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: Colors.grey[50],
+                  borderRadius: const BorderRadius.only(
+                    bottomLeft: Radius.circular(20),
+                    bottomRight: Radius.circular(20),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.of(context).pop(false),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        child: const Text('Cancel', style: TextStyle(fontSize: 16)),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: () => Navigator.of(context).pop(true),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.orange[600],
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          elevation: 2,
+                        ),
+                        child: const Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.logout, size: 20),
+                            SizedBox(width: 8),
+                            Text('Logout', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Logout'),
-          ),
-        ],
+        ),
       ),
     );
 
@@ -80,241 +196,112 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Auditra'),
-        centerTitle: true,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: _logout,
-            tooltip: 'Logout',
+    if (_isLoading) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    // For non-field-officer roles, show "use web app" message
+    if (widget.userRole != 'field_officer') {
+      return Scaffold(
+        body: SafeArea(
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(32.0),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(24),
+                    decoration: BoxDecoration(
+                      color: Colors.blue[50],
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      Icons.web,
+                      size: 72,
+                      color: Colors.blue[600],
+                    ),
+                  ),
+                  const SizedBox(height: 32),
+                  const Text(
+                    'Mobile App for Field Officers Only',
+                    style: TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'This mobile app is designed exclusively for Field Officers.\n\n'
+                    'As a ${_profile?['role_display'] ?? widget.userRole}, '
+                    'please use the Auditra web application to access your dashboard and features.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 15,
+                      color: Colors.grey[700],
+                      height: 1.6,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Container(
+                    margin: const EdgeInsets.symmetric(vertical: 16),
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: Colors.grey[100],
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.grey[300]!),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.link, color: Colors.blue[600], size: 20),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Open Auditra Web App',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.blue[600],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: _logout,
+                      icon: const Icon(Icons.logout),
+                      label: const Text(
+                        'Logout',
+                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.orange[600],
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        elevation: 2,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
-        ],
-      ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : SingleChildScrollView(
-              child: Padding(
-                padding: const EdgeInsets.all(24.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    // Welcome Card
-                    Card(
-                      elevation: 4,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: Padding(
-                        padding: const EdgeInsets.all(24.0),
-                        child: Column(
-                          children: [
-                            const CircleAvatar(
-                              radius: 50,
-                              backgroundColor: Colors.blue,
-                              child: Icon(
-                                Icons.person,
-                                size: 50,
-                                color: Colors.white,
-                              ),
-                            ),
-                            const SizedBox(height: 16),
-                            Text(
-                              'Welcome, ${_profile?['first_name'] ?? _username ?? 'User'}!',
-                              style: const TextStyle(
-                                fontSize: 24,
-                                fontWeight: FontWeight.bold,
-                              ),
-                              textAlign: TextAlign.center,
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              '@${_profile?['username'] ?? _username ?? ''}',
-                              style: TextStyle(
-                                fontSize: 16,
-                                color: Colors.grey[600],
-                              ),
-                            ),
-                            if (_profile?['email'] != null) ...[
-                              const SizedBox(height: 8),
-                              Text(
-                                _profile!['email'],
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  color: Colors.grey[600],
-                                ),
-                              ),
-                            ],
-                            if (_profile?['role_display'] != null) ...[
-                              const SizedBox(height: 12),
-                              Chip(
-                                label: Text(_profile!['role_display']),
-                                backgroundColor: _profile!['role'] == 'unassigned'
-                                    ? Colors.grey[200]
-                                    : Colors.blue[100],
-                              ),
-                            ],
-                          ],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 24),
-
-                    // Quick Stats
-                    const Text(
-                      'Quick Stats',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _buildStatCard(
-                            icon: Icons.task_alt,
-                            title: 'Tasks',
-                            value: '0',
-                            color: Colors.blue,
-                          ),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: _buildStatCard(
-                            icon: Icons.pending_actions,
-                            title: 'Pending',
-                            value: '0',
-                            color: Colors.orange,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _buildStatCard(
-                            icon: Icons.check_circle,
-                            title: 'Completed',
-                            value: '0',
-                            color: Colors.green,
-                          ),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: _buildStatCard(
-                            icon: Icons.notifications,
-                            title: 'Alerts',
-                            value: '0',
-                            color: Colors.red,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 24),
-
-                    // Actions
-                    const Text(
-                      'Quick Actions',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    _buildActionButton(
-                      icon: Icons.add_task,
-                      title: 'Create New Task',
-                      onTap: () {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Feature coming soon!')),
-                        );
-                      },
-                    ),
-                    const SizedBox(height: 12),
-                    _buildActionButton(
-                      icon: Icons.analytics,
-                      title: 'View Analytics',
-                      onTap: () {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Feature coming soon!')),
-                        );
-                      },
-                    ),
-                    const SizedBox(height: 12),
-                    _buildActionButton(
-                      icon: Icons.settings,
-                      title: 'Settings',
-                      onTap: () {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Feature coming soon!')),
-                        );
-                      },
-                    ),
-                  ],
-                ),
-              ),
-            ),
-    );
-  }
-
-  Widget _buildStatCard({
-    required IconData icon,
-    required String title,
-    required String value,
-    required Color color,
-  }) {
-    return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          children: [
-            Icon(icon, size: 32, color: color),
-            const SizedBox(height: 8),
-            Text(
-              value,
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-                color: color,
-              ),
-            ),
-            Text(
-              title,
-              style: TextStyle(
-                fontSize: 12,
-                color: Colors.grey[600],
-              ),
-            ),
-          ],
         ),
-      ),
-    );
-  }
+      );
+    }
 
-  Widget _buildActionButton({
-    required IconData icon,
-    required String title,
-    required VoidCallback onTap,
-  }) {
-    return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: ListTile(
-        leading: Icon(icon, color: Colors.blue),
-        title: Text(title),
-        trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-        onTap: onTap,
-      ),
+    // Fallback loading screen (field officer will be redirected in _loadUserData)
+    return const Scaffold(
+      body: Center(child: CircularProgressIndicator()),
     );
   }
 }
-
